@@ -22,6 +22,38 @@ Traffic does not go through a company gateway. Keys and bills stay between you a
 
 ---
 
+## What the running desk does
+
+Added here so the page names the product, not only the patches. **These screenshots are the company delivery desk.** Cloning this repo and running `setup.sh` does not give you login, roster, tickets, or spend. That shell is private ops. This repo is the patch layer that desk runs on.
+
+中文同一套说明：[PRODUCT.zh.md](PRODUCT.zh.md).
+
+### Session
+
+![Session: 会话 and 任务, 个人 / 团队, prompt, Full access, model picker](screenshots/01-session.jpg)
+
+Two tabs: **会话** (chat) and **任务** (tickets). Sidebar splits **个人** and **团队** folders. The prompt is “describe what you want to build.” Attachments, **Full access** (sandbox preset), **文件**, and a model picker (here Grok 4.6 High) sit on the composer. Settings is the gear at the bottom of the sidebar.
+
+### Colleagues
+
+![Colleagues: weekly Grok quota, 7-day ledger, online, role, spend](screenshots/02-colleagues.jpg)
+
+Settings → **同事**. Weekly model quota, a **7-day company ledger** using a **local price list** (explicitly not the vendor invoice), per-account role (admin / director / employee), online, last login, 7-day spend.
+
+### Personnel
+
+![Personnel: departments, role and department dropdowns, deactivate, revoke token](screenshots/03-personnel.jpg)
+
+Settings → **人员**. Accounts grouped by department. Boss and managers issue accounts. You can change role and department, **停用**, and **吊销令牌**. The seed administrator cannot be deactivated.
+
+### Tasks
+
+![Tasks: ticket overview, deliverables path, submit for acceptance](screenshots/04-tasks.jpg)
+
+**任务** is a ticket, not a chat log. Overview vs 工作日志. Content / submission fields. Deliverables live on the company disk (`projects/inbox/` in the shot). **提交验收** is the only accept path; saying “done” in chat does not count. Route to a director for review.
+
+---
+
 ## Who it is for
 
 People who can use git and Node, pin a `dsh` version, read a patch failure, and send a PR.
