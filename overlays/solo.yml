@@ -1,0 +1,17 @@
+# Small-team overlay. No office gateway, no Tailscale, no SMB.
+# Model key comes from the environment: DEEPSEEK_API_KEY
+# Optional: DEEPSEEK_BASE_URL (OpenAI-compatible, include /v1)
+#
+# Official dsh already reads those env vars. This file only changes
+# the default sandbox to workspace-write so a local folder can be used
+# without clicking approve on every write.
+- id: permission
+  config:
+    defaultPreset: workspace-write
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: never

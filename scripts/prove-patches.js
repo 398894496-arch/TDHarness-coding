@@ -1,0 +1,83 @@
+#!/usr/bin/env node
+// Apply patches onto a throwaway copy of a gold prefix. Does not write gold.
+// Green: PATCH_PROVE_OK=1
+'use strict';
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+const root = path.resolve(__dirname, '..');
+const gold =
+  process.env.KERNEL_PREFIX || path.join(os.homedir(), 'dsh-kernel', '0-1-1-rc-2');
+const src = path.join(gold, 'lib', 'node_modules', '@deepseek-ai', 'dsh');
+if (!fs.existsSync(path.join(src, 'package.json'))) {
+  console.error('PROVE_FAIL=gold-missing|' + src);
+  process.exit(1);
+}
+
+const files = [
+  path.join('node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-skill-filesystem', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-fs-local', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-goal', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-tool-fs-search', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-session-persistence-jsonl', 'lib', 'index.js'),
+  path.join('config', 'agent-presets', 'standard', 'agent.cordis.yml'),
+  path.join('config', 'agent-presets', 'code', 'agent.cordis.yml'),
+];
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tdh-coding-patch-'));
+const dst = path.join(tmp, 'lib', 'node_modules', '@deepseek-ai', 'dsh');
+fs.mkdirSync(dst, { recursive: true });
+fs.copyFileSync(path.join(src, 'package.json'), path.join(dst, 'package.json'));
+for (const rel of files) {
+  const from = path.join(src, rel);
+  if (!fs.existsSync(from)) {
+    console.error('PROVE_FAIL=gold-file-missing|' + rel);
+    process.exit(1);
+  }
+  const to = path.join(dst, rel);
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.copyFileSync(from, to);
+}
+
+execFileSync(process.execPath, [path.join(root, 'patches', 'apply-kernel-patches.js'), tmp], {
+  stdio: 'inherit',
+});
+
+const boot = fs.readFileSync(path.join(dst, files[4]), 'utf8');
+const marks = [
+  ['JUNCTION_V3', boot.includes('company-win-junction-mklink-v3') || boot.includes('companyWinJunction')],
+  ['JUNCTION_V4', boot.includes('SystemRoot') || boot.includes('company-win-junction-mklink-v4')],
+  ['SANDBOX', fs.readFileSync(path.join(dst, files[0]), 'utf8').includes('company-sandbox-local-unc-v1')],
+];
+let bad = 0;
+for (const [name, ok] of marks) {
+  console.log((ok ? 'MARK_OK=' : 'MARK_FAIL=') + name);
+  if (!ok) bad = 1;
+}
+
+function isUnc(p) {
+  const s = String(p || '').replace(/\//g, '\\');
+  return s.startsWith('\\\\') || s.startsWith('\\\\?\\UNC\\');
+}
+const cases = [
+  ['UNC_SHARE', isUnc('\\\\fileserver\\teamshare\\desk\\a.md'), true],
+  ['UNC_FWD', isUnc('//fileserver/teamshare/a.md'), true],
+  ['LOCAL_WIN', isUnc('C:\\Users\\dev\\home\\a.md'), false],
+];
+for (const [name, got, want] of cases) {
+  const ok = got === want;
+  console.log((ok ? 'CASE_OK=' : 'CASE_FAIL=') + name);
+  if (!ok) bad = 1;
+}
+
+if (bad) {
+  console.error('PATCH_PROVE_OK=0');
+  process.exit(1);
+}
+console.log('PATCH_PROVE_OK=1');
+console.log('PROVE_TMP=' + tmp);

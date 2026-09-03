@@ -1,0 +1,31 @@
+name: Bug
+description: Something broke in the coding tree
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not paste office IPs, passwords, Tailscale keys, or roster names.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro
+      description: Stock dsh, this tree's patches, OS, Node version. Local paths only.
+    validations:
+      required: true
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Reproduces on stock dsh with no patches?
+      options:
+        - "no — this tree / overlay / shim"
+        - "yes — also filed in upstream Discussions"
+        - "unknown"
+    validations:
+      required: true
