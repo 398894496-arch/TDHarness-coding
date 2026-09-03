@@ -1,0 +1,33 @@
+name: Task
+description: Claim an open item from BUGS.md
+title: "[task] C"
+labels: ["help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: Pick an id from [BUGS.md](https://github.com/398894496-arch/TDHarness-coding/blob/main/BUGS.md) (C1–C8). Comment if you are taking it. Do not paste office IPs, keys, or roster names.
+  - type: input
+    id: item
+    attributes:
+      label: BUGS.md id
+      placeholder: C1
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: What you will change
+      description: Files and the green line you will print (`*_OK=1` or the Done-when from BUGS.md).
+    validations:
+      required: true
+  - type: dropdown
+    id: have
+    attributes:
+      label: What you can run
+      options:
+        - "Node only (macOS/Linux)"
+        - "Windows (junction / mapped drive)"
+        - "Gold dsh prefix already installed"
+        - "CI only (workflow / scan)"
+    validations:
+      required: true

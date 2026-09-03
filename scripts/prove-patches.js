@@ -9,13 +9,27 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
-const gold =
-  process.env.KERNEL_PREFIX || path.join(os.homedir(), 'dsh-kernel', '0-1-1-rc-2');
-const src = path.join(gold, 'lib', 'node_modules', '@deepseek-ai', 'dsh');
-if (!fs.existsSync(path.join(src, 'package.json'))) {
-  console.error('PROVE_FAIL=gold-missing|' + src);
+function resolveGold() {
+  const pinned = process.env.KERNEL_PREFIX
+    ? [process.env.KERNEL_PREFIX]
+    : [
+        path.join(os.homedir(), '.tdh-coding-prefix'),
+        path.join(os.homedir(), 'dsh-kernel', '0-1-1-rc-2'),
+      ];
+  for (const gold of pinned) {
+    const unix = path.join(gold, 'lib', 'node_modules', '@deepseek-ai', 'dsh');
+    const win = path.join(gold, 'node_modules', '@deepseek-ai', 'dsh');
+    for (const p of [unix, win]) {
+      if (fs.existsSync(path.join(p, 'package.json'))) return { gold, src: p };
+    }
+  }
+  console.error(
+    'PROVE_FAIL=gold-missing|set KERNEL_PREFIX or run scripts/setup.sh (prefix ~/.tdh-coding-prefix)'
+  );
   process.exit(1);
 }
+const { gold, src } = resolveGold();
+console.log('PROVE_GOLD=' + gold);
 
 const files = [
   path.join('node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js'),

@@ -1,0 +1,25 @@
+name: prove
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Office-fingerprint scan
+        run: bash scripts/prove-scan.sh
+  patches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install pinned dsh into a throwaway prefix
+        run: |
+          PIN="$(awk -F': ' '/^id:/{gsub(/[" ]/, "", $2); print $2; exit}' kernel.yml)"
+          npm install -g "@deepseek-ai/dsh@${PIN}" --prefix "$HOME/tdh-gold"
+      - name: Apply onto a copy and check marks
+        run: KERNEL_PREFIX="$HOME/tdh-gold" node scripts/prove-patches.js

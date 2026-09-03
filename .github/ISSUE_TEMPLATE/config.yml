@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Stock dsh (no patches)
+    url: https://github.com/deepseek-ai/deepseek-harness/discussions
+    about: Upstream does not take PRs or Issues. Kernel bugs that reproduce on official dsh belong in Discussions, then link here.
