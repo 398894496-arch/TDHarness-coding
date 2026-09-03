@@ -1,34 +1,79 @@
 # TDHarness-coding
 
-Small-team coding tree on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). **Usable. Not a mature product.**
+A **coding edition** of a DeepSeek Harness patch tree. **Usable, not a mature product.** Not an employee installer and not hosted SaaS.
 
-This page is the public product detail for the *coding* edition. It is not an employee installer and not a hosted SaaS.
+Install lives only in [README](../README.md) (run it in five minutes). This page answers: **is this what you want?**
+
+| Is | Is not |
+| --- | --- |
+| Official `@deepseek-ai/dsh` plus the kernel patches in this repo | A finished client, an SLA, or sign-in-and-go |
+| A **local** folder as the workspace, and **your** model API key | Company roster, private tailnet, per-seat quotas, office gateway |
+| Issues and PRs **here** | Upstream accepting PRs (they do not, for now) |
+| Known holes in [BUGS.md](../BUGS.md) | The company delivery workbench (tickets, company share, search door) |
+
+```mermaid
+flowchart LR
+  W[Local workspace] --> D[dsh + this repo's patches]
+  D --> K[Your API key / model URL]
+  K --> P[Model vendor]
+```
+
+Traffic does not go through a company gateway. Keys and bills stay between you and the vendor.
+
+---
 
 ## Who it is for
 
-A handful of people who can clone, pin official `@deepseek-ai/dsh`, apply the patches in this repo, and put in their own API key. Local folder as the workspace.
+People who can use git and Node, pin a `dsh` version, read a patch failure, and send a PR.
 
-Not for: “download Setup and it just works”, SLA, or replacing the official `dsh` install.
+A separate **company delivery** product exists for ~20–100 person firms with a roster and a company disk. That product does not install for a handful of people with no LAN and no roster. **This repo is the opposite:** a handful of people who *can* clone. Do not mix the two.
 
-## What you get
+Not for: Setup.exe / DMG login, SLA, chat-only, or cloning a company share and roster.
 
-- Kernel patches (Windows junctions on UNC, SMB-safe writes, session publish on smbfs, …)
-- A solo overlay (`overlays/solo.yml`) — local workspace-write, no company gateway
-- Known bugs written down in [BUGS.md](../BUGS.md)
-- Issues and PRs **here** (upstream does not take external PRs; their Issues are closed)
+## What it is
 
-## What you do not get
+A patch tree on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) plus `overlays/solo.yml`.
 
-- Company login, Tailscale, SMB chairs, Caddy, roster
-- A guaranteed upgrade channel
-- The office client branded TDHarness
+The agent runs **on your machine** and can touch files and commands you can already touch. One line: **you fork the harness; output stays on your disk; bugs are listed; PRs land here.** This is not on-site delivery of a job-shaped workbench.
 
-The name `TDHarness-coding` can change later. Do not bake it into npm or bundle ids.
+Upstream does not take external PRs; GitHub Issues there are closed. Product PRs stay in this repo. Kernel bugs that reproduce on stock `dsh` with no overlay can also go to [upstream Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) with a link back.
 
-## Install
+## What the patches actually buy (for someone deciding whether to put this on a work PC)
 
-See [README](../README.md). Pin is in `kernel.yml` (currently `0.1.1-rc.2`).
+This is **not** “the agent is sandboxed, so you are safe.” The agent still has **your user permissions on that machine**. These patches turn official false-greens and hard crashes on Windows shares / read-only app copies into an explicit refuse or a boot that works.
 
-## Upstream
+| What the patch does | Without it | How to read it |
+| --- | --- | --- |
+| Refuse a **UNC / network** path as the sandbox workspace | Windows cannot plant an NTFS ACL on a network volume. `workspace-write` looks on and either confines nothing or the grant fails | **Not** “block escape onto the share.” It **forbids fake confinement**. Put the workspace on a local disk. If you use a share, let **server** ACLs own it |
+| Windows `mklink /J` with cmd cwd pinned to the system drive | Official `symlink` hits EPERM without Developer Mode; if cwd is `\\server\share`, cmd cannot use UNC and the desk dies (`win-junction-failed`) | Staff do not need Developer Mode to boot. This does **not** mean the agent cannot touch network paths |
+| Skip copying ACLs on SMB writes; publish sessions with `rename` instead of hard links | `ReplaceFileW` / `fs.link` fail on the share and the edit or new session aborts | Writes can finish. “This volume does not support that NTFS op” is not a model error |
+| Missing search roots become “no matches” instead of a hard fail | A broken junction makes `rg` kill the turn | A bad path does not kill the whole round |
+| macOS: refuse an App Translocation read-only copy | Opening a `.app` from Downloads/DMG and writing into the bundle hits `EROFS` | This edition is CLI-first and does not ship a DMG; drop the check into your own launcher if you pack an app |
 
-MIT. Report vanilla kernel bugs in [upstream Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) and link the Issue here. Product work stays in this repository.
+After you bump official `dsh`, re-apply patches. A missing anchor is a hard fail. That is the upgrade gate.
+
+## Versus other options
+
+| Question | Stock dsh | Hand out a vendor key | This repo | Company delivery workbench |
+| --- | --- | --- | --- | --- |
+| Time to first run | npm | Fastest | clone + patch + your key | Network + host + roster |
+| Where data lives | Whatever folder you set | Scattered | Your local folder | The customer’s company disk |
+| Patching / PRs | No external PRs | None | This repo | Private ops, not on GitHub |
+| Per-person kill switch | No | No | No | Yes |
+| Maturity | Developer preview | — | **Called out as immature** | In use internally; onboarding still has holes |
+
+If you need “everyone in chat on AI next week,” do not use this repo.
+
+## Safety, stated plainly
+
+Done here: the tree is scanned for office IPs and keys; the patcher refuses well-known live prefixes; a network workspace is not allowed as the sandbox root.
+
+You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation and no one-click revoke.
+
+## What it will not do
+
+No Setup.exe / DMG. No publishing the ops tree. No promise to track upstream releases. Write access to `main` is fork + PR unless you are added as a collaborator.
+
+---
+
+**Next:** run it → [README](../README.md). Known issues → [BUGS.md](../BUGS.md). How to patch → [HACKING.md](HACKING.md). Contribute → [CONTRIBUTING.md](../CONTRIBUTING.md). License and rename → [NOTICE.md](../NOTICE.md).
