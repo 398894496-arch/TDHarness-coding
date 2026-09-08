@@ -61,6 +61,46 @@ function resolveKernelRoot() {
 const MARK = 'company-sandbox-local-unc-v1';
 const SKILL_MARK = 'company-skill-custom-trusted-v1';
 
+const MARKDOWN_SLOT_PATCH = {
+    // 0.1.2 renders assistant markdown through a fixed MarkdownText
+    // primitive; a plugin (company desk image rendering, syntax extensions)
+    // cannot override it. Open a `conversation.assistant.markdown` render
+    // slot with the official primitive as the fallback. Skipped on 0.1.1,
+    // which ships no dsh-client-ui-chat package at all.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-chat', 'lib', 'client.js'),
+    mark: 'company-assistant-markdown-slot-v1',
+    minKernel: '0.1.2',
+    append:
+      '\n// --- company-assistant-markdown-slot-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n',
+    edits: [
+      {
+        name: 'markdown-render-prop',
+        from: 'function AssistantMarkdown({ blocks, streaming, interrupted, renderMessageImages,',
+        to: 'function AssistantMarkdown({ blocks, streaming, interrupted, renderMarkdown, renderMessageImages,',
+      },
+      {
+        name: 'assistant-markdown-slot-render',
+        from: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {\n\t\t\t\t\t\t\ttext: block.text,\n\t\t\t\t\t\t\tstreaming,\n\t\t\t\t\t\t\tlabels,\n\t\t\t\t\t\t\tfileMentions: mentions\n\t\t\t\t\t\t}, i));',
+        to: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(react.Fragment, { children: renderMarkdown({ text: block.text, streaming, labels, fileMentions: mentions }) }, i));',
+      },
+      {
+        name: 'assistant-node-render-slot',
+        from: 'function AssistantNodeView({ node, useTurnData,',
+        to: 'function AssistantNodeView({ node, renderSlot, useTurnData,',
+      },
+      {
+        name: 'assistant-node-markdown-fallback',
+        from: 'return (0, react_jsx_runtime.jsx)(AssistantMarkdown, {\n\t\t\t\tblocks: data.blocks,',
+        to: 'return (0, react_jsx_runtime.jsx)(AssistantMarkdown, {\n\t\t\t\trenderMarkdown: (props) => renderSlot("conversation.assistant.markdown", props, { fallback: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, props) }),\n\t\t\t\tblocks: data.blocks,',
+      },
+      {
+        name: 'assistant-markdown-child-slot',
+        from: 'key: "assistant-step",\n\t\t\t\tlocale: NS\n\t\t\t}, AssistantNodeView)',
+        to: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tchildren: { "conversation.assistant.markdown": { kind: "single", scope: "session" } }\n\t\t\t}, AssistantNodeView)',
+      },
+    ],
+};
+
 const HELPERS = `
 
 // --- ${MARK} (company patch; see patches/apply-kernel-patches.js) ---
@@ -68,6 +108,7 @@ ${sandboxPathHelperSource()}
 `;
 
 const PATCHES = [
+  MARKDOWN_SLOT_PATCH,
   {
     file: path.join('node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js'),
     mark: MARK,
@@ -461,12 +502,33 @@ const PATCHES = [
 
 const kernelRoot = resolveKernelRoot();
 console.log('PATCH_KERNEL_ROOT=' + kernelRoot);
+const KERNEL_VERSION = JSON.parse(fs.readFileSync(path.join(kernelRoot, 'package.json'), 'utf8')).version;
+console.log('PATCH_KERNEL_VERSION=' + KERNEL_VERSION);
+
+// Some patches only exist because a newer kernel removed or rewrote a
+// surface. `minKernel` skips them on older pins with a loud line instead of
+// an anchor failure. Prerelease tags are stripped: 0.1.2-rc.1 counts as the
+// 0.1.2 line.
+function kernelBelowMin(version, min) {
+  const parts = (v) => String(v).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
+  const a = parts(version);
+  const b = parts(min);
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i];
+  }
+  return false;
+}
 
 let applied = 0;
 let skipped = 0;
 
 for (const patch of PATCHES) {
   if (onlyMark && patch.mark !== onlyMark) continue;
+  if (patch.minKernel && kernelBelowMin(KERNEL_VERSION, patch.minKernel)) {
+    console.log('PATCH_SKIP_KERNEL=' + patch.file + '|' + patch.mark + '|kernel=' + KERNEL_VERSION + '|needs>=' + patch.minKernel);
+    skipped += 1;
+    continue;
+  }
   const target = path.join(kernelRoot, patch.file);
   if (!fs.existsSync(target)) {
     console.error('PATCH_FAIL=target-missing|' + target);
