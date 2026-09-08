@@ -74,20 +74,10 @@ for (const [name, ok] of marks) {
   if (!ok) bad = 1;
 }
 
-function isUnc(p) {
-  const s = String(p || '').replace(/\//g, '\\');
-  return s.startsWith('\\\\') || s.startsWith('\\\\?\\UNC\\');
-}
-const cases = [
-  ['UNC_SHARE', isUnc('\\\\fileserver\\teamshare\\desk\\a.md'), true],
-  ['UNC_FWD', isUnc('//fileserver/teamshare/a.md'), true],
-  ['LOCAL_WIN', isUnc('C:\\Users\\dev\\home\\a.md'), false],
-];
-for (const [name, got, want] of cases) {
-  const ok = got === want;
-  console.log((ok ? 'CASE_OK=' : 'CASE_FAIL=') + name);
-  if (!ok) bad = 1;
-}
+execFileSync(process.execPath, [path.join(root, 'scripts', 'prove-unc.js'),
+  '--sandbox-file', path.join(dst, files[0])], {
+  stdio: 'inherit',
+});
 
 if (bad) {
   console.error('PATCH_PROVE_OK=0');
