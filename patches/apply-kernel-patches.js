@@ -19,11 +19,15 @@ const { sandboxPathHelperSource } = require('./lib/network-path');
 
 const prefix = process.argv[2];
 if (!prefix) {
-  console.error('usage: apply-kernel-patches.js <prefix> [--only <mark>]');
+  console.error('usage: apply-kernel-patches.js <prefix> [--only <mark>[,<mark>...]]');
   process.exit(2);
 }
 const onlyIdx = process.argv.indexOf('--only');
-const onlyMark = onlyIdx >= 0 ? String(process.argv[onlyIdx + 1] || '') : '';
+// --only takes one mark or a comma-separated list; preset pins are skipped
+// in --only mode either way.
+const onlyMarks = new Set(
+  onlyIdx >= 0 ? String(process.argv[onlyIdx + 1] || '').split(',').filter(Boolean) : []
+);
 
 function refuseLivePrefix(raw) {
   const n = path.resolve(raw).replace(/\\/g, '/');
@@ -466,7 +470,7 @@ let applied = 0;
 let skipped = 0;
 
 for (const patch of PATCHES) {
-  if (onlyMark && patch.mark !== onlyMark) continue;
+  if (onlyMarks.size && !onlyMarks.has(patch.mark)) continue;
   const target = path.join(kernelRoot, patch.file);
   if (!fs.existsSync(target)) {
     console.error('PATCH_FAIL=target-missing|' + target);
@@ -513,7 +517,13 @@ for (const patch of PATCHES) {
   applied += 1;
 }
 
-if (onlyMark) {
+if (onlyMarks.size) {
+  for (const mark of onlyMarks) {
+    if (!PATCHES.some((p) => p.mark === mark)) {
+      console.error('PATCH_FAIL=unknown-mark|' + mark);
+      process.exit(1);
+    }
+  }
   console.log('PATCH_APPLIED=' + applied);
   console.log('PATCH_SKIPPED=' + skipped);
   console.log('KERNEL_PATCHES_OK=1');

@@ -39,7 +39,9 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 
 ### C4. Coding setup still pins company skill roots
 
-**Why it is a hole:** `scripts/setup.sh` applies the **full** patcher. That rewrites `standard` / `code` presets with `__DESK_SKILLS__`, `customSkillDirs`, `.company-root`, and `web_fetch: true`. `overlays/solo.yml` does not define those dirs. Company-only preset names (`company-think`) are skipped if missing, but **standard/code still change**.
+**Closed (option a):** `setup.sh` / `setup.ps1` apply only the coding subset (`--only` now takes a comma-separated mark list), so `__DESK_SKILLS__`, custom trustedHost, `web_fetch` and `.company-root` no longer touch the official presets on a coding install. `TDH_FULL_PATCHES=1` keeps the old full-pin behavior for the company desk tree.
+
+**Why it was a hole:** `scripts/setup.sh` applied the **full** patcher. That rewrote `standard` / `code` presets with `__DESK_SKILLS__`, `customSkillDirs`, `.company-root`, and `web_fetch: true`. `overlays/solo.yml` does not define those dirs. Company-only preset names (`company-think`) are skipped if missing, but **standard/code still changed**.
 
 **Files:** `patches/apply-kernel-patches.js` (preset pins at the bottom), `overlays/solo.yml`, `scripts/setup.sh`.
 

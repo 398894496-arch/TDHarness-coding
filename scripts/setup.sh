@@ -14,7 +14,17 @@ mkdir -p "$PREFIX"
 echo "PIN=$PIN"
 echo "PREFIX=$PREFIX"
 npm install -g "@deepseek-ai/dsh@${PIN}" --prefix "$PREFIX"
-node "$ROOT/patches/apply-kernel-patches.js" "$PREFIX"
+# Coding setup applies only the local-workspace subset. The full patcher also
+# pins company skill roots (__DESK_SKILLS__), custom trustedHost, web_fetch
+# and .company-root into the official presets, which overlays/solo.yml does
+# not define (C4). TDH_FULL_PATCHES=1 restores the old full-pin behavior for
+# the company desk tree.
+CODING_MARKS="company-sandbox-local-unc-v1,company-win-junction-mklink-v3,company-win-junction-mklink-v4,company-glob-missing-root-v1,company-session-smbfs-rename-v1,company-goal-resume-armed-v1"
+if [ "${TDH_FULL_PATCHES:-}" = "1" ]; then
+  node "$ROOT/patches/apply-kernel-patches.js" "$PREFIX"
+else
+  node "$ROOT/patches/apply-kernel-patches.js" "$PREFIX" --only "$CODING_MARKS"
+fi
 echo "SETUP_OK=1"
 echo "PATH_HINT=$PREFIX/bin"
 echo "NEXT=export PATH=\"$PREFIX/bin:\$PATH\" DEEPSEEK_API_KEY=... && dsh --patch \"$ROOT/overlays/solo.yml\""
