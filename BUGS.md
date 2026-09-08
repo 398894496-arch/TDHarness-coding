@@ -12,16 +12,6 @@ How to land a change: [CONTRIBUTING.md](CONTRIBUTING.md). What the patches are f
 
 Each row is work that is **not done**. “Done” means the green line in that section, not a comment.
 
-### C1. Behavior tests for the sandbox path check
-
-**Why it is a hole:** `scripts/prove-patches.js` copies a gold prefix, applies patches, and greps for mark strings plus a tiny `isUnc()` helper that is **not** the helper injected into `dsh-sandbox-local`. A patch can apply, the marks stay, and the refuse still never runs.
-
-**Files:** `patches/apply-kernel-patches.js` (the `companyWorkspaceIsNetworkPath` string), `scripts/prove-patches.js`. Better: extract the path helper to something like `patches/lib/network-path.js` and require it from both the patcher and a test.
-
-**Done when:** `node scripts/prove-unc.js` (or equivalent) fails if `\\host\share` and `//host/share` are treated as local, and passes for `C:\Users\dev\proj` and `/Users/dev/proj`, **without** needing `KERNEL_PREFIX`. CI runs it.
-
-**Skill:** Node, no Windows box required.
-
 ### C2. Mapped drive / SUBST is treated as local
 
 **Why it is a hole:** `companyWorkspaceIsNetworkPath` only looks at UNC (`\\` / `//`). A mapped `Z:\team` is a drive letter, so `workspace-write` still tries to plant an NTFS ACL on a network volume. The grant then fails (or confines nothing). The patch comment already admits this; there is no detector.
@@ -96,6 +86,16 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 **Done when:** tests (or a documented rg stderr matrix) show which stderr strings become empty vs `SEARCH_FAILED`. Tighten the matcher if it is too broad; do not revert to “any rg 2 kills the turn” without a replacement.
 
 **Skill:** rg on Windows/macOS, reading `dsh-tool-fs-search`.
+
+---
+
+## Completed contributor work
+
+### C1. Behavior tests for the sandbox path check
+
+`patches/lib/network-path.js` is the single source for the helpers embedded by the patcher and exercised by `scripts/prove-unc.js`. The proof rejects backslash/forward-slash UNC roots, allows local Windows/POSIX roots, applies the actual patch to a minimal fixture, and verifies refusal before grant operations. Negative controls detect a disabled predicate and a disconnected precheck.
+
+**Green:** `node scripts/prove-unc.js` → `UNC_PROVE_OK=1`, without `KERNEL_PREFIX`. CI runs this on Linux and Windows with Node 22. `scripts/prove-patches.js` additionally exercises the method from the patched pinned kernel (`UNC_KERNEL_PROVE_OK=1`). This proves path refusal and call ordering, not real NTFS ACL behavior; mapped drives and the ACL review remain C2/C3.
 
 ---
 

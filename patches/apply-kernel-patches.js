@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { sandboxPathHelperSource } = require('./lib/network-path');
 
 const prefix = process.argv[2];
 if (!prefix) {
@@ -62,36 +63,8 @@ const SKILL_MARK = 'company-skill-custom-trusted-v1';
 
 const HELPERS = `
 
-// --- ${MARK} (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---
-function companyWorkspaceIsNetworkPath(p) {
-	return typeof p === "string" && (p.startsWith("\\\\\\\\") || p.startsWith("//"));
-}
-function companyWorkspaceHint(workspaceRoot) {
-	return "workspace-write confinement is granted by an NTFS ACL on the volume that holds the workspace. "
-		+ "\\"" + workspaceRoot + "\\" is not on a local volume, so there is no volume here to grant on and this "
-		+ "sandbox cannot confine anything on it. Put the agent workspace on a local disk and mount the company "
-		+ "share separately: the share is access-controlled on the server (per-person SMB account plus per-dept "
-		+ "NTFS ACL), not by this sandbox.";
-}
-function companyAssertLocalWorkspace(workspaceRoot) {
-	if (!companyWorkspaceIsNetworkPath(workspaceRoot)) return;
-	const err = new Error("sandbox-local: refusing workspace-write on a network workspace. " + companyWorkspaceHint(workspaceRoot));
-	err.code = "COMPANY_WORKSPACE_NOT_LOCAL";
-	throw err;
-}
-function companyGrantError(workspaceRoot, cause) {
-	// Mapped network drives look like a normal drive letter, so the path check
-	// above cannot catch them; they surface here instead. State the hint as a
-	// likely cause rather than a verdict, and keep the original error.
-	const err = new Error(
-		"sandbox-local: windows-acl workspace grant failed for \\"" + workspaceRoot + "\\". "
-		+ "If this workspace is on a mapped network drive or a UNC path, that is the likely cause: "
-		+ companyWorkspaceHint(workspaceRoot),
-		{ cause }
-	);
-	err.code = "COMPANY_WORKSPACE_GRANT_FAILED";
-	return err;
-}
+// --- ${MARK} (company patch; see patches/apply-kernel-patches.js) ---
+${sandboxPathHelperSource()}
 `;
 
 const PATCHES = [
