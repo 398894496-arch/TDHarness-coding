@@ -39,6 +39,7 @@ const files = [
   path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'index.js'),
   path.join('node_modules', '@deepseek-ai', 'dsh-tool-fs-search', 'lib', 'index.js'),
   path.join('node_modules', '@deepseek-ai', 'dsh-session-persistence-jsonl', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-session', 'lib', 'index.js'),
   path.join('config', 'agent-presets', 'standard', 'agent.cordis.yml'),
   path.join('config', 'agent-presets', 'code', 'agent.cordis.yml'),
 ];
@@ -63,10 +64,18 @@ execFileSync(process.execPath, [path.join(root, 'patches', 'apply-kernel-patches
 });
 
 const boot = fs.readFileSync(path.join(dst, files[4]), 'utf8');
+// company-session-events-alias-v1 is minKernel-gated: it must be present on
+// the 0.1.2 line (where official removed Session.events) and absent on 0.1.1
+// (where Session still has its own). Prerelease tags do not count.
+const goldVersion = JSON.parse(fs.readFileSync(path.join(src, 'package.json'), 'utf8')).version;
+const goldNums = String(goldVersion).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
+const goldIs012Line = goldNums[0] > 0 || goldNums[1] > 1 || (goldNums[1] === 1 && goldNums[2] >= 2);
+const sessionText = fs.readFileSync(path.join(dst, files[7]), 'utf8');
 const marks = [
   ['JUNCTION_V3', boot.includes('company-win-junction-mklink-v3') || boot.includes('companyWinJunction')],
   ['JUNCTION_V4', boot.includes('SystemRoot') || boot.includes('company-win-junction-mklink-v4')],
   ['SANDBOX', fs.readFileSync(path.join(dst, files[0]), 'utf8').includes('company-sandbox-local-unc-v1')],
+  ['SESSION_EVENTS_ALIAS', sessionText.includes('company-session-events-alias-v1') === goldIs012Line],
 ];
 let bad = 0;
 for (const [name, ok] of marks) {

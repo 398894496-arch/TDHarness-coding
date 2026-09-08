@@ -457,16 +457,64 @@ const PATCHES = [
       },
     ],
   },
+  {
+    // 0.1.2 removed Session.events; community presets (tool-bootstrap et al.)
+    // still read session.events.length and die with a TypeError on the first
+    // assemble, which the UI reports as UNKNOWN. Alias it to snapshotEvents().
+    // Skipped on 0.1.1, where Session still has its own events.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-session', 'lib', 'index.js'),
+    mark: 'company-session-events-alias-v1',
+    minKernel: '0.1.2',
+    append:
+      '\n// --- company-session-events-alias-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n',
+    edits: [
+      {
+        name: 'session-events-getter',
+        from:
+          '\teventAt(seq) {\n' +
+          '\t\treturn this.log[seq];\n' +
+          '\t}\n',
+        to:
+          '\teventAt(seq) {\n' +
+          '\t\treturn this.log[seq];\n' +
+          '\t}\n' +
+          '\tget events() {\n' +
+          '\t\treturn this.snapshotEvents();\n' +
+          '\t}\n',
+      },
+    ],
+  },
 ];
 
 const kernelRoot = resolveKernelRoot();
 console.log('PATCH_KERNEL_ROOT=' + kernelRoot);
+const KERNEL_VERSION = JSON.parse(fs.readFileSync(path.join(kernelRoot, 'package.json'), 'utf8')).version;
+console.log('PATCH_KERNEL_VERSION=' + KERNEL_VERSION);
+
+// Some patches only exist because a newer kernel removed or rewrote a
+// surface. `minKernel` skips them on older pins with a loud line instead of
+// an anchor failure. Prerelease tags are stripped: 0.1.2-rc.1 counts as the
+// 0.1.2 line.
+function kernelBelowMin(version, min) {
+  const parts = (v) => String(v).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
+  const a = parts(version);
+  const b = parts(min);
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i];
+  }
+  return false;
+}
 
 let applied = 0;
 let skipped = 0;
 
 for (const patch of PATCHES) {
   if (onlyMark && patch.mark !== onlyMark) continue;
+  if (patch.minKernel && kernelBelowMin(KERNEL_VERSION, patch.minKernel)) {
+    console.log('PATCH_SKIP_KERNEL=' + patch.file + '|' + patch.mark + '|kernel=' + KERNEL_VERSION + '|needs>=' + patch.minKernel);
+    skipped += 1;
+    continue;
+  }
   const target = path.join(kernelRoot, patch.file);
   if (!fs.existsSync(target)) {
     console.error('PATCH_FAIL=target-missing|' + target);
