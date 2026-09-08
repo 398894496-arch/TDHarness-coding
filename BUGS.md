@@ -49,7 +49,9 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 
 ### C5. Kernel bump dry-run
 
-**Why it is a hole:** the upgrade gate is “anchor not unique → hard fail.” There is no script that installs a **newer** `@deepseek-ai/dsh` into a throwaway prefix and prints which marks still apply.
+**Closed:** `node scripts/prove-bump.js <version>` installs the given tag into a throwaway prefix, applies the patch set, and prints one `BUMP_MARK=` line per landed mark; a moved anchor surfaces as the patcher's `PATCH_FAIL=anchor-not-unique` plus `BUMP_PROVE_OK=0`. Verified green on the 0.1.1-rc.2 pin, and 0.1.2-rc.1 correctly names the `resume-already-armed-noop` anchor that moved (fixed by the 0.1.2-compat PR).
+
+**Why it was a hole:** the upgrade gate is “anchor not unique → hard fail.” There was no script that installs a **newer** `@deepseek-ai/dsh` into a throwaway prefix and prints which marks still apply.
 
 **Files:** new `scripts/prove-bump.sh` (or `.js`) taking a version argument. Must refuse `~/.local` and `~/dsh-node-rc8` like the patcher.
 
