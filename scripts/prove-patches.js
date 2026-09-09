@@ -66,7 +66,7 @@ const boot = fs.readFileSync(path.join(dst, files[4]), 'utf8');
 const marks = [
   ['JUNCTION_V3', boot.includes('company-win-junction-mklink-v3') || boot.includes('companyWinJunction')],
   ['JUNCTION_V4', boot.includes('SystemRoot') || boot.includes('company-win-junction-mklink-v4')],
-  ['SANDBOX', fs.readFileSync(path.join(dst, files[0]), 'utf8').includes('company-sandbox-local-unc-v1')],
+  ['SANDBOX', fs.readFileSync(path.join(dst, files[0]), 'utf8').includes('company-sandbox-local-drive-v2')],
 ];
 let bad = 0;
 for (const [name, ok] of marks) {
@@ -78,6 +78,8 @@ execFileSync(process.execPath, [path.join(root, 'scripts', 'prove-unc.js'),
   '--sandbox-file', path.join(dst, files[0])], {
   stdio: 'inherit',
 });
+execFileSync(process.execPath, [path.join(root, 'scripts', 'prove-windows-drives.js'),
+  '--sandbox-file', path.join(dst, files[0])], { stdio: 'inherit' });
 
 if (bad) {
   console.error('PATCH_PROVE_OK=0');

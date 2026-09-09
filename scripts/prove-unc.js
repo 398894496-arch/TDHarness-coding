@@ -15,6 +15,7 @@ const cases = [
   ['UNC_FORWARD', '//host/share', true],
   ['UNC_NAMESPACED', String.raw`\\?\UNC\host\share`, true],
   ['LOCAL_WINDOWS', String.raw`C:\Users\dev\proj`, false],
+  ['LOCAL_WINDOWS_NAMESPACED', String.raw`\\?\C:\Users\dev\proj`, false],
   ['LOCAL_POSIX', '/Users/dev/proj', false],
 ];
 
@@ -25,7 +26,7 @@ function proveHelpers(api) {
       assert.throws(() => api.companyAssertLocalWorkspace(input), (err) =>
         err.code === 'COMPANY_WORKSPACE_NOT_LOCAL' && err.message.includes(input), name);
     } else {
-      assert.doesNotThrow(() => api.companyAssertLocalWorkspace(input), name);
+      assert.doesNotThrow(() => api.companyAssertLocalWorkspace(input, { platform: 'linux' }), name);
     }
   }
   const cause = new Error('test grant failure');
@@ -54,9 +55,11 @@ const fixture = [
   '',
 ].join('\n');
 
-function provePatchedSource(source) {
+function provePatchedSource(source, options = {}) {
   const calls = [];
   const context = vm.createContext({
+    process: options.process || { platform: 'linux' },
+    spawnSync: options.spawnSync,
     assertTempRootOutsideWorkspace: () => calls.push('temp-check'),
     tmpdir: () => '/tmp',
     grantWorkspace: () => { calls.push('grant'); return 'test-grant'; },
@@ -65,7 +68,7 @@ function provePatchedSource(source) {
   proveHelpers(context);
   const sandbox = new context.Sandbox();
   sandbox.workspaceGrants = new Map();
-  for (const [name, input, network] of cases) {
+  for (const [name, input, network] of options.cases || cases) {
     calls.length = 0;
     if (network) {
       assert.throws(() => sandbox.materializeAclGrant('test', input),
@@ -80,54 +83,76 @@ function provePatchedSource(source) {
   }
 }
 
-proveHelpers(helpers);
 // Optional integration check: execute the method extracted from the actual
 // patched kernel. A sentinel stops local paths at the original first operation,
 // so this checks ordering without granting ACLs or needing Windows privileges.
-const fileIdx = process.argv.indexOf('--sandbox-file');
-if (fileIdx >= 0) {
-  const source = fs.readFileSync(process.argv[fileIdx + 1], 'utf8');
+function proveKernelSource(source, options = {}) {
   const method = source.match(/^\tmaterializeAclGrant\(sessionId, workspaceRoot\) \{[\s\S]*?^\t\}/m);
   assert.ok(method, 'pinned materializeAclGrant method exists');
-  const marker = '// --- company-sandbox-local-unc-v1';
+  const marker = '// --- company-sandbox-local-drive-v2';
   const helperStart = source.indexOf(marker);
   assert.ok(helperStart >= 0, 'sandbox helpers are embedded');
   const reachedOriginalOperation = new Error('reached original kernel operation');
   const context = vm.createContext({
+    process: options.process || { platform: 'linux' },
+    spawnSync: options.spawnSync,
     tmpdir: () => '/tmp',
     assertTempRootOutsideWorkspace: () => { throw reachedOriginalOperation; },
   });
   vm.runInContext(source.slice(helperStart) + '\n'
     + 'globalThis.sandbox = ({' + method[0] + '\n});', context);
   proveHelpers(context);
-  for (const [name, input, network] of cases) {
+  for (const [name, input, network] of options.cases || cases) {
     assert.throws(() => context.sandbox.materializeAclGrant('test', input),
       (err) => network ? err.code === 'COMPANY_WORKSPACE_NOT_LOCAL' : err === reachedOriginalOperation,
       name + ': actual kernel method');
   }
   console.log('UNC_KERNEL_PROVE_OK=1');
 }
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tdh-unc-'));
-try {
-  const kernel = path.join(tmp, 'lib', 'node_modules', '@deepseek-ai', 'dsh');
-  const target = path.join(kernel, 'node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js');
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(path.join(kernel, 'package.json'), '{}');
-  fs.writeFileSync(target, fixture);
-  execFileSync(process.execPath, [path.join(__dirname, '..', 'patches', 'apply-kernel-patches.js'),
-    tmp, '--only', 'company-sandbox-local-unc-v1'], { stdio: 'pipe' });
-  const patched = fs.readFileSync(target, 'utf8');
+function createPatchedFixture() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tdh-unc-'));
+  try {
+    const kernel = path.join(tmp, 'lib', 'node_modules', '@deepseek-ai', 'dsh');
+    const target = path.join(kernel, 'node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(path.join(kernel, 'package.json'), '{}');
+    fs.writeFileSync(target, fixture);
+    const apply = () => execFileSync(process.execPath,
+      [path.join(__dirname, '..', 'patches', 'apply-kernel-patches.js'),
+        tmp, '--only', 'company-sandbox-local-drive-v2'], { stdio: 'pipe' });
+    apply();
+    const patched = fs.readFileSync(target, 'utf8');
+    apply();
+    assert.equal(fs.readFileSync(target, 'utf8'), patched, 'reapplying v2 is idempotent');
+    const legacy = fixture + '\n// company-sandbox-local-unc-v1\n';
+    fs.writeFileSync(target, legacy);
+    assert.throws(apply, (err) => String(err.stderr).includes('PATCH_FAIL=legacy-sandbox-patch'));
+    assert.equal(fs.readFileSync(target, 'utf8'), legacy, 'legacy prefix is left untouched');
+    return patched;
+  } finally {
+    assert.equal(path.dirname(tmp), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(tmp).startsWith('tdh-unc-'));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+if (require.main === module) {
+  proveHelpers(helpers);
+  const fileIdx = process.argv.indexOf('--sandbox-file');
+  if (fileIdx >= 0) proveKernelSource(fs.readFileSync(process.argv[fileIdx + 1], 'utf8'));
+  const patched = createPatchedFixture();
   provePatchedSource(patched);
 
   // Negative controls: prove this harness detects a disabled check and a
   // disconnected check, even when all patch marker comments remain present.
-  const disabled = patched.replace('return typeof p ===', 'return false && typeof p ===');
+  const disabled = patched.replace('function companyWorkspaceIsNetworkPath(p) {',
+    'function companyWorkspaceIsNetworkPath(p) { return false;');
   assert.notEqual(disabled, patched);
   assert.throws(() => provePatchedSource(disabled), { code: 'ERR_ASSERTION' });
   const disconnected = patched.replace('\t\tcompanyAssertLocalWorkspace(workspaceRoot);\n', '');
   assert.notEqual(disconnected, patched);
   assert.throws(() => provePatchedSource(disconnected), { code: 'ERR_ASSERTION' });
   console.log('UNC_PROVE_OK=1');
-} finally {
-  fs.rmSync(tmp, { recursive: true, force: true });
 }
+
+module.exports = { createPatchedFixture, provePatchedSource, proveKernelSource };

@@ -29,7 +29,7 @@ See `kernel.yml`. To bump: install a fresh prefix, run `patches/apply-kernel-pat
 
 | Mark | Package file | One line |
 | --- | --- | --- |
-| `company-sandbox-local-unc-v1` | `dsh-sandbox-local` | Refuse UNC as `workspace-write` root; diagnose grant fail |
+| `company-sandbox-local-drive-v2` | `dsh-sandbox-local` | Refuse UNC and Windows mapped/SUBST roots before ACL work; fail closed on probe errors; cache verified local drives for 30 seconds to avoid per-command PowerShell startup |
 | `company-skill-custom-trusted-v1` | `dsh-skill-filesystem` | `customSkillDirs` get `trustedHost` |
 | `company-skill-get-custom-trusted-v1` | same | `get()` reads custom like bundled |
 | `company-skill-root-eacces-v1` | same | EACCES/EPERM on one root → `[]`, do not drop the provider |
@@ -45,6 +45,8 @@ See `kernel.yml`. To bump: install a fresh prefix, run `patches/apply-kernel-pat
 | `company-preset-instr-root-v1` | `standard` / `code` (+ company presets if present) | `projectRootMarkers: [.company-root]` |
 
 Shims (not anchored into npm): `runtime/win-junction-shim.cjs`, `runtime/mac-no-translocate.sh`.
+
+The v2 sandbox precheck embeds the shared path helpers into the installed ESM module and uses its existing `spawnSync` import. Windows PowerShell invokes [QueryDosDeviceW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-querydosdevicew) (current DOS-device target) and [GetDriveTypeW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdrivetypew) (`DRIVE_REMOTE = 4`). Only a validated drive name is passed; workspace paths are not interpolated into PowerShell. Probe errors stop the grant. A successful `local` classification is cached per drive letter for 30 seconds, so a burst of sandboxed calls pays one probe rather than one per call; refusals and probe failures are never cached, so a corrected drive takes effect immediately. The cache is the accepted trade-off: a remap inside that 30-second window is not observed. Upgrade a v1-only prefix by installing a fresh pin; do not modify the running installation. See C2/C2b in BUGS.md for test coverage and limitations.
 
 ## Chinese UI
 
