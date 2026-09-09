@@ -15,6 +15,31 @@ const subst = { driveType: 3, target: String.raw`\??\C:\example`, queryError: 0 
 const patched = createPatchedFixture();
 const windows = { platform: 'win32', env: { SystemRoot: 'C:\\Windows' } };
 
+// Successful local probes are reused briefly; expiry triggers a fresh probe.
+// Unsafe and failed classifications never enter the positive cache.
+{
+  const cache = new Map();
+  let calls = 0;
+  const probe = () => { calls++; return local; };
+  const options = { platform: 'win32', probe, cache, cacheMs: 30000, now: 1000 };
+  h.companyAssertLocalWorkspace('C:/one', options);
+  h.companyAssertLocalWorkspace('C:/two', { ...options, now: 2000 });
+  assert.equal(calls, 1, 'same local drive uses the positive cache');
+  h.companyAssertLocalWorkspace('C:/three', { ...options, now: 31001 });
+  assert.equal(calls, 2, 'expired local result is probed again');
+}
+for (const info of [remote, subst]) {
+  const cache = new Map();
+  let calls = 0;
+  const options = { platform: 'win32', probe: () => { calls++; return info; }, cache, now: 1000 };
+  for (let i = 0; i < 2; i++) {
+    assert.throws(() => h.companyAssertLocalWorkspace('Z:/proj', options),
+      { code: 'COMPANY_WORKSPACE_NOT_LOCAL' });
+  }
+  assert.equal(calls, 2, 'unsafe drive results are not cached');
+  assert.equal(cache.size, 0);
+}
+
 for (const root of ['C:/proj', String.raw`\\?\C:\proj`, '//?/c:/proj']) {
   assert.equal(h.companyWindowsDriveRoot(root), 'C:');
   assert.doesNotThrow(() => h.companyAssertLocalWorkspace(root, { platform: 'win32', probe: () => local }));

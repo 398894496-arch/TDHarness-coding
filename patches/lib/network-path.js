@@ -73,6 +73,25 @@ function companyWindowsWorkspaceKind(p, probe = companyProbeWindowsDrive) {
   return 'local';
 }
 
+function companyCachedWindowsWorkspaceKind(p, options = {}) {
+  const drive = companyWindowsDriveRoot(p);
+  if (!drive) throw new Error('Expected an absolute Windows drive path');
+  const cache = options.cache || (options.probe ? new Map()
+    : (companyCachedWindowsWorkspaceKind.cache ||= new Map()));
+  const now = options.now === undefined ? Date.now() : options.now;
+  const cached = cache.get(drive);
+  if (cached && cached.expiresAt > now) return cached.kind;
+  if (cached) cache.delete(drive);
+  const kind = companyWindowsWorkspaceKind(p, options.probe);
+  // Cache only a successful local classification. Refused aliases and probe
+  // failures are retried immediately after the operator fixes the drive.
+  const cacheMs = options.cacheMs === undefined ? 30000 : options.cacheMs;
+  if (kind === 'local' && Number.isFinite(cacheMs) && cacheMs > 0) {
+    cache.set(drive, { kind, expiresAt: now + cacheMs });
+  }
+  return kind;
+}
+
 function companyWorkspaceHint(workspaceRoot) {
   return 'workspace-write requires a directly addressed local workspace. '
     + '"' + workspaceRoot + '" is a network path or a mapped/SUBST alias; '
@@ -84,7 +103,7 @@ function companyAssertLocalWorkspace(workspaceRoot, options = {}) {
   let kind = companyWorkspaceIsNetworkPath(workspaceRoot) ? 'network' : 'local';
   if (kind === 'local' && (options.platform || process.platform) === 'win32') {
     try {
-      kind = companyWindowsWorkspaceKind(workspaceRoot, options.probe);
+      kind = companyCachedWindowsWorkspaceKind(workspaceRoot, options);
     } catch (cause) {
       const err = new Error('sandbox-local: cannot verify workspace drive for "' + workspaceRoot
         + '"; no workspace ACL grant was attempted. Windows PowerShell drive probing must be available.', { cause });
@@ -107,11 +126,13 @@ function companyGrantError(workspaceRoot, cause) {
 
 function sandboxPathHelperSource() {
   return [companyWorkspaceIsNetworkPath, companyWindowsDriveRoot, companyProbeWindowsDrive,
-    companyWindowsWorkspaceKind, companyWorkspaceHint, companyAssertLocalWorkspace,
+    companyWindowsWorkspaceKind, companyCachedWindowsWorkspaceKind,
+    companyWorkspaceHint, companyAssertLocalWorkspace,
     companyGrantError].map((fn) => fn.toString()).join('\n');
 }
 
 module.exports = {
   companyWorkspaceIsNetworkPath, companyWindowsDriveRoot, companyProbeWindowsDrive,
-  companyWindowsWorkspaceKind, companyAssertLocalWorkspace, companyGrantError, sandboxPathHelperSource,
+  companyWindowsWorkspaceKind, companyCachedWindowsWorkspaceKind,
+  companyAssertLocalWorkspace, companyGrantError, sandboxPathHelperSource,
 };

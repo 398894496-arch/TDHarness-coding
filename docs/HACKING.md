@@ -29,7 +29,7 @@ See `kernel.yml`. To bump: install a fresh prefix, run `patches/apply-kernel-pat
 
 | Mark | Package file | One line |
 | --- | --- | --- |
-| `company-sandbox-local-drive-v2` | `dsh-sandbox-local` | Refuse UNC, Windows mapped/SUBST roots before ACL work; fail closed on probe errors |
+| `company-sandbox-local-drive-v2` | `dsh-sandbox-local` | Refuse UNC and Windows mapped/SUBST roots before ACL work; fail closed on probe errors; cache verified local drives for 30 seconds to avoid per-command PowerShell startup |
 | `company-skill-custom-trusted-v1` | `dsh-skill-filesystem` | `customSkillDirs` get `trustedHost` |
 | `company-skill-get-custom-trusted-v1` | same | `get()` reads custom like bundled |
 | `company-skill-root-eacces-v1` | same | EACCES/EPERM on one root → `[]`, do not drop the provider |
