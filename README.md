@@ -46,7 +46,6 @@ Not a wishlist. Each id in **[BUGS.md](BUGS.md)** has files, a green line, and t
 
 | Id | Hole |
 | --- | --- |
-| C1 | Path-check tests (today we grep patch marks) |
 | C2b | Linux CIFS mount detection (Windows mapped/SUBST precheck completed; see BUGS.md) |
 | C3 | Review `trustedHost` on custom skills and DACL skip on `ACCESS_DENIED` |
 | C4 | `setup` still pins company `__DESK_SKILLS__` onto official presets |

@@ -20,7 +20,6 @@
 
 | Id | 缺什么 | 大概要谁 |
 | --- | --- | --- |
-| C1 | 沙箱路径检查没有行为测试，现在只 grep 补丁标记 | 会 Node 即可，不必 Windows |
 | C2b | Linux CIFS 挂载点识别；Windows 映射盘 / SUBST 预检已补齐，验证范围见 BUGS.md | 熟悉 Linux 文件系统 |
 | C3 | 审 `trustedHost`（自定义 skill 目录）和 DACL 在 ACCESS_DENIED 时跳过 | Windows ACL + dsh 沙箱 |
 | C4 | `setup` 仍把公司 `__DESK_SKILLS__` 打进官方 `standard`/`code` 预设 | 会看 `--dump-config` |
