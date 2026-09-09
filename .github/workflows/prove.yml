@@ -16,6 +16,8 @@ jobs:
           node-version: "22"
       - name: Prove sandbox path behavior without a kernel prefix
         run: node scripts/prove-unc.js
+      - name: Prove drive classification and Windows SUBST refusal
+        run: node scripts/prove-windows-drives.js
   scan:
     runs-on: ubuntu-latest
     steps:

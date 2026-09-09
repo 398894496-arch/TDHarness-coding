@@ -58,7 +58,7 @@ function resolveKernelRoot() {
   process.exit(1);
 }
 
-const MARK = 'company-sandbox-local-unc-v1';
+const MARK = 'company-sandbox-local-drive-v2';
 const SKILL_MARK = 'company-skill-custom-trusted-v1';
 
 const HELPERS = `
@@ -473,6 +473,11 @@ for (const patch of PATCHES) {
     process.exit(1);
   }
   let text = fs.readFileSync(target, 'utf8');
+
+  if (patch.mark === MARK && text.includes('company-sandbox-local-unc-v1') && !text.includes(MARK)) {
+    console.error('PATCH_FAIL=legacy-sandbox-patch|install the pinned kernel into a fresh prefix before applying v2');
+    process.exit(1);
+  }
 
   const already = [patch.mark].concat(patch.already || []);
   if (already.some((m) => m && text.includes(m))) {

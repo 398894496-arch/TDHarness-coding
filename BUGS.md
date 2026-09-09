@@ -12,15 +12,9 @@ How to land a change: [CONTRIBUTING.md](CONTRIBUTING.md). What the patches are f
 
 Each row is work that is **not done**. “Done” means the green line in that section, not a comment.
 
-### C2. Mapped drive / SUBST is treated as local
+### C2b. Linux CIFS mount points
 
-**Why it is a hole:** `companyWorkspaceIsNetworkPath` only looks at UNC (`\\` / `//`). A mapped `Z:\team` is a drive letter, so `workspace-write` still tries to plant an NTFS ACL on a network volume. The grant then fails (or confines nothing). The patch comment already admits this; there is no detector.
-
-**Files:** helper in `patches/apply-kernel-patches.js`; Windows-only probe (e.g. `Get-PSDrive` / `fsutil` / `GetVolumePathName`). Do not call a mapped letter “local” in the error text.
-
-**Done when:** on Windows, a mapped or SUBST root is refused with `COMPANY_WORKSPACE_NOT_LOCAL` (or a new explicit code) **before** `materializeAclGrant` talks to the volume. Document that Linux CIFS mount points are a separate item (C2b — open a child issue if you take it).
-
-**Skill:** Windows, NTFS vs SMB. Needs a machine that can map a share or SUBST.
+Windows drive probing does not detect Linux CIFS mount points. A path such as `/mnt/team` is still a POSIX path to these helpers. This remains separate from C2; open a child Task before taking it. C2 also does not resolve directory junctions or eliminate a drive-remapping race after the check.
 
 ### C3. Security review of two privilege-shaped patches
 
@@ -90,6 +84,14 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 ---
 
 ## Completed contributor work
+
+### C2. Refuse mapped and SUBST drive roots before ACL grants
+
+`company-sandbox-local-drive-v2` distinguishes local Win32 namespaced paths (`\\?\C:\...`) from UNC paths, then queries Windows drive type and DOS device mapping before the first original operation in `materializeAclGrant`. Network and DOS-alias roots fail with `COMPANY_WORKSPACE_NOT_LOCAL`. Missing drives, failed/blocked probes, timeouts, and malformed responses fail with `COMPANY_WORKSPACE_PROBE_FAILED`; they are never assumed local.
+
+**Green:** `node scripts/prove-windows-drives.js` → `WINDOWS_DRIVE_UNIT_OK=1`; on Windows it also creates/removes an unused temporary SUBST mapping and prints `WINDOWS_DRIVE_PROVE_OK=1`. It exercises the actual patcher's fixture; `prove-patches.js` also checks the patched pinned kernel method. Network-drive API responses are covered deterministically. Set `TDH_TEST_MAPPED_ROOT` to an existing mapped drive root for optional real network-drive coverage; the test does not create or remove that mapping. The default test reports this coverage as skipped.
+
+**Runtime:** Windows PowerShell 5.1 with `Add-Type` must be available. The bounded, hidden probe uses `QueryDosDeviceW` and `GetDriveTypeW`, without WMI or localized command parsing. It runs synchronously on each grant entry (including reused grants), adding process startup cost; results are not cached because mappings can change. This is a precheck, not protection against concurrent remapping or proof of NTFS confinement. Install a fresh pinned prefix when moving from the old v1 patch; the patcher explicitly rejects v1-only prefixes.
 
 ### C1. Behavior tests for the sandbox path check
 

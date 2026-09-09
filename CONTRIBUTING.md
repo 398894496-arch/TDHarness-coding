@@ -16,6 +16,7 @@ Kernel bugs that reproduce on **stock** `dsh` with no patch: also post in [upstr
 
 1. `bash scripts/prove-scan.sh` → `SCAN_OK=1`.
    Run `node scripts/prove-unc.js` → `UNC_PROVE_OK=1` for sandbox path behavior (no kernel install or `KERNEL_PREFIX` needed).
+   Run `node scripts/prove-windows-drives.js` for drive classification; Windows also proves real SUBST refusal (`WINDOWS_DRIVE_PROVE_OK=1`). Optional `TDH_TEST_MAPPED_ROOT` tests an existing network drive without changing its mapping.
 2. If you touched patches or prove scripts: `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1` (needs a gold prefix: `KERNEL_PREFIX`, or `~/.tdh-coding-prefix` after setup, or `~/dsh-kernel/0-1-1-rc-2`).
 3. Paths and script names ASCII only. UI fonts if you touch CSS: `"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", sans-serif`.
 4. Do not add office IPs, auth keys, roster files, or a live `node_modules` dump.
