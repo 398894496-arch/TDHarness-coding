@@ -1,0 +1,8 @@
+# Keep every text file LF in the repository and in working trees, so a Windows
+# editor cannot turn a two-line edit into a whole-file diff. Everything tracked
+# here is already LF; this pins that rather than changing it.
+* text=auto eol=lf
+
+# Never touch binaries.
+*.jpg binary
+*.png binary
