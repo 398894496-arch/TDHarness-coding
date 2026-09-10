@@ -28,7 +28,7 @@ Open a **new** General thread only if stock dsh still reproduces **and** the exi
 ## Template
 
 ```
-**dsh:** 0.1.1-rc.2 (stock, no overlay)
+**dsh:** 0.1.2-rc.1 (stock, no overlay)
 **OS:** Windows 11 / macOS …
 **Repro:** (shortest steps, local paths only)
 **Expected:**
