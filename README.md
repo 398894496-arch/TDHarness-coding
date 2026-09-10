@@ -21,7 +21,7 @@ export DEEPSEEK_API_KEY='your-key'
 dsh --patch "$PWD/overlays/solo.yml"
 ```
 
-Windows: `pwsh -File scripts/setup.ps1`. Setup installs `@deepseek-ai/dsh@0.1.2-rc.1` into `~/.tdh-coding-prefix` and applies patches. Do not point it at a live `node_modules`.
+Windows: `pwsh -File scripts/setup.ps1`. Setup installs `@deepseek-ai/dsh@0.1.2-rc.1` into `~/.tdh-coding-prefix` and applies the coding patch subset (sandbox, junction, glob, session, goal). Do not point it at a live `node_modules`. The company pins (placeholder skill roots, `web_fetch`, `.company-root`) stay off the official presets unless you opt in with `TDH_FULL_PATCHES=1`.
 
 Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1`.
 
