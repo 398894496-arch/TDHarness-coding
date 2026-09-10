@@ -39,9 +39,11 @@ const LIB_FILES = [
   path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'index.js'),
   path.join('node_modules', '@deepseek-ai', 'dsh-tool-fs-search', 'lib', 'index.js'),
   path.join('node_modules', '@deepseek-ai', 'dsh-session-persistence-jsonl', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-session', 'lib', 'index.js'),
 ];
 const SANDBOX_FILE = LIB_FILES[0];
 const BOOT_FILE = LIB_FILES[4];
+const SESSION_FILE = LIB_FILES[7];
 
 // 0.1.2 moved presets out of the dsh package config/ tree into the
 // dsh-agent-presets package, and no longer ships a `code` preset. Resolve
@@ -84,10 +86,18 @@ execFileSync(process.execPath, [path.join(root, 'patches', 'apply-kernel-patches
 });
 
 const boot = fs.readFileSync(path.join(dst, BOOT_FILE), 'utf8');
+// company-session-events-alias-v1 is minKernel-gated: it must be present on
+// the 0.1.2 line (where official removed Session.events) and absent on 0.1.1
+// (where Session still has its own). Prerelease tags do not count.
+const goldVersion = JSON.parse(fs.readFileSync(path.join(src, 'package.json'), 'utf8')).version;
+const goldNums = String(goldVersion).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
+const goldIs012Line = goldNums[0] > 0 || goldNums[1] > 1 || (goldNums[1] === 1 && goldNums[2] >= 2);
+const sessionText = fs.readFileSync(path.join(dst, SESSION_FILE), 'utf8');
 const marks = [
   ['JUNCTION_V3', boot.includes('company-win-junction-mklink-v3') || boot.includes('companyWinJunction')],
   ['JUNCTION_V4', boot.includes('SystemRoot') || boot.includes('company-win-junction-mklink-v4')],
   ['SANDBOX', fs.readFileSync(path.join(dst, SANDBOX_FILE), 'utf8').includes('company-sandbox-local-drive-v2')],
+  ['SESSION_EVENTS_ALIAS', sessionText.includes('company-session-events-alias-v1') === goldIs012Line],
 ];
 let bad = 0;
 for (const [name, ok] of marks) {
