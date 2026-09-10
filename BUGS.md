@@ -118,6 +118,7 @@ These already have marks in `patches/apply-kernel-patches.js`. File a bug if the
 | P5 | App Translocation `EROFS` writing into a `.app` | `runtime/mac-no-translocate.sh` (CLI tree does not ship a DMG) |
 | P6 | Goal resume of an already-armed goal throws `GOAL_INVALID_TRANSITION` | `company-goal-resume-armed-v1` |
 | P7 | On 0.1.2, presets reading `session.events.length` (tool-bootstrap et al.) TypeError on first assemble; UI says UNKNOWN | `company-session-events-alias-v1` |
+| P8 | On 0.1.2, plugins cannot override assistant markdown rendering (images, richer syntax) | `company-assistant-markdown-slot-v1` |
 
 ---
 

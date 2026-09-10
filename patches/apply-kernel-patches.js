@@ -107,6 +107,46 @@ function resolvePresetRel(name) {
 const MARK = 'company-sandbox-local-drive-v2';
 const SKILL_MARK = 'company-skill-custom-trusted-v1';
 
+const MARKDOWN_SLOT_PATCH = {
+    // 0.1.2 renders assistant markdown through a fixed MarkdownText
+    // primitive; a plugin (company desk image rendering, syntax extensions)
+    // cannot override it. Open a `conversation.assistant.markdown` render
+    // slot with the official primitive as the fallback. Skipped on 0.1.1,
+    // which ships no dsh-client-ui-chat package at all.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-chat', 'lib', 'client.js'),
+    mark: 'company-assistant-markdown-slot-v1',
+    minKernel: '0.1.2',
+    append:
+      '\n// --- company-assistant-markdown-slot-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n',
+    edits: [
+      {
+        name: 'markdown-render-prop',
+        from: 'function AssistantMarkdown({ blocks, streaming, interrupted, renderMessageImages,',
+        to: 'function AssistantMarkdown({ blocks, streaming, interrupted, renderMarkdown, renderMessageImages,',
+      },
+      {
+        name: 'assistant-markdown-slot-render',
+        from: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {\n\t\t\t\t\t\t\ttext: block.text,\n\t\t\t\t\t\t\tstreaming,\n\t\t\t\t\t\t\tlabels,\n\t\t\t\t\t\t\tfileMentions: mentions\n\t\t\t\t\t\t}, i));',
+        to: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(react.Fragment, { children: renderMarkdown({ text: block.text, streaming, labels, fileMentions: mentions }) }, i));',
+      },
+      {
+        name: 'assistant-node-render-slot',
+        from: 'function AssistantNodeView({ node, useTurnData,',
+        to: 'function AssistantNodeView({ node, renderSlot, useTurnData,',
+      },
+      {
+        name: 'assistant-node-markdown-fallback',
+        from: 'return (0, react_jsx_runtime.jsx)(AssistantMarkdown, {\n\t\t\t\tblocks: data.blocks,',
+        to: 'return (0, react_jsx_runtime.jsx)(AssistantMarkdown, {\n\t\t\t\trenderMarkdown: (props) => renderSlot("conversation.assistant.markdown", props, { fallback: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, props) }),\n\t\t\t\tblocks: data.blocks,',
+      },
+      {
+        name: 'assistant-markdown-child-slot',
+        from: 'key: "assistant-step",\n\t\t\t\tlocale: NS\n\t\t\t}, AssistantNodeView)',
+        to: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tchildren: { "conversation.assistant.markdown": { kind: "single", scope: "session" } }\n\t\t\t}, AssistantNodeView)',
+      },
+    ],
+};
+
 const HELPERS = `
 
 // --- ${MARK} (company patch; see patches/apply-kernel-patches.js) ---
@@ -114,6 +154,7 @@ ${sandboxPathHelperSource()}
 `;
 
 const PATCHES = [
+  MARKDOWN_SLOT_PATCH,
   {
     file: path.join('node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js'),
     mark: MARK,
