@@ -56,6 +56,12 @@ function presetCandidates(name) {
   ];
 }
 
+// 0.1.2-only targets: absent from a 0.1.1 gold, which is exactly what the
+// patcher's minKernel gate is for. Copied when the gold has them.
+const OPTIONAL_FILES = [
+  path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-chat', 'lib', 'client.js'),
+];
+
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tdh-coding-patch-'));
 const dst = path.join(tmp, 'lib', 'node_modules', '@deepseek-ai', 'dsh');
 fs.mkdirSync(dst, { recursive: true });
@@ -80,6 +86,16 @@ for (const name of ['standard', 'code']) {
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(path.join(src, rel), to);
 }
+for (const rel of OPTIONAL_FILES) {
+  const from = path.join(src, rel);
+  if (!fs.existsSync(from)) {
+    console.log('PROVE_FILE_SKIP=' + rel + '|absent-from-gold');
+    continue;
+  }
+  const to = path.join(dst, rel);
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.copyFileSync(from, to);
+}
 
 execFileSync(process.execPath, [path.join(root, 'patches', 'apply-kernel-patches.js'), tmp], {
   stdio: 'inherit',
@@ -93,11 +109,16 @@ const goldVersion = JSON.parse(fs.readFileSync(path.join(src, 'package.json'), '
 const goldNums = String(goldVersion).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
 const goldIs012Line = goldNums[0] > 0 || goldNums[1] > 1 || (goldNums[1] === 1 && goldNums[2] >= 2);
 const sessionText = fs.readFileSync(path.join(dst, SESSION_FILE), 'utf8');
+const chatRel = OPTIONAL_FILES[0];
+const chatText = fs.existsSync(path.join(dst, chatRel)) ? fs.readFileSync(path.join(dst, chatRel), 'utf8') : '';
 const marks = [
   ['JUNCTION_V3', boot.includes('company-win-junction-mklink-v3') || boot.includes('companyWinJunction')],
   ['JUNCTION_V4', boot.includes('SystemRoot') || boot.includes('company-win-junction-mklink-v4')],
   ['SANDBOX', fs.readFileSync(path.join(dst, SANDBOX_FILE), 'utf8').includes('company-sandbox-local-drive-v2')],
   ['SESSION_EVENTS_ALIAS', sessionText.includes('company-session-events-alias-v1') === goldIs012Line],
+  // The markdown slot patch is minKernel-gated to the 0.1.2 line, where
+  // dsh-client-ui-chat first ships; it must land there and stay off 0.1.1.
+  ['MARKDOWN_SLOT', chatText.includes('company-assistant-markdown-slot-v1') === (goldIs012Line && chatText !== '')],
 ];
 let bad = 0;
 for (const [name, ok] of marks) {
