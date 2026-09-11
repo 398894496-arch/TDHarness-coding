@@ -31,7 +31,7 @@ try {
     { text, lossy: overrides.stderrLossy ?? false },
     { text: overrides.stdout ?? '', lossy: overrides.stdoutLossy ?? false },
     overrides.argv || ['--files', '--', 'missing']);
-  for (const text of [missing('missing'), missing('missing', '\u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002 (os error 2)')]) {
+  for (const text of [missing('missing'), 'missing: No such file or directory (os error 2)\n', missing('missing', '\u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002 (os error 2)')]) {
     assert.equal(run(text).noMatches, true);
   }
   const failures = [
@@ -59,6 +59,7 @@ try {
   const result = spawnSync(rg, ['--files', '--', absent], { encoding: 'utf8', windowsHide: true });
   assert.ifError(result.error);
   assert.equal(result.status, 2, result.stderr);
+  console.log('RG_MISSING_DIAGNOSTIC=' + JSON.stringify(result.stderr));
   assert.equal(run(result.stderr, { argv: ['--files', '--', absent] }).noMatches, true);
   fs.writeFileSync(target, fixture + '// company-glob-missing-root-v1\n');
   assert.throws(apply, (err) => String(err.stderr).includes('PATCH_FAIL=legacy-search-patch'));
