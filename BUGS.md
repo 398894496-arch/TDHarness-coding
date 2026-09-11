@@ -67,6 +67,8 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 
 ### C7. Windows junction: cmd cwd is SystemRoot (integration)
 
+**Closed:** `node scripts/prove-junction.js` loads the runtime shim in an isolated child, executes real `mklink /J` through both sync and async APIs, and verifies the invocation uses `%SystemRoot%` as cwd. It checks paths containing spaces, resolved targets, reads/writes through each junction, and target preservation after unlinking. Windows CI runs this without requesting elevation or changing Developer Mode. Success prints `JUNCTION_PROVE_OK=1`; other platforms report a skip. No real UNC share is exercised (`JUNCTION_UNC_SKIP`); this proves the local-cwd case and the selected cmd cwd, not operation from a real share or the kernel's separate anchored implementation.
+
 **Why it is a hole:** v4 sets `cwd` to `%SystemRoot%` so `mklink /J` works when the process cwd is UNC. prove-patches only greps `SystemRoot` in `dsh-app-boot`. Nobody runs `mklink` in CI.
 
 **Files:** `runtime/win-junction-shim.cjs`, junction marks in the patcher. A small `scripts/prove-junction.ps1` that creates a temp dir, `--require` the shim (or calls the same spawn), and checks the junction.

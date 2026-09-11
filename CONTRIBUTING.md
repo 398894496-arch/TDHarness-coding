@@ -24,6 +24,8 @@ Kernel bugs that reproduce on **stock** `dsh` with no patch: also post in [upstr
 CI on this repo runs the scan and (when npm can install the pin) the patch prove. A red X on your PR is the same bar.
 
 ## Patch rules
+On Windows, run `node scripts/prove-junction.js` to exercise the runtime junction shim with real `mklink /J`, without a kernel prefix. It checks sync/async creation, file access, SystemRoot cwd, and cleanup. It does not test a real UNC share; non-Windows hosts skip explicitly.
+
 
 Kernel edits go through `patches/apply-kernel-patches.js` as **anchored** replacements. If an anchor is not unique, fail. Do not vendor a whole upstream file.
 
