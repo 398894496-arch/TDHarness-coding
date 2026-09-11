@@ -22,8 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Office-fingerprint scan
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Office-fingerprint and tracked-secret scan
         run: bash scripts/prove-scan.sh
+      - name: Prove the scan rejects synthetic secrets and every office needle
+        run: node scripts/prove-secret-scan.js
   patches:
     runs-on: ubuntu-latest
     steps:
