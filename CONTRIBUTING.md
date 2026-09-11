@@ -25,6 +25,8 @@ CI on this repo runs the scan and (when npm can install the pin) the patch prove
 
 ## Patch rules
 
+Run `node scripts/prove-search-errors.js` (requires `rg`, or `TDH_TEST_RG` pointing to its executable) to verify the C8 error matrix and a real missing-path diagnostic. It needs no kernel prefix. Both Linux and Windows CI run it.
+
 Kernel edits go through `patches/apply-kernel-patches.js` as **anchored** replacements. If an anchor is not unique, fail. Do not vendor a whole upstream file.
 
 Never run the patcher against `~/.local`, `~/dsh-node-rc8`, or another live prefix. Setup uses `~/.tdh-coding-prefix`.

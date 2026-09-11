@@ -18,6 +18,8 @@ jobs:
         run: node scripts/prove-unc.js
       - name: Prove drive classification and Windows SUBST refusal
         run: node scripts/prove-windows-drives.js
+      - name: Prove missing-root fallback preserves real search errors
+        run: node scripts/prove-search-errors.js
   scan:
     runs-on: ubuntu-latest
     steps:

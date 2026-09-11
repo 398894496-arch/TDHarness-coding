@@ -38,7 +38,7 @@ See `kernel.yml`. To bump: install a fresh prefix, run `patches/apply-kernel-pat
 | `company-goal-resume-armed-v1` | `dsh-goal` | Resume of already-armed goal is a no-op |
 | `company-win-junction-mklink-v3` | `dsh-app-boot` | `mklink /J` instead of `symlink` junction |
 | `company-win-junction-mklink-v4` | same | `mklink` cwd = `SystemRoot` |
-| `company-glob-missing-root-v1` | `dsh-tool-fs-search` | rg missing root → no matches |
+| `company-glob-missing-root-v2` | `dsh-tool-fs-search` | Only an explicit missing root, exit 2, complete single diagnostic and empty stdout → no matches; fresh prefix required after v1 |
 | `company-session-smbfs-rename-v1` | `dsh-session-persistence-jsonl` | `link` ENOTSUP → `rename`; swallow dir sync ENOTSUP |
 | `company-preset-skills-v1` | preset `standard` | `__DESK_SKILLS__` / custom dirs (see **C4**) |
 | `company-preset-web-fetch-v2` | `standard` / `code` | `web_fetch` on in the session preset |

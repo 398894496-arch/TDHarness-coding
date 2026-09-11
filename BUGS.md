@@ -77,7 +77,9 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 
 ### C8. Missing search root → empty matches can hide real IO errors
 
-**Why it is a hole:** `company-glob-missing-root-v1` maps rg exit 2 + “IO error / os error 2” to `noMatches: true` so a broken junction does not kill the turn. A real permission or parse error that happens to look like “file not found” would also go quiet.
+**Closed:** `company-glob-missing-root-v2` permits empty matches only for exit 2, empty complete stdout, complete stderr, and a single diagnostic naming the explicit search root with exact `(os error 2)`. Mixed errors, descendant failures, errno 20, permission failures and incomplete streams keep the original error classifier. `node scripts/prove-search-errors.js` applies the actual patch to a failure-branch fixture and proves the matrix plus a real missing-path rg invocation on each CI platform. Install a fresh pinned prefix when upgrading from v1; v1 search patches are explicitly refused. Unrecognized/localized diagnostic layouts conservatively remain errors; this is not a filesystem existence or race-proof check.
+
+**Why it is a hole:** `company-glob-missing-root-v2` maps rg exit 2 + “IO error / os error 2” to `noMatches: true` so a broken junction does not kill the turn. A real permission or parse error that happens to look like “file not found” would also go quiet.
 
 **Files:** that mark in `patches/apply-kernel-patches.js`.
 
