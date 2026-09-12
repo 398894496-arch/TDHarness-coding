@@ -18,10 +18,12 @@ Windows drive probing does not detect Linux CIFS mount points. A path such as `/
 
 ### C3. Security review of two privilege-shaped patches
 
+**Closed:** [C3 review](docs/SECURITY-REVIEW-C3.md) records the verdict: retain the coding/share split, keep custom trusted roots only as operator-controlled configuration, and narrow DACL skipping to UNC-only endpoint pairs. `company-fs-unc-acl-v2` propagates local/mixed-path read and write errors and correctly handles extended local paths. `node scripts/prove-privilege-patches.js` prints `PRIVILEGE_PATCHES_PROVE_OK=1`; Linux/Windows CI exercise actual patcher fixtures and the coding mark lists. This is not proof of native ACL confinement. Upgrading the old ACL patch requires a fresh pinned prefix.
+
 **Why it is a hole:** these edits were made so a **company share** would stop hard-crashing. They still apply on a **coding** prefix whose overlay is a local folder.
 
 1. `company-skill-get-custom-trusted-v1` / `company-skill-custom-trusted-v1` — `customSkillDirs` get `trustedHost: true` and `get()` reads them like bundled skills (Node fs, not the workspace sandbox).
-2. `company-fs-unc-acl-v1` — skip copying a DACL on UNC; also **return** on `ACCESS_DENIED` / `EACCES` even when the path was not classified as UNC.
+2. `company-fs-unc-acl-v2` — skip copying a DACL on UNC; also **return** on `ACCESS_DENIED` / `EACCES` even when the path was not classified as UNC.
 
 This is **not** “the agent is sandboxed.” Review whether (1) can be pointed at a path the user did not intend, and whether (2) on a local NTFS disk drops ACL copy on a real access-denied.
 
@@ -57,6 +59,10 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 
 ### C6. Secret scan is office needles only
 
+**Closed:** `scripts/prove-scan.sh` preserves all seven office needles and then runs `node scripts/scan-secrets.js`. The added scan reads tracked working-tree files (including force-added ignored files) and detects common GitHub tokens, `sk-` vendor keys, AWS access-key IDs, private-key headers, and sensitive `.env` filenames. Diagnostics contain only file/rule/line, never matched contents. Git/read errors, symlinks, submodules and unmerged entries fail closed. `node scripts/prove-secret-scan.js` creates a throwaway Git repository, checks synthetic credentials and every original office needle through the real shell entrypoint, and prints `SECRET_SCAN_PROVE_OK=1`; CI runs both the scan and its proof.
+
+**Limits:** this is a bounded format scan of tracked working-tree contents, not full Git history, secret validity, entropy analysis, encoded secrets, every provider format, or untracked files. `.env.example`, `.env.sample`, and `.env.template` are allowed names but their contents are still scanned. Run from a Git checkout with Node 22+, Git and Bash; archive-only scans no longer report success without Git. A future general-purpose scanner can extend this coverage without removing the office needles.
+
 **Why it is a hole:** `scripts/prove-scan.sh` greps a fixed office-fingerprint list (see that file). A new key format or a personal `.env` committed by a contributor can pass `SCAN_OK=1`.
 
 **Files:** `scripts/prove-scan.sh`, `.github/workflows/prove.yml`. Adding gitleaks/trufflehog **in addition to** the office needles is fine. Do not remove the office needles.
@@ -66,6 +72,8 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 **Skill:** CI, secret scanning. No dsh prefix required.
 
 ### C7. Windows junction: cmd cwd is SystemRoot (integration)
+
+**Closed:** `node scripts/prove-junction.js` loads the runtime shim in an isolated child, executes real `mklink /J` through both sync and async APIs, and verifies the invocation uses `%SystemRoot%` as cwd. It checks paths containing spaces, resolved targets, reads/writes through each junction, and target preservation after unlinking. Windows CI runs this without requesting elevation or changing Developer Mode. Success prints `JUNCTION_PROVE_OK=1`; other platforms report a skip. No real UNC share is exercised (`JUNCTION_UNC_SKIP`); this proves the local-cwd case and the selected cmd cwd, not operation from a real share or the kernel's separate anchored implementation.
 
 **Why it is a hole:** v4 sets `cwd` to `%SystemRoot%` so `mklink /J` works when the process cwd is UNC. prove-patches only greps `SystemRoot` in `dsh-app-boot`. Nobody runs `mklink` in CI.
 
@@ -115,7 +123,7 @@ These already have marks in `patches/apply-kernel-patches.js`. File a bug if the
 | --- | --- | --- |
 | P1 | `dsh: win-junction-failed` when process cwd is UNC | `company-win-junction-mklink-v4` + `runtime/win-junction-shim.cjs` |
 | P2 | `EPERM` on `fs.symlinkSync(..., "junction")` without Developer Mode | `company-win-junction-mklink-v3` |
-| P3 | Edit/write on SMB dies on `SetFileSecurityW` / `ReplaceFileW` | `company-fs-unc-acl-v1`, `company-fs-unc-replace-v1` |
+| P3 | Edit/write on SMB dies on `SetFileSecurityW` / `ReplaceFileW` | `company-fs-unc-acl-v2`, `company-fs-unc-replace-v1` |
 | P4 | New session `ENOTSUP` / `link` on smbfs | `company-session-smbfs-rename-v1` |
 | P5 | App Translocation `EROFS` writing into a `.app` | `runtime/mac-no-translocate.sh` (CLI tree does not ship a DMG) |
 | P6 | Goal resume of an already-armed goal throws `GOAL_INVALID_TRANSITION` | `company-goal-resume-armed-v1` |
