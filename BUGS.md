@@ -18,10 +18,12 @@ Windows drive probing does not detect Linux CIFS mount points. A path such as `/
 
 ### C3. Security review of two privilege-shaped patches
 
+**Closed:** [C3 review](docs/SECURITY-REVIEW-C3.md) records the verdict: retain the coding/share split, keep custom trusted roots only as operator-controlled configuration, and narrow DACL skipping to UNC-only endpoint pairs. `company-fs-unc-acl-v2` propagates local/mixed-path read and write errors and correctly handles extended local paths. `node scripts/prove-privilege-patches.js` prints `PRIVILEGE_PATCHES_PROVE_OK=1`; Linux/Windows CI exercise actual patcher fixtures and the coding mark lists. This is not proof of native ACL confinement. Upgrading the old ACL patch requires a fresh pinned prefix.
+
 **Why it is a hole:** these edits were made so a **company share** would stop hard-crashing. They still apply on a **coding** prefix whose overlay is a local folder.
 
 1. `company-skill-get-custom-trusted-v1` / `company-skill-custom-trusted-v1` — `customSkillDirs` get `trustedHost: true` and `get()` reads them like bundled skills (Node fs, not the workspace sandbox).
-2. `company-fs-unc-acl-v1` — skip copying a DACL on UNC; also **return** on `ACCESS_DENIED` / `EACCES` even when the path was not classified as UNC.
+2. `company-fs-unc-acl-v2` — skip copying a DACL on UNC; also **return** on `ACCESS_DENIED` / `EACCES` even when the path was not classified as UNC.
 
 This is **not** “the agent is sandboxed.” Review whether (1) can be pointed at a path the user did not intend, and whether (2) on a local NTFS disk drops ACL copy on a real access-denied.
 
@@ -113,7 +115,7 @@ These already have marks in `patches/apply-kernel-patches.js`. File a bug if the
 | --- | --- | --- |
 | P1 | `dsh: win-junction-failed` when process cwd is UNC | `company-win-junction-mklink-v4` + `runtime/win-junction-shim.cjs` |
 | P2 | `EPERM` on `fs.symlinkSync(..., "junction")` without Developer Mode | `company-win-junction-mklink-v3` |
-| P3 | Edit/write on SMB dies on `SetFileSecurityW` / `ReplaceFileW` | `company-fs-unc-acl-v1`, `company-fs-unc-replace-v1` |
+| P3 | Edit/write on SMB dies on `SetFileSecurityW` / `ReplaceFileW` | `company-fs-unc-acl-v2`, `company-fs-unc-replace-v1` |
 | P4 | New session `ENOTSUP` / `link` on smbfs | `company-session-smbfs-rename-v1` |
 | P5 | App Translocation `EROFS` writing into a `.app` | `runtime/mac-no-translocate.sh` (CLI tree does not ship a DMG) |
 | P6 | Goal resume of an already-armed goal throws `GOAL_INVALID_TRANSITION` | `company-goal-resume-armed-v1` |
