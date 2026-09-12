@@ -18,6 +18,8 @@ jobs:
         run: node scripts/prove-unc.js
       - name: Prove drive classification and Windows SUBST refusal
         run: node scripts/prove-windows-drives.js
+      - name: Prove privilege patch boundaries
+        run: node scripts/prove-privilege-patches.js
       - name: Prove real Windows junction creation through the runtime shim
         if: runner.os == 'Windows'
         run: node scripts/prove-junction.js
