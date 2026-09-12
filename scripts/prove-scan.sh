@@ -43,4 +43,5 @@ if [ "$bad" -ne 0 ]; then
   echo "SCAN_OK=0" >&2
   exit 1
 fi
+node scripts/scan-secrets.js
 echo "SCAN_OK=1"

@@ -34,12 +34,12 @@ See `kernel.yml`. To bump: install a fresh prefix, run `patches/apply-kernel-pat
 | `company-skill-custom-trusted-v1` | `dsh-skill-filesystem` | `customSkillDirs` get `trustedHost` |
 | `company-skill-get-custom-trusted-v1` | same | `get()` reads custom like bundled |
 | `company-skill-root-eacces-v1` | same | EACCES/EPERM on one root → `[]`, do not drop the provider |
-| `company-fs-unc-acl-v1` | `dsh-fs-local` | Skip DACL copy on UNC; ACCESS_DENIED inherit |
+| `company-fs-unc-acl-v2` | `dsh-fs-local` | Skip DACL copy on UNC; ACCESS_DENIED inherit |
 | `company-fs-unc-replace-v1` | same | Skip `ReplaceFileW` on UNC, rename instead |
 | `company-goal-resume-armed-v1` | `dsh-goal` | Resume of already-armed goal is a no-op |
 | `company-win-junction-mklink-v3` | `dsh-app-boot` | `mklink /J` instead of `symlink` junction |
 | `company-win-junction-mklink-v4` | same | `mklink` cwd = `SystemRoot` |
-| `company-glob-missing-root-v1` | `dsh-tool-fs-search` | rg missing root → no matches |
+| `company-glob-missing-root-v2` | `dsh-tool-fs-search` | Only an explicit missing root, exit 2, complete single diagnostic and empty stdout → no matches; fresh prefix required after v1 |
 | `company-session-smbfs-rename-v1` | `dsh-session-persistence-jsonl` | `link` ENOTSUP → `rename`; swallow dir sync ENOTSUP |
 | `company-preset-skills-v1` | preset `standard` | `__DESK_SKILLS__` / custom dirs (see **C4**) |
 | `company-preset-web-fetch-v2` | `standard` / `code` | `web_fetch` on in the session preset |

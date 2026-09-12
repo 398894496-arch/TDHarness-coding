@@ -16,6 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { sandboxPathHelperSource } = require('./lib/network-path');
+const { companyFsIsUnc } = require('./lib/fs-unc');
+const { companyRgPathMissing } = require('./lib/rg-missing-root');
 const { companyAssertLinuxWorkspace } = require('./lib/linux-cifs');
 
 const prefix = process.argv[2];
@@ -286,16 +288,13 @@ const PATCHES = [
   {
     // Company SMB (UNC) cannot take a copied DACL. Official write stages a
     // temp file then SetFileSecurityW; Win32 5 on \\host\share aborts the
-    // whole Edit/Write even though the bytes already landed. Skip the ACL
-    // copy on UNC and treat ACCESS_DENIED as "inherit from the share".
+    // whole Edit/Write even though the bytes already landed. Skip only when
+    // both endpoints are UNC shares. Local and mixed-path errors propagate.
     file: path.join('node_modules', '@deepseek-ai', 'dsh-fs-local', 'lib', 'index.js'),
-    mark: 'company-fs-unc-acl-v1',
+    mark: 'company-fs-unc-acl-v2',
     append:
-      '\n// --- company-fs-unc-acl-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n' +
-      'function companyFsIsUnc(p) {\n' +
-      '\tconst s = String(p || "").replace(/\\//g, "\\\\");\n' +
-      '\treturn s.startsWith("\\\\\\\\") || s.startsWith("\\\\\\\\?\\\\UNC\\\\");\n' +
-      '}\n',
+      '\n// --- company-fs-unc-acl-v2 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n' +
+      companyFsIsUnc.toString() + '\n',
     edits: [
       {
         name: 'copy-dacl-unc-skip',
@@ -307,19 +306,10 @@ const PATCHES = [
           '}\n',
         to:
           'async function copyFileDaclWin32(source, destination) {\n' +
-          '\tif (companyFsIsUnc(source) || companyFsIsUnc(destination)) return;\n' +
-          '\ttry {\n' +
-          '\t\tconst descriptor = await readFileDaclWin32(source);\n' +
-          '\t\tconst api = await win32();\n' +
-          '\t\tif (api.setFileSecurityW(toNamespacedPath(destination), 2147483652, descriptor) === 0) {\n' +
-          '\t\t\tconst code = api.getLastError();\n' +
-          '\t\t\tif (code === ERROR_ACCESS_DENIED) return;\n' +
-          '\t\t\tthrow win32Error("SetFileSecurityW", code, destination);\n' +
-          '\t\t}\n' +
-          '\t} catch (error) {\n' +
-          '\t\tif (error && (error.win32Code === ERROR_ACCESS_DENIED || error.code === "EACCES")) return;\n' +
-          '\t\tthrow error;\n' +
-          '\t}\n' +
+          '\tif (companyFsIsUnc(source) && companyFsIsUnc(destination)) return;\n' +
+          '\tconst descriptor = await readFileDaclWin32(source);\n' +
+          '\tconst api = await win32();\n' +
+          '\tif (api.setFileSecurityW(toNamespacedPath(destination), 2147483652, descriptor) === 0) throw win32Error("SetFileSecurityW", api.getLastError(), destination);\n' +
           '}\n',
       },
     ],
@@ -551,17 +541,13 @@ const PATCHES = [
     ],
   },
   {
-    // rg exit 2 + "IO error ... os error 2" means the search root is gone
-    // (broken junction, leftover prefix path). Official maps that to a
-    // hard SEARCH_FAILED. Empty result lets the model continue.
+    // Permit an empty result only for a complete, single missing-root
+    // diagnostic. Partial results and other failures retain classification.
     file: path.join('node_modules', '@deepseek-ai', 'dsh-tool-fs-search', 'lib', 'index.js'),
-    mark: 'company-glob-missing-root-v1',
+    mark: 'company-glob-missing-root-v2',
     append:
-      '\n// --- company-glob-missing-root-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n' +
-      'function companyRgPathMissing(stderr) {\n' +
-      '\tconst t = String(stderr || "");\n' +
-      '\treturn /IO error/i.test(t) && (/os error 2/i.test(t) || t.includes("\\u7cfb\\u7edf\\u627e\\u4e0d\\u5230\\u6307\\u5b9a\\u7684\\u6587\\u4ef6") || /cannot find the (file|path)/i.test(t));\n' +
-      '}\n',
+      '\n// --- company-glob-missing-root-v2 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n' +
+      companyRgPathMissing.toString() + '\n',
     edits: [
       {
         name: 'rg-missing-root-empty',
@@ -569,7 +555,7 @@ const PATCHES = [
           '\tif (outcome.exitCode !== 0 && outcome.exitCode !== 1) throw classifyRunFailure(toolName, outcome.exitCode, stderr.text, stderr.lossy);\n',
         to:
           '\tif (outcome.exitCode !== 0 && outcome.exitCode !== 1) {\n' +
-          '\t\tif (companyRgPathMissing(stderr.text)) return {\n' +
+          '\t\tif (outcome.exitCode === 2 && !stderr.lossy && !stdout.lossy && stdout.text === "" && companyRgPathMissing(stderr.text, argv)) return {\n' +
           '\t\t\tstdout: "",\n' +
           '\t\t\tnoMatches: true,\n' +
           '\t\t\tworkdir\n' +
@@ -736,6 +722,15 @@ for (const patch of PATCHES) {
 
   if (patch.mark === MARK && text.includes('company-sandbox-local-unc-v1') && !text.includes(MARK)) {
     console.error('PATCH_FAIL=legacy-sandbox-patch|install the pinned kernel into a fresh prefix before applying v2');
+    process.exit(1);
+  }
+
+  if (patch.mark === 'company-fs-unc-acl-v2' && text.includes('company-fs-unc-acl-v1')) {
+    console.error('PATCH_FAIL=legacy-acl-patch|install a fresh pinned prefix before applying v2');
+    process.exit(1);
+  }
+  if (patch.mark === 'company-glob-missing-root-v2' && text.includes('company-glob-missing-root-v1')) {
+    console.error('PATCH_FAIL=legacy-search-patch|install a fresh pinned prefix before applying v2');
     process.exit(1);
   }
 

@@ -17,7 +17,7 @@ npm install -g "@deepseek-ai/dsh@$Pin" --prefix $Prefix
 # Coding setup applies only the local-workspace subset; the company pins
 # (__DESK_SKILLS__ skill roots, web_fetch, .company-root) stay off the
 # official presets unless TDH_FULL_PATCHES=1 (see C4 in BUGS.md).
-$CodingMarks = "company-sandbox-local-drive-v2,company-sandbox-linux-cifs-v1,company-win-junction-mklink-v3,company-win-junction-mklink-v4,company-glob-missing-root-v1,company-session-smbfs-rename-v1,company-goal-resume-armed-v1,company-session-events-alias-v1"
+$CodingMarks = "company-sandbox-local-drive-v2,company-sandbox-linux-cifs-v1,company-win-junction-mklink-v3,company-win-junction-mklink-v4,company-glob-missing-root-v2,company-session-smbfs-rename-v1,company-goal-resume-armed-v1,company-session-events-alias-v1"
 if ($env:TDH_FULL_PATCHES -eq "1") {
   node (Join-Path $Root "patches\apply-kernel-patches.js") $Prefix
 } else {
