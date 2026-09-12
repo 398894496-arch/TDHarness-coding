@@ -18,6 +18,8 @@ jobs:
         run: node scripts/prove-unc.js
       - name: Prove drive classification and Windows SUBST refusal
         run: node scripts/prove-windows-drives.js
+      - name: Prove Linux CIFS refusal at command confinement
+        run: node scripts/prove-linux-cifs.js
   scan:
     runs-on: ubuntu-latest
     steps:

@@ -25,6 +25,8 @@ CI on this repo runs the scan and (when npm can install the pin) the patch prove
 
 ## Patch rules
 
+Run `node scripts/prove-linux-cifs.js` for C2b (no kernel prefix). Linux additionally checks native statfs on local paths. Optional `TDH_TEST_CIFS_ROOT` requires refusal of an existing CIFS root without changing mounts. See [the coverage limits](docs/LINUX-CIFS.md).
+
 Kernel edits go through `patches/apply-kernel-patches.js` as **anchored** replacements. If an anchor is not unique, fail. Do not vendor a whole upstream file.
 
 Never run the patcher against `~/.local`, `~/dsh-node-rc8`, or another live prefix. Setup uses `~/.tdh-coding-prefix`.
