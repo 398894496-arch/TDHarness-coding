@@ -15,6 +15,7 @@ Kernel bugs that reproduce on **stock** `dsh` with no patch: also post in [upstr
 ## Before a PR
 
 1. `bash scripts/prove-scan.sh` → `SCAN_OK=1`.
+   This requires a Git checkout, Node 22+, Git and Bash. It preserves office fingerprints and checks tracked files for common secret formats and sensitive `.env` names. Run `node scripts/prove-secret-scan.js` → `SECRET_SCAN_PROVE_OK=1` to prove rejection with synthetic secrets in a temporary repository. Reports redact values. Only `.env.example`, `.env.sample` and `.env.template` are allowed environment-template names, and their contents are still checked. This is not a scan of full history or every provider's key format.
    Run `node scripts/prove-unc.js` → `UNC_PROVE_OK=1` for sandbox path behavior (no kernel install or `KERNEL_PREFIX` needed).
    Run `node scripts/prove-windows-drives.js` for drive classification; Windows also proves real SUBST refusal (`WINDOWS_DRIVE_PROVE_OK=1`). Optional `TDH_TEST_MAPPED_ROOT` tests an existing network drive without changing its mapping.
 2. If you touched patches or prove scripts: `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1` (needs a gold prefix: `KERNEL_PREFIX`, or `~/.tdh-coding-prefix` after setup, or `~/dsh-kernel/0-1-1-rc-2`).

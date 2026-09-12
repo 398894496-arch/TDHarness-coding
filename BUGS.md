@@ -57,6 +57,10 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 
 ### C6. Secret scan is office needles only
 
+**Closed:** `scripts/prove-scan.sh` preserves all seven office needles and then runs `node scripts/scan-secrets.js`. The added scan reads tracked working-tree files (including force-added ignored files) and detects common GitHub tokens, `sk-` vendor keys, AWS access-key IDs, private-key headers, and sensitive `.env` filenames. Diagnostics contain only file/rule/line, never matched contents. Git/read errors, symlinks, submodules and unmerged entries fail closed. `node scripts/prove-secret-scan.js` creates a throwaway Git repository, checks synthetic credentials and every original office needle through the real shell entrypoint, and prints `SECRET_SCAN_PROVE_OK=1`; CI runs both the scan and its proof.
+
+**Limits:** this is a bounded format scan of tracked working-tree contents, not full Git history, secret validity, entropy analysis, encoded secrets, every provider format, or untracked files. `.env.example`, `.env.sample`, and `.env.template` are allowed names but their contents are still scanned. Run from a Git checkout with Node 22+, Git and Bash; archive-only scans no longer report success without Git. A future general-purpose scanner can extend this coverage without removing the office needles.
+
 **Why it is a hole:** `scripts/prove-scan.sh` greps a fixed office-fingerprint list (see that file). A new key format or a personal `.env` committed by a contributor can pass `SCAN_OK=1`.
 
 **Files:** `scripts/prove-scan.sh`, `.github/workflows/prove.yml`. Adding gitleaks/trufflehog **in addition to** the office needles is fine. Do not remove the office needles.
