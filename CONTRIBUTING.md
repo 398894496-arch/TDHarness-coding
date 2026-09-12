@@ -32,6 +32,8 @@ Run `node scripts/prove-privilege-patches.js` for the C3 DACL/trusted-root behav
 
 Run `node scripts/prove-search-errors.js` (requires `rg`, or `TDH_TEST_RG` pointing to its executable) to verify the C8 error matrix and a real missing-path diagnostic. It needs no kernel prefix. Both Linux and Windows CI run it.
 
+Run `node scripts/prove-linux-cifs.js` for C2b (no kernel prefix). Linux additionally checks native statfs on local paths. Optional `TDH_TEST_CIFS_ROOT` requires refusal of an existing CIFS root without changing mounts. See [the coverage limits](docs/LINUX-CIFS.md).
+
 Kernel edits go through `patches/apply-kernel-patches.js` as **anchored** replacements. If an anchor is not unique, fail. Do not vendor a whole upstream file.
 
 Never run the patcher against `~/.local`, `~/dsh-node-rc8`, or another live prefix. Setup uses `~/.tdh-coding-prefix`.

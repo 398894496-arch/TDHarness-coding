@@ -18,6 +18,7 @@ const { execFileSync } = require('child_process');
 const { sandboxPathHelperSource } = require('./lib/network-path');
 const { companyFsIsUnc } = require('./lib/fs-unc');
 const { companyRgPathMissing } = require('./lib/rg-missing-root');
+const { companyAssertLinuxWorkspace } = require('./lib/linux-cifs');
 
 const prefix = process.argv[2];
 if (!prefix) {
@@ -156,6 +157,24 @@ ${sandboxPathHelperSource()}
 `;
 
 const PATCHES = [
+  {
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js'),
+    mark: 'company-sandbox-linux-cifs-v1',
+    append: '\n// --- company-sandbox-linux-cifs-v1 ---\n' + companyAssertLinuxWorkspace.toString() + '\n',
+    edits: [
+      {
+        name: 'linux-statfs-import',
+        from: 'import { spawnSync } from "node:child_process";\n',
+        to: 'import { spawnSync } from "node:child_process";\n'
+          + 'import { statfsSync as companyStatfsSync } from "node:fs";\n',
+      },
+      {
+        name: 'linux-cifs-confine-precheck',
+        from: '\tconfine(argv, policy) {\n',
+        to: '\tconfine(argv, policy) {\n\t\tcompanyAssertLinuxWorkspace(policy);\n',
+      },
+    ],
+  },
   MARKDOWN_SLOT_PATCH,
   {
     file: path.join('node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js'),

@@ -14,6 +14,10 @@ Each row is work that is **not done**. “Done” means the green line in that s
 
 ### C2b. Linux CIFS mount points
 
+**Closed:** `company-sandbox-linux-cifs-v1` checks Linux `workspace-write` roots at `confine()` before either configured or selected runners. Native `statfs` detects SMB/CIFS/SMB2 filesystem types; probe failures refuse with `COMPANY_WORKSPACE_PROBE_FAILED`, detected network roots with `COMPANY_WORKSPACE_NOT_LOCAL`. Both coding setup lists include the independent mark. `node scripts/prove-linux-cifs.js` prints `LINUX_CIFS_PROVE_OK=1`; Linux also exercises real local paths and a symlink (`LINUX_STATFS_PROVE_OK=1`). The patch proof exercises the actual pinned kernel's `confine` method. Optional `TDH_TEST_CIFS_ROOT` checks an existing CIFS mount without creating one; ordinary CI reports that real-share coverage as skipped.
+
+**Limits:** this checks the root's filesystem, not all descendant mounts, NFS, FUSE-backed remote storage, overlay backing stores or later mount changes. Native synchronous statfs is not cached or bounded by a userspace timeout; an unhealthy mount may block. Read-only mode is unaffected. See [Linux detection notes](docs/LINUX-CIFS.md).
+
 Windows drive probing does not detect Linux CIFS mount points. A path such as `/mnt/team` is still a POSIX path to these helpers. This remains separate from C2; open a child Task before taking it. C2 also does not resolve directory junctions or eliminate a drive-remapping race after the check.
 
 ### C3. Security review of two privilege-shaped patches

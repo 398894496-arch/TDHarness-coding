@@ -132,6 +132,8 @@ execFileSync(process.execPath, [path.join(root, 'scripts', 'prove-unc.js'),
 });
 execFileSync(process.execPath, [path.join(root, 'scripts', 'prove-windows-drives.js'),
   '--sandbox-file', path.join(dst, SANDBOX_FILE)], { stdio: 'inherit' });
+execFileSync(process.execPath, [path.join(root, 'scripts', 'prove-linux-cifs.js'),
+  '--sandbox-file', path.join(dst, SANDBOX_FILE)], { stdio: 'inherit' });
 
 if (bad) {
   console.error('PATCH_PROVE_OK=0');
