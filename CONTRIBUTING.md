@@ -30,6 +30,8 @@ On Windows, run `node scripts/prove-junction.js` to exercise the runtime junctio
 
 Run `node scripts/prove-privilege-patches.js` for the C3 DACL/trusted-root behavior proof (no kernel prefix required). Read [the C3 review](docs/SECURITY-REVIEW-C3.md) for the trust boundaries and native-test limitations.
 
+Run `node scripts/prove-search-errors.js` (requires `rg`, or `TDH_TEST_RG` pointing to its executable) to verify the C8 error matrix and a real missing-path diagnostic. It needs no kernel prefix. Both Linux and Windows CI run it.
+
 Kernel edits go through `patches/apply-kernel-patches.js` as **anchored** replacements. If an anchor is not unique, fail. Do not vendor a whole upstream file.
 
 Never run the patcher against `~/.local`, `~/dsh-node-rc8`, or another live prefix. Setup uses `~/.tdh-coding-prefix`.

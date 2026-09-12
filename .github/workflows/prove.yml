@@ -23,6 +23,14 @@ jobs:
       - name: Prove real Windows junction creation through the runtime shim
         if: runner.os == 'Windows'
         run: node scripts/prove-junction.js
+      - name: Install ripgrep for the real Linux search proof
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Install ripgrep for the real Windows search proof
+        if: runner.os == 'Windows'
+        run: choco install ripgrep --yes --no-progress
+      - name: Prove missing-root fallback preserves real search errors
+        run: node scripts/prove-search-errors.js
   scan:
     runs-on: ubuntu-latest
     steps:
