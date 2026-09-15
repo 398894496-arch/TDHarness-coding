@@ -23,7 +23,7 @@ dsh --patch "$PWD/overlays/solo.yml"
 
 Windows: `pwsh -File scripts/setup.ps1`. Setup installs `@deepseek-ai/dsh@0.1.2-rc.1` into `~/.tdh-coding-prefix` and applies the coding patch subset (sandbox, junction, glob, session, goal). Do not point it at a live `node_modules`. The company pins (placeholder skill roots, `web_fetch`, `.company-root`) stay off the official presets unless you opt in with `TDH_FULL_PATCHES=1`.
 
-Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1`.
+Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1`. Local ChatGPT / Grok / Claude login and custom endpoints: [docs/MODELS.md](docs/MODELS.md) (`node scripts/prove-models.js` → `MODELS_PROVE_OK=1`).
 
 ## What the running desk does
 
@@ -42,16 +42,6 @@ This clone is the **kernel patch tree**. The shots below are the **company deliv
 
 ## Open work
 
-Not a wishlist. Each id in **[BUGS.md](BUGS.md)** has files, a green line, and the skill it needs:
-
-| Id | Hole |
-| --- | --- |
-| C2b | Linux CIFS mount detection (Windows mapped/SUBST precheck completed; see BUGS.md) |
-| C3 | Review `trustedHost` on custom skills and DACL skip on `ACCESS_DENIED` |
-| C4 | `setup` still pins company `__DESK_SKILLS__` onto official presets |
-| C5 | Dry-run the next `dsh` tag until an anchor breaks |
-| C6 | Secret scan beyond office IP needles |
-| C7 | Windows `mklink` prove, not a string match |
-| C8 | rg “missing root → no matches” may swallow real IO errors |
+C1–C9 are closed in **[BUGS.md](BUGS.md)** (sandbox, secrets, junctions, search errors, local model login). Pick a remaining hole from that file, or file a Bug.
 
 Fork + PR. Open a **Task** issue with the id first. [CONTRIBUTING.md](CONTRIBUTING.md). Same list in Chinese: [寻找共建者](docs/WANTED.zh.md). Upstream door (no PRs): [docs/UPSTREAM.md](docs/UPSTREAM.md).

@@ -18,7 +18,7 @@ flowchart LR
   K --> P[Model vendor]
 ```
 
-Traffic does not go through a company gateway. Keys and bills stay between you and the vendor.
+Traffic does not go through a company gateway. Keys and bills stay between you and the vendor. Optional local login (ChatGPT / Grok / Claude OAuth, custom OpenAI-compatible URL, per-model context) is a CLI in this tree: [MODELS.md](MODELS.md). It writes `$DSH_HOME/.credentials.yaml`, not a company roster.
 
 ---
 

@@ -2,7 +2,7 @@
 
 This is a coding tree on official DeepSeek Harness. Creator-mode skills in the official package teach **how** to inspect and patch; they are not a ban on changing the framework.
 
-Open holes to pick up: [BUGS.md](../BUGS.md). Land rules: [CONTRIBUTING.md](../CONTRIBUTING.md).
+Open holes to pick up: [BUGS.md](../BUGS.md). Land rules: [CONTRIBUTING.md](../CONTRIBUTING.md). Local model login (OAuth grant / custom endpoint / context): [MODELS.md](MODELS.md).
 
 ## Planes
 

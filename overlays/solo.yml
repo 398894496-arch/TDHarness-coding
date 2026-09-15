@@ -2,6 +2,8 @@
 # Model key comes from the environment: DEEPSEEK_API_KEY
 # Optional: DEEPSEEK_BASE_URL (OpenAI-compatible, include /v1)
 #
+# Extra local routes (custom endpoints / OAuth) can be written by
+# `node scripts/models.js`. Secrets stay in $DSH_HOME/.credentials.yaml.
 # Official dsh already reads those env vars. This file only changes
 # the default sandbox to workspace-write so a local folder can be used
 # without clicking approve on every write.
