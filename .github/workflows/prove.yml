@@ -33,6 +33,8 @@ jobs:
         run: choco install ripgrep --yes --no-progress
       - name: Prove missing-root fallback preserves real search errors
         run: node scripts/prove-search-errors.js
+      - name: Prove local OAuth credential recording and custom endpoints
+        run: node scripts/prove-models.js
   scan:
     runs-on: ubuntu-latest
     steps:

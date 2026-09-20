@@ -5,7 +5,7 @@ labels: ["help wanted"]
 body:
   - type: markdown
     attributes:
-      value: Pick an id from [BUGS.md](https://github.com/398894496-arch/TDHarness-coding/blob/main/BUGS.md) (C1–C8). Comment if you are taking it. Do not paste office IPs, keys, or roster names.
+      value: Pick an id from [BUGS.md](https://github.com/398894496-arch/TDHarness-coding/blob/main/BUGS.md) (C1–C9). Comment if you are taking it. Do not paste office IPs, keys, or roster names.
   - type: input
     id: item
     attributes:

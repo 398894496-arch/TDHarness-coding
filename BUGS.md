@@ -101,6 +101,16 @@ This is **not** “the agent is sandboxed.” The review confirms that (1) can p
 
 **Skill:** rg on Windows/macOS, reading `dsh-tool-fs-search`.
 
+### C9. Local model setup: OAuth login records a grant, custom endpoints, per-model context
+
+**Closed:** `node scripts/models.js` records vendor OAuth grants and API keys in `$DSH_HOME/.credentials.yaml` and optional extra `dsh-llm-pi-ai` routes in an overlay. ChatGPT uses the Codex device-code flow, Grok uses RFC 8628 device code, Claude uses Claude Code authorize + pasted callback. Custom OpenAI-compatible endpoints take `--base-url` / `--key` / `--models` / `--context`. Overlay YAML never stores tokens. `node scripts/prove-models.js` mocks token endpoints (no live vendor login, no kernel prefix) and prints `MODELS_PROVE_OK=1`. See [docs/MODELS.md](docs/MODELS.md).
+
+**Why it was a hole:** coding setup only documented `DEEPSEEK_API_KEY`. A solo user who already had a ChatGPT / Grok / Claude subscription, or a private OpenAI-compatible URL, had no in-tree way to record that locally without the company gateway.
+
+**Not in this tree:** company roster login, seats, weekly quotas, sharing one subscription across accounts, Google One / Gemini Code Assist (retired for personal plans).
+
+**Done when:** `MODELS_PROVE_OK=1` on Linux and Windows CI; public status JSON does not echo access tokens; overlay contains `apiKeyEnv` / `contextWindow` and not the secret.
+
 ---
 
 ## Completed contributor work

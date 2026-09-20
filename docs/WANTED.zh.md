@@ -11,24 +11,16 @@
 不需要公司网、花名册、协作者权限。
 
 1. 按 [README](../README.md) 在**本地目录**装一遍。setup 或第一次 `dsh --patch` 挂了，开 **Bug** 就有用。
-2. 从下面认领一个 id，开 **Task** issue（标题带 `C1`…`C8`），再 fork + PR。
+2. 从 [BUGS.md](../BUGS.md) 认领一个 id，开 **Task** issue（标题带该 id），再 fork + PR。
 3. 验收看 `*_OK=1`，不看「我改了 README」。
 
 技术细节、文件路径、Done when 写在英文 [BUGS.md](../BUGS.md)。
 
 ## 现在缺什么
 
-| Id | 缺什么 | 大概要谁 |
-| --- | --- | --- |
-| C2b | Linux CIFS 挂载点识别；Windows 映射盘 / SUBST 预检已补齐，验证范围见 BUGS.md | 熟悉 Linux 文件系统 |
-| C3 | 审 `trustedHost`（自定义 skill 目录）和 DACL 在 ACCESS_DENIED 时跳过 | Windows ACL + dsh 沙箱 |
-| C4 | `setup` 仍把公司 `__DESK_SKILLS__` 打进官方 `standard`/`code` 预设 | 会看 `--dump-config` |
-| C5 | 没有脚本对下一个 `dsh` 标签试打补丁，看哪条锚点裂 | npm 前缀 |
-| C6 | 扫描只认办公室指纹，认不出新格式的 key | CI / secret scan |
-| C7 | Windows `mklink` 没有真跑，只在源码里搜字符串 | Windows |
-| C8 | 搜索根缺失变成「无匹配」，可能把真 IO 错误吞掉 | 会 rg |
+C1–C9 已在英文 [BUGS.md](../BUGS.md) 标绿（含本机 OAuth / 自定义端点 / 模型上下文，见 [MODELS.md](MODELS.md)）。认领新缺口先读那一页的 Done when。
 
-不是缺口：本地工作区（网络盘当沙箱根是故意拒绝的）；往官方仓提 PR。
+不是缺口：本地工作区（网络盘当沙箱根是故意拒绝的）；往官方仓提 PR；把公司网关 / 花名册搬进本仓。
 
 ## 怎么算做完
 

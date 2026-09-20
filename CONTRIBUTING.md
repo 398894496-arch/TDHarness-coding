@@ -18,6 +18,7 @@ Kernel bugs that reproduce on **stock** `dsh` with no patch: also post in [upstr
    This requires a Git checkout, Node 22+, Git and Bash. It preserves office fingerprints and checks tracked files for common secret formats and sensitive `.env` names. Run `node scripts/prove-secret-scan.js` → `SECRET_SCAN_PROVE_OK=1` to prove rejection with synthetic secrets in a temporary repository. Reports redact values. Only `.env.example`, `.env.sample` and `.env.template` are allowed environment-template names, and their contents are still checked. This is not a scan of full history or every provider's key format.
    Run `node scripts/prove-unc.js` → `UNC_PROVE_OK=1` for sandbox path behavior (no kernel install or `KERNEL_PREFIX` needed).
    Run `node scripts/prove-windows-drives.js` for drive classification; Windows also proves real SUBST refusal (`WINDOWS_DRIVE_PROVE_OK=1`). Optional `TDH_TEST_MAPPED_ROOT` tests an existing network drive without changing its mapping.
+    Run `node scripts/prove-models.js` → `MODELS_PROVE_OK=1` for local OAuth credential recording, custom endpoints, and per-model context (mock token endpoints only; no kernel prefix, no vendor login).
 2. If you touched patches or prove scripts: `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1` (needs a gold prefix: `KERNEL_PREFIX`, or `~/.tdh-coding-prefix` after setup, or `~/dsh-kernel/0-1-1-rc-2`).
 3. Paths and script names ASCII only. UI fonts if you touch CSS: `"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", sans-serif`.
 4. Do not add office IPs, auth keys, roster files, or a live `node_modules` dump.
@@ -34,6 +35,8 @@ Run `node scripts/prove-search-errors.js` (requires `rg`, or `TDH_TEST_RG` point
 
 Run `node scripts/prove-linux-cifs.js` for C2b (no kernel prefix). Linux additionally checks native statfs on local paths. Optional `TDH_TEST_CIFS_ROOT` requires refusal of an existing CIFS root without changing mounts. See [the coverage limits](docs/LINUX-CIFS.md).
 
+Run `node scripts/prove-models.js` for C9 (no kernel prefix). Mock token endpoints only; it does not open a browser or contact a vendor.
+
 Kernel edits go through `patches/apply-kernel-patches.js` as **anchored** replacements. If an anchor is not unique, fail. Do not vendor a whole upstream file.
 
 Never run the patcher against `~/.local`, `~/dsh-node-rc8`, or another live prefix. Setup uses `~/.tdh-coding-prefix`.
@@ -45,7 +48,7 @@ New marks need a unique `company-…-vN` string and a line in [BUGS.md](BUGS.md)
 - A longer README with no `*_OK=1`.
 - Hot-fixing a running `node_modules`.
 - Opening a PR on `deepseek-ai/deepseek-harness` (they will not merge it).
-- Company login, Tailscale, Caddy, or SMB chairs. Wrong tree.
+- Company login, Tailscale, Caddy, or SMB chairs. Wrong tree. Local vendor OAuth that writes `$DSH_HOME/.credentials.yaml` (see [docs/MODELS.md](docs/MODELS.md)) is in scope; a company gateway is not.
 
 ## Plugins
 
