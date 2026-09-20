@@ -24,12 +24,12 @@ Windows drive probing does not detect Linux CIFS mount points. A path such as `/
 
 **Closed:** [C3 review](docs/SECURITY-REVIEW-C3.md) records the verdict: retain the coding/share split, keep custom trusted roots only as operator-controlled configuration, and narrow DACL skipping to UNC-only endpoint pairs. `company-fs-unc-acl-v2` propagates local/mixed-path read and write errors and correctly handles extended local paths. `node scripts/prove-privilege-patches.js` prints `PRIVILEGE_PATCHES_PROVE_OK=1`; Linux/Windows CI exercise actual patcher fixtures and the coding mark lists. This is not proof of native ACL confinement. Upgrading the old ACL patch requires a fresh pinned prefix.
 
-**Why it is a hole:** these edits were made so a **company share** would stop hard-crashing. They still apply on a **coding** prefix whose overlay is a local folder.
+**Why it was a hole:** these edits were made so a **company share** would stop hard-crashing. Before C4 separated the coding subset, they also applied on a **coding** prefix whose overlay was a local folder. Full/share mode still requires the trust assumptions in the C3 review.
 
 1. `company-skill-get-custom-trusted-v1` / `company-skill-custom-trusted-v1` — `customSkillDirs` get `trustedHost: true` and `get()` reads them like bundled skills (Node fs, not the workspace sandbox).
-2. `company-fs-unc-acl-v2` — skip copying a DACL on UNC; also **return** on `ACCESS_DENIED` / `EACCES` even when the path was not classified as UNC.
+2. The former `company-fs-unc-acl-v1` skipped DACL copying when either endpoint was UNC and also returned on `ACCESS_DENIED` / `EACCES` for local paths. Its replacement, `company-fs-unc-acl-v2`, skips only when both endpoints are UNC shares and propagates local/mixed-path failures.
 
-This is **not** “the agent is sandboxed.” Review whether (1) can be pointed at a path the user did not intend, and whether (2) on a local NTFS disk drops ACL copy on a real access-denied.
+This is **not** “the agent is sandboxed.” The review confirms that (1) can point outside the intended workspace and requires operator-controlled configuration; (2)'s local access-denied suppression was removed in v2. The separate `company-fs-unc-replace-v1` patch was not repaired by C3.
 
 **Files:** those marks in `patches/apply-kernel-patches.js`. Write findings in the PR, not in a private chat.
 
@@ -91,7 +91,9 @@ This is **not** “the agent is sandboxed.” Review whether (1) can be pointed 
 
 **Closed:** `company-glob-missing-root-v2` permits empty matches only for exit 2, empty complete stdout, complete stderr, and a single diagnostic naming the explicit search root with exact `(os error 2)`. Mixed errors, descendant failures, errno 20, permission failures and incomplete streams keep the original error classifier. `node scripts/prove-search-errors.js` applies the actual patch to a failure-branch fixture and proves the matrix plus a real missing-path rg invocation on each CI platform. Install a fresh pinned prefix when upgrading from v1; v1 search patches are explicitly refused. Unrecognized/localized diagnostic layouts conservatively remain errors; this is not a filesystem existence or race-proof check.
 
-**Why it is a hole:** `company-glob-missing-root-v2` maps rg exit 2 + “IO error / os error 2” to `noMatches: true` so a broken junction does not kill the turn. A real permission or parse error that happens to look like “file not found” would also go quiet.
+**Why it was a hole:** the former `company-glob-missing-root-v1` used a broad “IO error / os error 2” text match to return `noMatches: true`. That could also hide mixed permission/parse errors or match errno 20. The v2 replacement uses the stricter conditions described above.
+
+**Remaining tradeoff:** Windows `(os error 3)` / path-not-found diagnostics, including some broken junctions, still reach the original error classifier. Supporting them would require a separate equally strict rule and tests; this is not part of the merged C8 change.
 
 **Files:** that mark in `patches/apply-kernel-patches.js`.
 

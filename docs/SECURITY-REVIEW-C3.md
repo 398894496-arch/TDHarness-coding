@@ -36,8 +36,10 @@ the permission-preservation failure of a local or mixed-path operation.
 The v2 patch skips only when BOTH endpoints are syntactic UNC shares. Ordinary
 local, extended-local and device paths retain the original read/set operations
 and errors. Read exceptions retain their identity; failed native writes retain
-the original Win32 error. The shared UNC predicate also stops the existing
-ReplaceFileW patch from classifying extended-local paths as network shares.
+the original Win32 error. This correction applies to the DACL-copy patch.
+The separate `company-fs-unc-replace-v1` patch still uses its own inline
+two-backslash prefix check rather than `companyFsIsUnc`, so it still classifies
+extended-local paths as UNC. C3 did not fix that ReplaceFileW behavior.
 
 The retained UNC exception still does not preserve the source DACL; server-side
 policy/inheritance must be acceptable, including if the two endpoints are on
