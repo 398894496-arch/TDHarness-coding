@@ -1,16 +1,32 @@
 # TDHarness-coding
 
-**Get running in five minutes.** Whether this is the product you want is in **[docs/PRODUCT.md](docs/PRODUCT.md)** (coding edition: usable, not mature). Bugs: [BUGS.md](BUGS.md).
+**A Windows machine can clone this repo and stand up a full TDH server.** That is the product path. Kernel-only coding setup is still below for people who only want the patched `dsh` CLI.
+
+Whether the coding edition is what you want: **[docs/PRODUCT.md](docs/PRODUCT.md)**. Server install: **[docs/SERVER.md](docs/SERVER.md)**. Bugs: [BUGS.md](BUGS.md).
 
 中文增页（不替代上文）：[项目讲解](docs/BRIEF.zh.md) · [寻找共建者](docs/WANTED.zh.md)
 
-## You need
+## Install a TDH server (Windows)
+
+Needs Administrator, Python 3, Node 22+, Git LFS.
+
+```powershell
+git clone https://github.com/398894496-arch/TDHarness-coding.git
+cd TDHarness-coding
+git lfs pull
+pwsh -File scripts/setup.ps1
+pwsh -File scripts/setup-server.ps1
+```
+
+Green: `SITE_INSTALL_OK=1`. Open the printed `DOWNLOAD=https://<this-pc>:8443/` on the LAN. Default admin is created on that machine only: `tdh` / `12345678`. Put your own model key in `D:\dsh\runtime\gateway.env`, then restart task `Autostart-Gateway`.
+
+This repo does **not** contain company documents, brain text, subscription keys, Tailscale auth, or an office roster. Those are local to whoever runs setup.
+
+## Kernel-only (optional)
 
 - Node 22+
 - Your own DeepSeek (or OpenAI-compatible) API key
 - A **local** folder as the workspace (not UNC / a network drive)
-
-## Install
 
 ```bash
 git clone https://github.com/398894496-arch/TDHarness-coding.git
@@ -21,7 +37,7 @@ export DEEPSEEK_API_KEY='your-key'
 dsh --patch "$PWD/overlays/solo.yml"
 ```
 
-Windows: `pwsh -File scripts/setup.ps1`. Setup installs `@deepseek-ai/dsh@0.1.2-rc.1` into `~/.tdh-coding-prefix` and applies the coding patch subset (sandbox, junction, glob, session, goal). Do not point it at a live `node_modules`. The company pins (placeholder skill roots, `web_fetch`, `.company-root`) stay off the official presets unless you opt in with `TDH_FULL_PATCHES=1`.
+Windows kernel: `pwsh -File scripts/setup.ps1`. This installs `@deepseek-ai/dsh` from `kernel.yml` into `~/.tdh-coding-prefix` and applies the coding patch subset. It does **not** start 8443 / 8450 / knowledge. Do not point it at a live `node_modules`. The company pins stay off unless `TDH_FULL_PATCHES=1`.
 
 Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1`. Local ChatGPT / Grok / Claude login and custom endpoints: [docs/MODELS.md](docs/MODELS.md) (`node scripts/prove-models.js` → `MODELS_PROVE_OK=1`).
 

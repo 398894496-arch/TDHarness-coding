@@ -6,8 +6,8 @@ $Pin = (Select-String -Path (Join-Path $Root "kernel.yml") -Pattern '^id:\s+(\S+
 $Prefix = $env:TDH_PREFIX
 if (-not $Prefix) { $Prefix = Join-Path $env:USERPROFILE ".tdh-coding-prefix" }
 $n = $Prefix.Replace("\", "/")
-$home = $env:USERPROFILE.Replace("\", "/")
-if ($n -eq "$home/.local" -or $n.StartsWith("$home/.local/") -or $n -match "dsh-node-rc8") {
+$userHome = $env:USERPROFILE.Replace("\", "/")
+if ($n -eq "$userHome/.local" -or $n.StartsWith("$userHome/.local/") -or $n -match "dsh-node-rc8") {
   Write-Error "BLOCKED=refuses-known-live-tree:$Prefix"
 }
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null

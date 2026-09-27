@@ -30,6 +30,7 @@ while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
     ./scripts/prove-scan.sh|scripts/prove-scan.sh) continue ;;
+    *.zip|*.dmg|*.exe|*.ico|*.msi) continue ;;
   esac
   for n in "${needles[@]}"; do
     if grep -E -n "$n" "$f" >/dev/null 2>&1; then

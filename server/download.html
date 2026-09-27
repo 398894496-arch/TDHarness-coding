@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>下载本机 Agent</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", sans-serif;
+    background: #eef2f6;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    width: 420px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 28px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .plat { color: #667085; font-size: 13px; margin: 0 0 14px; }
+  p { color: #475467; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
+  a.btn {
+    display: block;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 8px;
+    background: #1f3b5c;
+    color: #fff;
+    padding: 10px 12px;
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+  a.btn:hover { background: #18304a; }
+  .note { color: #98a2b3; font-size: 12px; margin: 8px 0 0; line-height: 1.6; }
+  .alt { margin: 14px 0 0; font-size: 12px; color: #98a2b3; }
+  .alt a { color: #667085; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>下载本机 Agent</h1>
+    <p class="plat" id="plat">正在识别系统…</p>
+    <p>在这台服务器的局域网里打开本页，下载后安装。浏览器会提示证书不受信任，选继续即可。</p>
+    <div id="win" hidden>
+      <a class="btn" href="/client/TDHarness-Setup.exe?v=site1">下载 Windows 版</a>
+      <p class="note">安装器很小，打开后会从本页同一台服务器拉程序包，装到当前用户的 TDH 文件夹。首次登录用装机时生成的管理员账号。</p>
+    </div>
+    <div id="mac" hidden>
+      <a class="btn" href="/client/CompanyDesk-mac.zip?v=site1">下载 macOS 版</a>
+      <p class="note">解压后把 TDHarness 放到「应用程序」。第一次打开：右键图标选「打开」。</p>
+    </div>
+    <p class="alt">
+      其他系统：
+      <a href="/client/TDHarness-Setup.exe?v=site1">Windows</a>
+      ·
+      <a href="/client/CompanyDesk-mac.zip?v=site1">macOS</a>
+    </p>
+  </div>
+<script>
+(function () {
+  var ua = navigator.userAgent || '';
+  var p = navigator.platform || '';
+  var isMac = /Mac/i.test(p) || /Mac OS X|Macintosh/i.test(ua);
+  var isWin = /Win/i.test(p) || /Windows/i.test(ua);
+  var isTouchMac = isMac && navigator.maxTouchPoints > 2;
+  var label = document.getElementById('plat');
+  if (isWin) {
+    document.getElementById('win').hidden = false;
+    label.textContent = '检测到 Windows，已为你选好安装包';
+  } else if (isMac && !isTouchMac) {
+    document.getElementById('mac').hidden = false;
+    label.textContent = '检测到 macOS，已为你选好安装包';
+  } else {
+    label.textContent = '没认出你的系统，请在下面自己选';
+  }
+})();
+</script>
+</body>
+</html>

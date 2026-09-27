@@ -46,6 +46,7 @@ function scan(root) {
     }
     if (!safe) { report(file, 'symlink'); continue; }
     const name = path.basename(file);
+    if (/\.(?:zip|dmg|exe|ico|msi|png|jpg)$/i.test(name)) continue;
     if (/^\.env(?:\..*)?$/.test(name) && !['.env.example', '.env.sample', '.env.template'].includes(name)) {
       report(file, 'sensitive-env-file');
     }

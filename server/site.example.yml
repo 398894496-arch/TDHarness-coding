@@ -1,0 +1,8 @@
+# Copy to D:\dsh\site.yml at install, or let setup-server.ps1 write it.
+# host is this Windows box's LAN address. No office values.
+host: 127.0.0.1
+share: dsh-company
+login_port: 8443
+gateway_port: 8450
+company_path: D:/dsh/company
+brain_path: D:/dsh/brain

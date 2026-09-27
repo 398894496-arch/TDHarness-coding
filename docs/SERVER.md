@@ -1,0 +1,22 @@
+# TDH server from this repo
+
+Clone on a Windows machine, then run `scripts/setup-server.ps1` as Administrator.
+
+That starts:
+
+- download and login on `https://<this-pc>:8443/`
+- people API on `127.0.0.1:4181`
+- knowledge search on `127.0.0.1:4182` (empty brain)
+- model gateway on `0.0.0.0:8450`
+
+It does **not** upload or copy:
+
+- company documents
+- brain / knowledge text
+- model subscription keys
+- Tailscale auth keys
+- office roster or office IPs
+
+Those stay on the machine that runs setup. The seed admin is created locally: `tdh` / `12345678`. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
+
+Needs: Windows, Administrator, Python 3, Node 22+, Git LFS (`git lfs pull`).

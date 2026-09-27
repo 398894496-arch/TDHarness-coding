@@ -8,3 +8,4 @@
 **/CompanyDesk-win.zip filter=lfs diff=lfs merge=lfs -text
 **/CompanyDesk-mac.zip filter=lfs diff=lfs merge=lfs -text
 *.dmg filter=lfs diff=lfs merge=lfs -text
+server/caddy.exe filter=lfs diff=lfs merge=lfs -text
