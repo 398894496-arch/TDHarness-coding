@@ -221,9 +221,12 @@ if ($winZip -ne 1) { throw 'client-win-zip-missing-git-lfs-pull' }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'pack-setup.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'pack-setup-failed' }
 
+$prevErr = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 foreach ($tn in @('Autostart-PeopleApi', 'Autostart-KnowledgeSearch', 'Autostart-Gateway', 'Autostart-Caddy-8443')) {
-  & schtasks.exe /End /TN $tn 2>$null | Out-Null
+  & schtasks.exe /End /TN $tn 2>&1 | Out-Null
 }
+$ErrorActionPreference = $prevErr
 foreach ($p in @(8443, 4181, 4182, 8450)) { Stop-ListenPort $p }
 Start-Sleep -Seconds 1
 
