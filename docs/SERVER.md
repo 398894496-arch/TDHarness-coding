@@ -1,6 +1,6 @@
 # TDH server from this repo
 
-Clone on a Windows machine, then run `scripts/setup-server.ps1` as Administrator.
+Clone on a Windows machine, then run `pwsh -File scripts\setup-all.ps1` as Administrator. That finds git / node / python, pulls LFS, and starts the server. To wipe a previous install first: `pwsh -File scripts\wipe-tdh-server.ps1`.
 
 That starts:
 

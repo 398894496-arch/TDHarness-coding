@@ -1,4 +1,4 @@
-# One Windows entry: clone this repo, then run this file as Administrator.
+# One Windows entry after clone. Administrator.
 # Starts download (8443), people/login (4181), knowledge (4182), gateway (8450).
 # Does not start 7801-7803. Does not write company documents or model keys into git.
 param(
@@ -23,37 +23,67 @@ $SiteYml = Join-Path $Root 'site.yml'
 $env:TDH_REPO = $Repo
 $env:TDH_ROOT = $Root
 $env:TDH_SITE = $SiteYml
+$Utf8NoBom = [Text.UTF8Encoding]::new($false)
 
 function Port-Up([int]$Port) {
   return [int][bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 }
+function Stop-ListenPort([int]$Port) {
+  $pids = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique)
+  foreach ($procId in $pids) {
+    if ($procId) { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue }
+  }
+}
 function Find-Python {
-  foreach ($n in 'python3', 'python', 'py') {
+  $hits = @()
+  foreach ($n in @('python', 'python3')) {
     $c = Get-Command $n -ErrorAction SilentlyContinue
-    if ($c) { return $c.Source }
+    if ($c -and $c.Source -and ($c.Source -notmatch 'WindowsApps')) { $hits += $c.Source }
+  }
+  $hits += @(Get-ChildItem -Path 'C:\Program Files\Python*','C:\Program Files (x86)\Python*' -Filter python.exe -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  foreach ($p in $hits) {
+    if ($p -and (Test-Path -LiteralPath $p)) { return $p }
   }
   throw 'python-missing'
 }
 function Find-Node {
+  $hits = @()
   $c = Get-Command node -ErrorAction SilentlyContinue
-  if ($c) { return $c.Source }
-  $prefix = Join-Path $env:USERPROFILE '.tdh-coding-prefix'
-  $hit = Join-Path $prefix 'node.exe'
-  if (Test-Path -LiteralPath $hit) { return $hit }
-  $hit = Join-Path $prefix 'bin\node.exe'
-  if (Test-Path -LiteralPath $hit) { return $hit }
-  throw 'node-missing-run-setup-ps1-first'
+  if ($c -and $c.Source -and ($c.Source -notmatch 'WindowsApps')) { $hits += $c.Source }
+  $hits += @(
+    (Join-Path $env:USERPROFILE 'tools\node\node.exe'),
+    (Join-Path $env:USERPROFILE '.tdh-coding-prefix\node.exe'),
+    (Join-Path $env:USERPROFILE '.tdh-coding-prefix\bin\node.exe'),
+    (Join-Path ${env:ProgramFiles} 'nodejs\node.exe')
+  )
+  foreach ($p in $hits) {
+    if ($p -and (Test-Path -LiteralPath $p)) { return $p }
+  }
+  throw 'node-missing'
 }
 function Detect-LanHost {
   if ($HostName) { return $HostName }
   $rows = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object {
       $_.IPAddress -and
+      $_.PrefixOrigin -in @('Dhcp', 'Manual') -and
       $_.IPAddress -notmatch '^127\.' -and
       $_.IPAddress -notmatch '^169\.254\.' -and
       $_.IPAddress -notmatch '^198\.18\.'
     })
+  if (-not $rows) {
+    $rows = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+      Where-Object {
+        $_.IPAddress -and
+        $_.IPAddress -notmatch '^127\.' -and
+        $_.IPAddress -notmatch '^169\.254\.' -and
+        $_.IPAddress -notmatch '^198\.18\.'
+      })
+  }
   if (-not $rows) { throw 'lan-ip-missing' }
+  $pref = @($rows | Where-Object { $_.IPAddress -match '^192\.168\.' })
+  if ($pref) { return [string]$pref[0].IPAddress }
   return [string]$rows[0].IPAddress
 }
 function Write-Task([string]$Name, [string]$Command, [string]$Arguments, [string]$WorkDir) {
@@ -95,13 +125,22 @@ function Write-Task([string]$Name, [string]$Command, [string]$Arguments, [string
   & schtasks.exe /Create /TN $Name /XML $xmlPath /F | Out-Null
   & schtasks.exe /Run /TN $Name | Out-Null
 }
+function Test-LfsFile([string]$Path, [int]$MinBytes, [string]$Name) {
+  if (-not (Test-Path -LiteralPath $Path)) { throw ($Name + '-missing-git-lfs-pull') }
+  if ((Get-Item -LiteralPath $Path).Length -lt $MinBytes) { throw ($Name + '-lfs-pointer-or-too-small') }
+}
 
 if (-not (Test-Path -LiteralPath $Server)) { throw 'server-pack-missing' }
 $py = Find-Python
 $node = Find-Node
 $lan = Detect-LanHost
 Write-Output ('REPO=' + $Repo)
+Write-Output ('PYTHON=' + $py)
+Write-Output ('NODE=' + $node)
 Write-Output ('SITE_HOST=' + $lan)
+
+Test-LfsFile (Join-Path $Server 'caddy.exe') 1MB 'caddy-exe'
+Test-LfsFile (Join-Path $Repo 'client\CompanyDesk-win.zip') 20MB 'client-win-zip'
 
 New-Item -ItemType Directory -Force -Path $Root, $Dist, $Runtime, $Logs, $Company, $Brain, (Join-Path $Brain '90-system'), (Join-Path $Runtime 'caddy'), (Join-Path $Runtime 'desk-lease') | Out-Null
 
@@ -113,32 +152,30 @@ $siteBody = @(
   'company_path: D:/dsh/company',
   'brain_path: D:/dsh/brain'
 ) -join "`n"
-[IO.File]::WriteAllText($SiteYml, $siteBody + "`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($SiteYml, $siteBody + "`n", $Utf8NoBom)
 
 $rosterPath = Join-Path $Runtime 'roster.json'
-if (-not (Test-Path -LiteralPath $rosterPath)) {
-  $roster = @{
-    owner = 'setup-server'
-    note = 'Seed admin only. Add people after login. No office roster.'
-    people = @(
-      @{
-        login = 'tdh'
-        role = 'admin'
-        dept = 'company'
-        status = 'active'
-        workspace = 'D:/dsh/company'
-        org = 'D:/dsh/company'
-        personal = 'D:/dsh/company/_office'
-        pid = 'p-tdh-seed'
-      }
-    )
-  }
-  $roster | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $rosterPath -Encoding UTF8
+$rosterJson = @'
+{
+  "owner": "setup-server",
+  "note": "Seed admin only. Add people after login.",
+  "people": [
+    {
+      "login": "tdh",
+      "role": "admin",
+      "dept": "company",
+      "status": "active",
+      "workspace": "D:/dsh/company",
+      "org": "D:/dsh/company",
+      "personal": "D:/dsh/company/_office",
+      "pid": "p-tdh-seed"
+    }
+  ]
 }
+'@
+[IO.File]::WriteAllText($rosterPath, $rosterJson.Trim() + "`n", $Utf8NoBom)
 $passPath = Join-Path $Runtime 'caddy\PASSWORDS.txt'
-if (-not (Test-Path -LiteralPath $passPath)) {
-  [IO.File]::WriteAllText($passPath, "tdh:12345678`n", [Text.Encoding]::UTF8)
-}
+[IO.File]::WriteAllText($passPath, "tdh:12345678`n", $Utf8NoBom)
 $gwEnv = Join-Path $Runtime 'gateway.env'
 if (-not (Test-Path -LiteralPath $gwEnv)) {
   Copy-Item -LiteralPath (Join-Path $Server 'gateway.env.example') -Destination $gwEnv
@@ -155,36 +192,40 @@ if (-not $share) {
 }
 
 $caddyExe = Join-Path $Runtime 'caddy\caddy.exe'
-$caddySrc = Join-Path $Server 'caddy.exe'
-if (-not (Test-Path -LiteralPath $caddyExe)) {
-  if (-not (Test-Path -LiteralPath $caddySrc)) { throw 'caddy-exe-missing-git-lfs-pull' }
-  Copy-Item -LiteralPath $caddySrc -Destination $caddyExe -Force
-}
+Copy-Item -Force -LiteralPath (Join-Path $Server 'caddy.exe') -Destination $caddyExe
+if ((Get-Item -LiteralPath $caddyExe).Length -lt 1MB) { throw 'caddy-copy-too-small' }
 
 $sitePy = Join-Path $Server 'site-cs.py'
 $caddyfile = Join-Path $Runtime 'caddy\Caddyfile'
 & $py $sitePy --site $SiteYml emit-caddy --out $caddyfile
 if ($LASTEXITCODE -ne 0) { throw 'caddyfile-failed' }
 
-$index = Join-Path $Dist 'index.html'
-Copy-Item -Force -LiteralPath (Join-Path $Server 'download.html') -Destination $index
+Copy-Item -Force -LiteralPath (Join-Path $Server 'download.html') -Destination (Join-Path $Dist 'index.html')
 
-function Place-Client([string]$Name) {
+function Place-Client([string]$Name, [int]$MinBytes) {
   $from = Join-Path $Repo ('client\' + $Name)
   $to = Join-Path $Dist $Name
   if (-not (Test-Path -LiteralPath $from)) { return 0 }
-  & $py $sitePy --site $SiteYml rewrite-zip --src $from --out $to
+  if ((Get-Item -LiteralPath $from).Length -lt $MinBytes) { throw ($Name + '-lfs-pointer-or-too-small') }
+  & $py $sitePy --site $SiteYml rewrite-zip --src $from --out $to | Out-Null
   if ($LASTEXITCODE -ne 0) { throw ('rewrite-failed-' + $Name) }
+  if (-not (Test-Path -LiteralPath $to)) { throw ('rewrite-missing-' + $Name) }
   return 1
 }
-$winZip = Place-Client 'CompanyDesk-win.zip'
-$macZip = Place-Client 'CompanyDesk-mac.zip'
+$winZip = Place-Client 'CompanyDesk-win.zip' 20MB
+$macZip = Place-Client 'CompanyDesk-mac.zip' 20MB
 Write-Output ('CLIENT_WIN=' + $winZip)
 Write-Output ('CLIENT_MAC=' + $macZip)
-if ($winZip -eq 0) { throw 'client-win-zip-missing-git-lfs-pull' }
+if ($winZip -ne 1) { throw 'client-win-zip-missing-git-lfs-pull' }
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'pack-setup.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'pack-setup-failed' }
+
+foreach ($tn in @('Autostart-PeopleApi', 'Autostart-KnowledgeSearch', 'Autostart-Gateway', 'Autostart-Caddy-8443')) {
+  & schtasks.exe /End /TN $tn 2>$null | Out-Null
+}
+foreach ($p in @(8443, 4181, 4182, 8450)) { Stop-ListenPort $p }
+Start-Sleep -Seconds 1
 
 $env:TDH_ROSTER = $rosterPath
 $env:TDH_PASSWORDS = $passPath
@@ -203,7 +244,7 @@ try {
 } catch {}
 
 $up = $false
-for ($i = 0; $i -lt 25; $i++) {
+for ($i = 0; $i -lt 30; $i++) {
   Start-Sleep -Seconds 1
   if ((Port-Up 8443) -and (Port-Up 4181) -and (Port-Up 4182) -and (Port-Up 8450)) { $up = $true; break }
 }

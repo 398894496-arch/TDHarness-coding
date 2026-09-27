@@ -29,7 +29,7 @@ PORT = 4181
 def load_roster() -> dict:
     if not ROSTER.is_file():
         return {"owner": "setup-server", "people": []}
-    data = json.loads(ROSTER.read_text(encoding="utf-8"))
+    data = json.loads(ROSTER.read_text(encoding="utf-8-sig"))
     if not isinstance(data, dict):
         return {"owner": "setup-server", "people": []}
     data.setdefault("people", [])
@@ -45,7 +45,7 @@ def pass_map() -> dict[str, str]:
     out: dict[str, str] = {}
     if not PASS_FILE.is_file():
         return out
-    for raw in PASS_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
+    for raw in PASS_FILE.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
         t = raw.strip()
         if not t or t.startswith("#"):
             continue

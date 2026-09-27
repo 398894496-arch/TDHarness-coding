@@ -14,8 +14,7 @@ Needs Administrator, Python 3, Node 22+, Git LFS.
 git clone https://github.com/398894496-arch/TDHarness-coding.git
 cd TDHarness-coding
 git lfs pull
-pwsh -File scripts/setup.ps1
-pwsh -File scripts/setup-server.ps1
+pwsh -File scripts\setup-all.ps1
 ```
 
 Green: `SITE_INSTALL_OK=1`. Open the printed `DOWNLOAD=https://<this-pc>:8443/` on the LAN. Default admin is created on that machine only: `tdh` / `12345678`. Put your own model key in `D:\dsh\runtime\gateway.env`, then restart task `Autostart-Gateway`.
