@@ -1,4 +1,4 @@
 # Pin only. Overlay lives in overlays/. Never npm-update a live prefix.
-id: 0.1.2-rc.1
+id: 0.1.7-rc.2
 package: "@deepseek-ai/dsh"
-candidate: 0.1.2-rc.1
+candidate: 0.1.7-rc.2

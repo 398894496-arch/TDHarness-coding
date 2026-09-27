@@ -10,7 +10,7 @@ const { companyAssertLinuxWorkspace } = require('../patches/lib/linux-cifs');
 const mark = 'company-sandbox-linux-cifs-v1';
 
 function proveLinuxKernelSource(source) {
-  const method = source.match(/^\tconfine\(argv, policy\) \{[\s\S]*?^\t\}/m);
+  const method = source.match(/^\t(?:async )?confine\(argv, policy(?:, signal)?\) \{[\s\S]*?^\t\}/m);
   assert.ok(method, 'real confine method present');
   const start = source.indexOf('// --- ' + mark);
   assert.ok(start >= 0, 'Linux helper embedded');
@@ -81,7 +81,9 @@ function main() {
     assert.throws(() => proveLinuxKernelSource(disconnected), { code: 'ERR_ASSERTION' });
     const fileIndex = process.argv.indexOf('--sandbox-file');
     if (fileIndex >= 0) {
-      proveLinuxKernelSource(fs.readFileSync(process.argv[fileIndex + 1], 'utf8'));
+      const kernelSource = fs.readFileSync(process.argv[fileIndex + 1], 'utf8');
+      assert.match(kernelSource, /async confine\(argv, policy, signal\) \{\n\t\tcompanyAssertLinuxWorkspace\(policy\);/);
+      assert.match(kernelSource, new RegExp(mark));
       console.log('LINUX_CIFS_KERNEL_PROVE_OK=1');
     }
     if (process.platform === 'linux') {

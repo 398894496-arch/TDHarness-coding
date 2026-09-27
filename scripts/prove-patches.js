@@ -111,9 +111,13 @@ const goldIs012Line = goldNums[0] > 0 || goldNums[1] > 1 || (goldNums[1] === 1 &
 const sessionText = fs.readFileSync(path.join(dst, SESSION_FILE), 'utf8');
 const chatRel = OPTIONAL_FILES[0];
 const chatText = fs.existsSync(path.join(dst, chatRel)) ? fs.readFileSync(path.join(dst, chatRel), 'utf8') : '';
+// 0.1.7 removed ensureSymlink from dsh-app-boot, so the mklink retarget has
+// nothing to attach to and the patch skips. Older kernels that still have
+// the helper must carry the company marks.
+const junctionSurface = boot.includes('function ensureSymlink(');
 const marks = [
-  ['JUNCTION_V3', boot.includes('company-win-junction-mklink-v3') || boot.includes('companyWinJunction')],
-  ['JUNCTION_V4', boot.includes('SystemRoot') || boot.includes('company-win-junction-mklink-v4')],
+  ['JUNCTION_V3', !junctionSurface || boot.includes('company-win-junction-mklink-v3') || boot.includes('companyWinJunction')],
+  ['JUNCTION_V4', !junctionSurface || boot.includes('SystemRoot') || boot.includes('company-win-junction-mklink-v4')],
   ['SANDBOX', fs.readFileSync(path.join(dst, SANDBOX_FILE), 'utf8').includes('company-sandbox-local-drive-v2')],
   ['SESSION_EVENTS_ALIAS', sessionText.includes('company-session-events-alias-v1') === goldIs012Line],
   // The markdown slot patch is minKernel-gated to the 0.1.2 line, where

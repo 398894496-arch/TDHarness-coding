@@ -129,13 +129,13 @@ const MARKDOWN_SLOT_PATCH = {
       },
       {
         name: 'assistant-markdown-slot-render',
-        from: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {\n\t\t\t\t\t\t\ttext: block.text,\n\t\t\t\t\t\t\tstreaming,\n\t\t\t\t\t\t\tlabels,\n\t\t\t\t\t\t\tfileMentions: mentions\n\t\t\t\t\t\t}, i));',
-        to: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(react.Fragment, { children: renderMarkdown({ text: block.text, streaming, labels, fileMentions: mentions }) }, i));',
+        from: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {\n\t\t\t\t\t\t\ttext: block.text,\n\t\t\t\t\t\t\tstreaming,\n\t\t\t\t\t\t\tlabels,\n\t\t\t\t\t\t\tfileMentions: mentions,\n\t\t\t\t\t\t\tpathImages\n\t\t\t\t\t\t}, i));',
+        to: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(react.Fragment, { children: renderMarkdown({ text: block.text, streaming, labels, fileMentions: mentions, pathImages }) }, i));',
       },
       {
         name: 'assistant-node-render-slot',
-        from: 'function AssistantNodeView({ node, useTurnData,',
-        to: 'function AssistantNodeView({ node, renderSlot, useTurnData,',
+        from: 'function AssistantNodeView({ node, groupPart, useDisclosure, useTurnData,',
+        to: 'function AssistantNodeView({ node, renderSlot, groupPart, useDisclosure, useTurnData,',
       },
       {
         name: 'assistant-node-markdown-fallback',
@@ -144,8 +144,8 @@ const MARKDOWN_SLOT_PATCH = {
       },
       {
         name: 'assistant-markdown-child-slot',
-        from: 'key: "assistant-step",\n\t\t\t\tlocale: NS\n\t\t\t}, AssistantNodeView)',
-        to: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tchildren: { "conversation.assistant.markdown": { kind: "single", scope: "session" } }\n\t\t\t}, AssistantNodeView)',
+        from: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tinject: () => ({ hooks: { presentation } })\n\t\t\t}, AssistantNodeView)',
+        to: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tchildren: { "conversation.assistant.markdown": { kind: "single", scope: "session" } },\n\t\t\t\tinject: () => ({ hooks: { presentation } })\n\t\t\t}, AssistantNodeView)',
       },
     ],
 };
@@ -170,8 +170,16 @@ const PATCHES = [
       },
       {
         name: 'linux-cifs-confine-precheck',
-        from: '\tconfine(argv, policy) {\n',
-        to: '\tconfine(argv, policy) {\n\t\tcompanyAssertLinuxWorkspace(policy);\n',
+        variants: [
+          {
+            from: '\tconfine(argv, policy) {\n',
+            to: '\tconfine(argv, policy) {\n\t\tcompanyAssertLinuxWorkspace(policy);\n',
+          },
+          {
+            from: '\tasync confine(argv, policy, signal) {\n',
+            to: '\tasync confine(argv, policy, signal) {\n\t\tcompanyAssertLinuxWorkspace(policy);\n',
+          },
+        ],
       },
     ],
   },
@@ -395,8 +403,9 @@ const PATCHES = [
     edits: [
       {
         name: 'win-junction-mklink',
-        // Official ensureSymlink (rc.2). v1/v2 already-applied is skipped
-        // via `already`. Do not require packing on Windows.
+        // 0.1.7 removed ensureSymlink from dsh-app-boot. Nothing left to
+        // retarget; a missing anchor skips this patch instead of failing.
+        skipIfGone: true,
         variants: [
           {
             from:
@@ -533,6 +542,7 @@ const PATCHES = [
     edits: [
       {
         name: 'win-junction-mklink-local-cwd',
+        skipIfGone: true,
         from:
           '\tconst r = spawnSync("cmd.exe", ["/c", "mklink", "/J", link, target], { encoding: "utf8", windowsHide: true });\n',
         to:
@@ -747,8 +757,16 @@ for (const patch of PATCHES) {
   }
 
   for (const edit of patch.edits) {
+    const scored = editVariants(edit).map((v) => text.split(v.from).length - 1);
+    if (edit.skipIfGone && scored.every((n) => n === 0)) {
+      console.log('PATCH_SKIP_ANCHOR=' + patch.file + '|' + patch.mark + '|' + edit.name);
+      skipped += 1;
+      text = null;
+      break;
+    }
     text = applyEdit(text, edit, patch.file);
   }
+  if (text == null) continue;
   text = text.trimEnd() + '\n' + patch.append;
 
   fs.writeFileSync(target, text, 'utf8');
@@ -771,9 +789,8 @@ if (onlyMarks.size) {
 
 const presetRel = resolvePresetRel('standard');
 if (!presetRel) {
-  console.error('PATCH_FAIL=preset-missing|' + presetCandidates('standard').join(' , '));
-  process.exit(1);
-}
+  console.log('PRESET_SKILLS_SKIP=standard|missing');
+} else {
 const presetPath = path.join(kernelRoot, presetRel);
 const PRESET_MARK = 'company-preset-skills-v1';
 const PRESET_FROM = "- id: skill-filesystem\n  name: '@deepseek-ai/dsh-skill-filesystem'\n";
@@ -803,6 +820,7 @@ const PRESET_TO =
     console.log('PATCHED=' + presetRel + '|preset-skills');
     applied += 1;
   }
+}
 }
 
 // Host overlay `tool-web.fetch: true` does not register the model tool.
