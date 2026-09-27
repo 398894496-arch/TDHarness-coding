@@ -17,6 +17,8 @@ It does **not** upload or copy:
 - Tailscale auth keys
 - office roster or office IPs
 
-Those stay on the machine that runs setup. The seed admin is created locally: `tdh` / `12345678`. Setup must log in as that account (`LOGIN_PROVE_OK=1`) and plant the desktop client. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
+Those stay on the machine that runs setup. The seed admin is created locally: `tdh` / `12345678`. Setup must log in as that account (`LOGIN_PROVE_OK=1`), compile `TDHarness.exe` for this LAN (`COMPILE_APPHOST_OK=1`), serve `/client/version.json`, and prove the AppHost login URL (`GUI_PROVE_OK=1`) before planting the desktop client. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
+
+Fake green: API login on the LAN host while `TDHarness.exe` still has another machine compiled into `Site.LoginUrl`. Setup now rebuilds that exe from `server/AppHost.cs` + this machine's `site.yml`.
 
 Needs: Windows, Administrator, Python 3, Node 22+, Git LFS (`git lfs pull`).

@@ -133,6 +133,16 @@ def login_from_token(token: str) -> str:
     return ""
 
 
+def smb_pair() -> tuple[str, str]:
+    path = ROOT / "runtime" / "dshshare.pass"
+    if not path.is_file():
+        return "", ""
+    pw = path.read_text(encoding="utf-8-sig").strip().splitlines()
+    if not pw or not pw[0].strip():
+        return "", ""
+    return "dshshare", pw[0].strip()
+
+
 def check_login(username: str, password: str) -> dict | None:
     login = username.strip()
     if not login or not password:
@@ -144,6 +154,7 @@ def check_login(username: str, password: str) -> dict | None:
     if not row or row.get("status") != "active":
         return None
     pid = str(row.get("pid") or ("p-" + login))
+    smb_user, smb_pass = smb_pair()
     return {
         "ok": True,
         "login": login,
@@ -152,6 +163,8 @@ def check_login(username: str, password: str) -> dict | None:
         "personal": row.get("personal"),
         "org": row.get("org"),
         "gw_token": mint_token(pid),
+        "smb_user": smb_user,
+        "smb_pass": smb_pass,
     }
 
 
@@ -171,7 +184,8 @@ def run_lease(login: str, device_id: str, action: str) -> tuple[int, dict]:
 
 
 def json_bytes(obj: dict, status: int = 200) -> tuple[int, bytes]:
-    return status, json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    # AppHost CheckLogin looks for the exact substring "ok": true
+    return status, json.dumps(obj, ensure_ascii=False, separators=(", ", ": ")).encode("utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):

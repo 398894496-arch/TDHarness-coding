@@ -3,8 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+
+
+def zip_mark(path: Path) -> str:
+    import zipfile
+
+    with zipfile.ZipFile(path, "r") as zin:
+        names = [n.replace("\\", "/") for n in zin.namelist()]
+        key = "CompanyDesk/BUILD.json" if "CompanyDesk/BUILD.json" in names else "BUILD.json"
+        data = json.loads(zin.read(key).decode("utf-8-sig"))
+    mark = str(data.get("mark") or "")
+    if len(mark) != 32:
+        raise SystemExit("zip-mark-missing")
+    return mark
 
 
 def load_site(path: Path) -> dict[str, str]:
@@ -130,6 +144,111 @@ https://%s:%s {
 """ % (host, lp)
 
 
+def extract_zip(src: Path, dst: Path, names: list[str]) -> int:
+    import zipfile
+
+    dst.mkdir(parents=True, exist_ok=True)
+    want = {n.replace("\\", "/") for n in names}
+    n = 0
+    with zipfile.ZipFile(src, "r") as zin:
+        for item in zin.infolist():
+            name = item.filename.replace("\\", "/")
+            if name not in want:
+                continue
+            data = zin.read(item.filename)
+            (dst / Path(name).name).write_bytes(data)
+            n += 1
+    if n != len(want):
+        raise SystemExit("extract-zip-missing")
+    return n
+
+
+def emit_stamp(build_json: Path) -> str:
+    data = json.loads(build_json.read_text(encoding="utf-8-sig"))
+    mark = str(data.get("mark") or "")
+    facts = data.get("facts") if isinstance(data.get("facts"), dict) else {}
+    site = str(facts.get("site") or "lan")
+    issued = str(facts.get("issued_to") or "lan")
+    git = str(facts.get("git") or "nogit")
+    utc = str(facts.get("utc") or "")
+    keyed = "true" if data.get("keyed") else "false"
+    if len(mark) != 32:
+        raise SystemExit("build-mark-missing")
+    return (
+        "internal static class BuildStamp\n"
+        "{\n"
+        '    internal const string Mark = "DSHWM1:%s";\n' % mark
+        + '    internal const string Site = "%s";\n' % site
+        + '    internal const string IssuedTo = "%s";\n' % issued
+        + '    internal const string Git = "%s";\n' % git
+        + '    internal const string Utc = "%s";\n' % utc
+        + "    internal const bool Keyed = %s;\n" % keyed
+        + "}\n"
+    )
+
+
+def replace_zip_member(src: Path, dst: Path, name: str, data: bytes) -> int:
+    import zipfile
+
+    name = name.replace("\\", "/")
+    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    n = 0
+    with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w") as zout:
+        for item in zin.infolist():
+            cur = item.filename.replace("\\", "/")
+            if cur == name:
+                zout.writestr(item, data)
+                n += 1
+            else:
+                zout.writestr(item, zin.read(item.filename))
+    if n != 1:
+        tmp.unlink(missing_ok=True)
+        raise SystemExit("replace-zip-member-missing")
+    tmp.replace(dst)
+    return n
+
+
+MAC_TREE_RUN = (
+    b"# Tree check is log-only. Do not pop on a dirty local tree (hot plant).\n"
+    b"# Update already ran before the desk started.\n"
+    b'if [ -f "$ROOT/tree-check.js" ] && [ -f "$ROOT/BUILD.json" ]; then\n'
+    b'  TREE_OUT="$("$NODEBIN" "$ROOT/tree-check.js" --root "$ROOT" || true)"\n'
+    b"  printf '%s\\n' \"$TREE_OUT\"\n"
+    b"fi\n"
+)
+MAC_TREE_SKIP = (
+    b"# Tree check hashes ~30k files. Do not run it on open.\n"
+    b'echo "tree-check skip-on-open"\n'
+)
+WIN_TREE_RUN = (
+    b"$treeJs = Join-Path $Root 'tree-check.js'\r\n"
+    b"if ((Test-Path -LiteralPath $treeJs) -and (Test-Path -LiteralPath (Join-Path $Root 'BUILD.json'))) {\r\n"
+    b"  $treeOut = & $Node $treeJs --root $Root 2>&1 | Out-String\r\n"
+    b"  Write-Output $treeOut\r\n"
+    b"}\r\n"
+)
+WIN_TREE_SKIP = (
+    b"Write-Output 'tree-check skip-on-open'\r\n"
+)
+
+
+def skip_open_tree_check(name: str, data: bytes) -> tuple[bytes, int]:
+    base = name.rsplit("/", 1)[-1]
+    if base == "start.command":
+        if MAC_TREE_RUN in data:
+            return data.replace(MAC_TREE_RUN, MAC_TREE_SKIP), 1
+        if b"tree-check skip-on-open" in data:
+            return data, 0
+        if b'tree-check.js" --root' in data:
+            raise SystemExit("mac-start-tree-check-unpatched")
+    if base == "start.ps1":
+        if WIN_TREE_RUN in data:
+            return data.replace(WIN_TREE_RUN, WIN_TREE_SKIP), 1
+        if b"tree-check skip-on-open" in data:
+            return data, 0
+    return data, 0
+
+
 def rewrite_zip(src: Path, dst: Path, host: str) -> int:
     import zipfile
 
@@ -146,9 +265,12 @@ def rewrite_zip(src: Path, dst: Path, host: str) -> int:
                 n += 1
                 continue
             data = zin.read(item.filename)
-            if "node_modules" not in name and mark in data:
-                data = data.replace(mark, host_b)
-                n += 1
+            if "node_modules" not in name:
+                if mark in data:
+                    data = data.replace(mark, host_b)
+                    n += 1
+                data, skipped = skip_open_tree_check(name, data)
+                n += skipped
             zout.writestr(item, data)
     tmp.replace(dst)
     return n
@@ -157,25 +279,55 @@ def rewrite_zip(src: Path, dst: Path, host: str) -> int:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--site", required=True)
-    ap.add_argument("cmd", choices=("emit-cs", "emit-caddy", "print", "rewrite-zip"))
+    ap.add_argument(
+        "cmd",
+        choices=("emit-cs", "emit-caddy", "emit-stamp", "print", "print-mark", "rewrite-zip", "extract-zip", "replace-zip"),
+    )
     ap.add_argument("--out")
     ap.add_argument("--src")
+    ap.add_argument("--names")
+    ap.add_argument("--name")
+    ap.add_argument("--file")
     args = ap.parse_args()
     site = load_site(Path(args.site))
     if args.cmd == "print":
         for k in ("host", "share", "login_port", "gateway_port", "company_path"):
             sys.stdout.write("%s=%s\n" % (k, site[k]))
         return
-    if args.cmd == "emit-cs":
-        text = emit_cs(site)
-    elif args.cmd == "emit-caddy":
-        text = emit_caddy(site)
-    else:
+    if args.cmd == "print-mark":
+        if not args.src:
+            raise SystemExit("print-mark needs --src")
+        sys.stdout.write(zip_mark(Path(args.src)) + "\n")
+        return
+    if args.cmd == "rewrite-zip":
         if not args.src or not args.out:
             raise SystemExit("rewrite-zip needs --src and --out")
         n = rewrite_zip(Path(args.src), Path(args.out), site["host"])
         sys.stdout.write("REWRITE_HITS=%s\n" % n)
         return
+    if args.cmd == "extract-zip":
+        if not args.src or not args.out or not args.names:
+            raise SystemExit("extract-zip needs --src --out --names")
+        names = [x.strip() for x in args.names.split(",") if x.strip()]
+        n = extract_zip(Path(args.src), Path(args.out), names)
+        sys.stdout.write("EXTRACT=%s\n" % n)
+        return
+    if args.cmd == "replace-zip":
+        if not args.src or not args.out or not args.name or not args.file:
+            raise SystemExit("replace-zip needs --src --out --name --file")
+        n = replace_zip_member(Path(args.src), Path(args.out), args.name, Path(args.file).read_bytes())
+        sys.stdout.write("REPLACE=%s\n" % n)
+        return
+    if args.cmd == "emit-cs":
+        text = emit_cs(site)
+    elif args.cmd == "emit-caddy":
+        text = emit_caddy(site)
+    elif args.cmd == "emit-stamp":
+        if not args.src:
+            raise SystemExit("emit-stamp needs --src")
+        text = emit_stamp(Path(args.src))
+    else:
+        raise SystemExit("bad-cmd")
     if not args.out:
         raise SystemExit("need --out")
     Path(args.out).write_text(text, encoding="utf-8")

@@ -12,7 +12,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
-def post(url: str, payload: dict, headers: dict | None = None) -> tuple[int, dict]:
+def post(url: str, payload: dict, headers: dict | None = None) -> tuple[int, dict, bytes]:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
@@ -32,7 +32,7 @@ def post(url: str, payload: dict, headers: dict | None = None) -> tuple[int, dic
         body = {}
     if not isinstance(body, dict):
         body = {}
-    return code, body
+    return code, body, raw
 
 
 def get(url: str, headers: dict) -> tuple[int, dict]:
@@ -70,18 +70,26 @@ def main() -> None:
     host = site["host"]
     port = site["login_port"]
     base = "https://%s:%s" % (host, port)
-    code, hit = post(base + "/company/login", {"username": "tdh", "password": "12345678"})
+    code, hit, raw = post(base + "/company/login", {"username": "tdh", "password": "12345678"})
     print("LOGIN_HTTP=%s" % code)
     if code != 200 or hit.get("ok") is not True:
         raise SystemExit("login-failed")
+    if b'"ok": true' not in raw:
+        raise SystemExit("login-ok-space-missing")
     if hit.get("login") != "tdh" or hit.get("role") != "admin":
         raise SystemExit("login-not-admin")
     token = str(hit.get("gw_token") or "")
     if not token.startswith("dsh_"):
         raise SystemExit("login-missing-token")
+    if not str(hit.get("personal") or "").replace("\\", "/").endswith("/_office"):
+        raise SystemExit("login-missing-personal")
+    if not str(hit.get("org") or ""):
+        raise SystemExit("login-missing-org")
+    if str(hit.get("smb_user") or "") != "dshshare" or not str(hit.get("smb_pass") or ""):
+        raise SystemExit("login-missing-smb")
     print("LOGIN_ROLE=admin")
     headers = {"Authorization": "Bearer " + token, "X-Company-Gw-Token": token}
-    lcode, lease = post(
+    lcode, lease, _lease_raw = post(
         base + "/company/desk-lease",
         {"action": "acquire", "device_id": "prove-login-device-01"},
         headers,

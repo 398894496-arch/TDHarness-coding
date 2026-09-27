@@ -190,6 +190,35 @@ if (-not $share) {
   New-SmbShare -Name 'dsh-company' -Path $Company -Description 'TDH company share' | Out-Null
   Write-Output 'SMB_SHARE_CREATED=1'
 }
+$sharePassPath = Join-Path $Runtime 'dshshare.pass'
+if (-not (Test-Path -LiteralPath $sharePassPath)) {
+  $sharePass = [guid]::NewGuid().ToString('N').Substring(0, 16)
+  [IO.File]::WriteAllText($sharePassPath, $sharePass + "`n", $Utf8NoBom)
+} else {
+  $sharePass = ([IO.File]::ReadAllText($sharePassPath).Trim().Split("`n")[0]).Trim()
+}
+if (-not $sharePass) { throw 'dshshare-pass-empty' }
+$prevShare = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& net.exe user dshshare $sharePass /add 2>&1 | Out-Null
+& net.exe user dshshare $sharePass 2>&1 | Out-Null
+$ErrorActionPreference = $prevShare
+try { Grant-SmbShareAccess -Name 'dsh-company' -AccountName 'dshshare' -AccessRight Full -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+try { Grant-SmbShareAccess -Name 'dsh-company' -AccountName 'Everyone' -AccessRight Change -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+try { icacls.exe $Company /grant '*S-1-1-0:(OI)(CI)M' /T /C | Out-Null } catch {}
+try { Enable-NetFirewallRule -DisplayGroup 'File and Printer Sharing' -ErrorAction SilentlyContinue | Out-Null } catch {}
+Write-Output 'SMB_SHARE_AUTH=1'
+
+$prevCaddy = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+foreach ($tn in @('Autostart-PeopleApi', 'Autostart-KnowledgeSearch', 'Autostart-Gateway', 'Autostart-Caddy-8443')) {
+  & schtasks.exe /End /TN $tn 2>&1 | Out-Null
+}
+$ErrorActionPreference = $prevCaddy
+foreach ($p in @(8443, 4181, 4182, 8450)) { Stop-ListenPort $p }
+Start-Sleep -Seconds 1
+Get-Process -Name 'caddy' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
 
 $caddyExe = Join-Path $Runtime 'caddy\caddy.exe'
 Copy-Item -Force -LiteralPath (Join-Path $Server 'caddy.exe') -Destination $caddyExe
@@ -217,6 +246,33 @@ $macZip = Place-Client 'CompanyDesk-mac.zip' 20MB
 Write-Output ('CLIENT_WIN=' + $winZip)
 Write-Output ('CLIENT_MAC=' + $macZip)
 if ($winZip -ne 1) { throw 'client-win-zip-missing-git-lfs-pull' }
+
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'compile-apphost.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'compile-apphost-failed' }
+
+function Write-ClientVersion {
+  $winP = Join-Path $Dist 'CompanyDesk-win.zip'
+  $macP = Join-Path $Dist 'CompanyDesk-mac.zip'
+  $winMark = (& $py $sitePy --site $SiteYml print-mark --src $winP).Trim()
+  if ($winMark.Length -ne 32) { throw 'win-build-mark-missing' }
+  $macMark = $winMark
+  if (Test-Path -LiteralPath $macP) {
+    $got = (& $py $sitePy --site $SiteYml print-mark --src $macP).Trim()
+    if ($got.Length -eq 32) { $macMark = $got }
+  }
+  $macBytes = 0
+  if (Test-Path -LiteralPath $macP) { $macBytes = (Get-Item -LiteralPath $macP).Length }
+  $obj = [ordered]@{
+    schema = 'DSHPACK1'
+    utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss+00:00')
+    win = [ordered]@{ mark = $winMark; bytes = (Get-Item -LiteralPath $winP).Length; file = 'CompanyDesk-win.zip' }
+    mac = [ordered]@{ mark = $macMark; bytes = $macBytes; file = 'CompanyDesk-mac.zip' }
+  }
+  [IO.File]::WriteAllText((Join-Path $Dist 'version.json'), (($obj | ConvertTo-Json -Compress) + "`n"), $Utf8NoBom)
+  Write-Output ('VERSION_WIN_MARK=' + $winMark)
+  Write-Output 'VERSION_JSON_OK=1'
+}
+Write-ClientVersion
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'pack-setup.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'pack-setup-failed' }
@@ -262,6 +318,8 @@ Write-Output ('HOME_HTTP=' + $homeHttp)
 if ($homeHttp -ne '200') { throw 'server-http-failed' }
 & $py (Join-Path $Server 'prove-login.py') $SiteYml
 if ($LASTEXITCODE -ne 0) { throw 'login-prove-failed' }
+& $py (Join-Path $Server 'prove-gui.py') $SiteYml
+if ($LASTEXITCODE -ne 0) { throw 'gui-prove-failed' }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'plant-client.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'plant-client-failed' }
 Write-Output ('DOWNLOAD=https://' + $lan + ':8443/')
