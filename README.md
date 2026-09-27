@@ -17,7 +17,7 @@ git lfs pull
 pwsh -File scripts\setup-all.ps1
 ```
 
-Green: `SITE_INSTALL_OK=1`. Open the printed `DOWNLOAD=https://<this-pc>:8443/` on the LAN. Default admin is created on that machine only: `tdh` / `12345678`. Put your own model key in `D:\dsh\runtime\gateway.env`, then restart task `Autostart-Gateway`.
+Green: `SITE_INSTALL_OK=1` and `LOGIN_PROVE_OK=1`. Setup also logs in as `tdh` / `12345678` (admin + seat + roster) and plants `TDHarness` on the signed-in user's desktop. Open that shortcut and use the same account. Put your own model key in `D:\dsh\runtime\gateway.env`, then restart task `Autostart-Gateway`.
 
 This repo does **not** contain company documents, brain text, subscription keys, Tailscale auth, or an office roster. Those are local to whoever runs setup.
 

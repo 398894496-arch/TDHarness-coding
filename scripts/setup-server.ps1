@@ -257,13 +257,13 @@ Write-Output ('LISTEN_4182=' + (Port-Up 4182))
 Write-Output ('LISTEN_8450=' + (Port-Up 8450))
 if (-not $up) { throw 'server-ports-down' }
 
-$login = Join-Path $env:TEMP 'tdh-login.json'
-[IO.File]::WriteAllText($login, '{"username":"tdh","password":"12345678"}', [Text.Encoding]::ASCII)
-$code = & C:\Windows\System32\curl.exe -sk --noproxy '*' --max-time 15 -o (Join-Path $env:TEMP 'tdh-login-out.json') -w '%{http_code}' -H 'Content-Type: application/json' --data-binary ('@' + $login) ('https://' + $lan + ':8443/company/login')
-Write-Output ('LOGIN_HTTP=' + $code)
 $homeHttp = & C:\Windows\System32\curl.exe -skI --noproxy '*' --max-time 15 -o NUL -w '%{http_code}' ('https://' + $lan + ':8443/')
 Write-Output ('HOME_HTTP=' + $homeHttp)
-if ($code -ne '200' -or $homeHttp -ne '200') { throw 'server-http-failed' }
+if ($homeHttp -ne '200') { throw 'server-http-failed' }
+& $py (Join-Path $Server 'prove-login.py') $SiteYml
+if ($LASTEXITCODE -ne 0) { throw 'login-prove-failed' }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'plant-client.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'plant-client-failed' }
 Write-Output ('DOWNLOAD=https://' + $lan + ':8443/')
 Write-Output 'DEFAULT_LOGIN=tdh'
 Write-Output 'GW_KEY_FILE=D:\dsh\runtime\gateway.env'
