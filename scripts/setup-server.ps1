@@ -113,7 +113,7 @@ $siteBody = @(
   'company_path: D:/dsh/company',
   'brain_path: D:/dsh/brain'
 ) -join "`n"
-[IO.File]::WriteAllText($SiteYml, $siteBody + "`n", [Text.Encoding]::UTF8)
+[IO.File]::WriteAllText($SiteYml, $siteBody + "`n", [Text.UTF8Encoding]::new($false))
 
 $rosterPath = Join-Path $Runtime 'roster.json'
 if (-not (Test-Path -LiteralPath $rosterPath)) {
@@ -217,9 +217,9 @@ $login = Join-Path $env:TEMP 'tdh-login.json'
 [IO.File]::WriteAllText($login, '{"username":"tdh","password":"12345678"}', [Text.Encoding]::ASCII)
 $code = & C:\Windows\System32\curl.exe -sk --noproxy '*' --max-time 15 -o (Join-Path $env:TEMP 'tdh-login-out.json') -w '%{http_code}' -H 'Content-Type: application/json' --data-binary ('@' + $login) ('https://' + $lan + ':8443/company/login')
 Write-Output ('LOGIN_HTTP=' + $code)
-$home = & C:\Windows\System32\curl.exe -skI --noproxy '*' --max-time 15 -o NUL -w '%{http_code}' ('https://' + $lan + ':8443/')
-Write-Output ('HOME_HTTP=' + $home)
-if ($code -ne '200' -or $home -ne '200') { throw 'server-http-failed' }
+$homeHttp = & C:\Windows\System32\curl.exe -skI --noproxy '*' --max-time 15 -o NUL -w '%{http_code}' ('https://' + $lan + ':8443/')
+Write-Output ('HOME_HTTP=' + $homeHttp)
+if ($code -ne '200' -or $homeHttp -ne '200') { throw 'server-http-failed' }
 Write-Output ('DOWNLOAD=https://' + $lan + ':8443/')
 Write-Output 'DEFAULT_LOGIN=tdh'
 Write-Output 'GW_KEY_FILE=D:\dsh\runtime\gateway.env'
