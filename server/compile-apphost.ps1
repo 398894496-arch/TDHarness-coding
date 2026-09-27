@@ -53,6 +53,8 @@ $gate = [regex]::Match($appText, 'internal static void GateProductTree\(\)[\s\S]
 if (-not $gate.Success) { throw 'apphost-gate-block-missing' }
 if ($gate.Value.Contains('CheckProductTree')) { throw 'apphost-login-still-hashes-tree' }
 if ($appText -notmatch 'tree-check skip-on-login') { throw 'apphost-missing-skip-on-login' }
+if ($appText -notmatch 'junction-skip-no-ensuresymlink') { throw 'apphost-missing-017-junction-skip' }
+if ($appText -notmatch 'function ensureSymlink') { throw 'apphost-junction-still-string-only' }
 
 $StampCs = Join-Path $stage 'BuildStamp.cs'
 & $py $SitePy --site $SiteYml emit-stamp --src $buildJson --out $StampCs

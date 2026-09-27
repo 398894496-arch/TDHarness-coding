@@ -121,6 +121,13 @@ https://%s:%s {
 			flush_interval -1
 		}
 	}
+	handle /company/mailbox* {
+		reverse_proxy 127.0.0.1:4181 {
+			header_up Authorization {http.request.header.Authorization}
+			header_up X-Company-Gw-Token {http.request.header.X-Company-Gw-Token}
+			flush_interval -1
+		}
+	}
 	handle /company/knowledge* {
 		uri strip_prefix /company/knowledge
 		reverse_proxy 127.0.0.1:4182 {
@@ -232,6 +239,87 @@ WIN_TREE_SKIP = (
 )
 
 
+OFFICE_HOST = ".".join(["192", "168", "1", "15"]).encode("ascii")
+SEED_PEOPLE = (
+    "\t\tconst PEOPLE = [\n"
+    "\t\t  {\n"
+    '\t\t    "login": "tdh",\n'
+    '\t\t    "role": "admin",\n'
+    '\t\t    "dept": "company",\n'
+    '\t\t    "status": "active",\n'
+    '\t\t    "workspace": "D:/dsh/company",\n'
+    '\t\t    "org": "D:/dsh/company",\n'
+    '\t\t    "personal": "D:/dsh/company/_office",\n'
+    '\t\t    "pid": "p-tdh-seed"\n'
+    "\t\t  }\n"
+    "\t\t];\n"
+)
+
+
+def patch_company_shell(name: str, data: bytes, host: str) -> tuple[bytes, int]:
+    path = name.replace("\\", "/")
+    if "company-shell/" not in path:
+        return data, 0
+    n = 0
+    host_b = host.encode("ascii")
+    if OFFICE_HOST in data:
+        data = data.replace(OFFICE_HOST, host_b)
+        n += 1
+    if path.endswith("client.js"):
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return data, n
+        begin = text.find("// @@PEOPLE_ROSTER_BEGIN")
+        end = text.find("// @@PEOPLE_ROSTER_END")
+        if begin >= 0 and end > begin:
+            head = text[: begin + len("// @@PEOPLE_ROSTER_BEGIN")]
+            tail = text[end:]
+            text = head + "\n" + SEED_PEOPLE + "\t\t" + tail
+            n += 1
+        if 'label: "订阅"' in text:
+            text = text.replace('label: "订阅"', 'label: "模型"', 1)
+            n += 1
+        if 'keep["订阅"] = 1;' in text and 'keep["模型"] = 1;' not in text:
+            text = text.replace('keep["订阅"] = 1;', 'keep["模型"] = 1;\n\t\t\t\t\t\tkeep["订阅"] = 1;')
+            n += 1
+        if "React.createElement(\"h2\", null, \"订阅\")" in text:
+            text = text.replace(
+                "React.createElement(\"h2\", null, \"订阅\")",
+                "React.createElement(\"h2\", null, \"模型\")",
+                1,
+            )
+            n += 1
+        data = text.encode("utf-8")
+    return data, n
+
+
+MAC_LOGIN_NAME = (
+    b'  if (hit.login) write(path.join(rc8, "login.name"), String(hit.login).trim() + "\\n");\n'
+)
+MAC_LOGIN_SITE = (
+    b'  if (hit.login) write(path.join(rc8, "login.name"), String(hit.login).trim() + "\\n");\n'
+    b'  try {\n'
+    b'    const site = String(urlRaw || "").replace(/\\/company\\/login\\/?$/i, "");\n'
+    b'    if (site) write(path.join(rc8, "site.login"), site + "\\n");\n'
+    b'  } catch (e) {}\n'
+)
+
+
+def patch_mac_login(name: str, data: bytes) -> tuple[bytes, int]:
+    base = name.rsplit("/", 1)[-1]
+    if base != "mac-company-login.js":
+        return data, 0
+    if b"site.login" in data:
+        return data, 0
+    if MAC_LOGIN_NAME in data:
+        return data.replace(MAC_LOGIN_NAME, MAC_LOGIN_SITE, 1), 1
+    crlf = MAC_LOGIN_NAME.replace(b"\n", b"\r\n")
+    if crlf in data:
+        return data.replace(crlf, MAC_LOGIN_SITE.replace(b"\n", b"\r\n"), 1), 1
+    return data, 0
+
+
 def skip_open_tree_check(name: str, data: bytes) -> tuple[bytes, int]:
     base = name.rsplit("/", 1)[-1]
     if base == "start.command":
@@ -265,12 +353,17 @@ def rewrite_zip(src: Path, dst: Path, host: str) -> int:
                 n += 1
                 continue
             data = zin.read(item.filename)
-            if "node_modules" not in name:
+            shell = "company-shell/" in name
+            if "node_modules" not in name or shell:
                 if mark in data:
                     data = data.replace(mark, host_b)
                     n += 1
                 data, skipped = skip_open_tree_check(name, data)
                 n += skipped
+                data, patched = patch_company_shell(name, data, host)
+                n += patched
+                data, mac_login = patch_mac_login(name, data)
+                n += mac_login
             zout.writestr(item, data)
     tmp.replace(dst)
     return n

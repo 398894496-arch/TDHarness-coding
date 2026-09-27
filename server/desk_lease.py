@@ -16,7 +16,7 @@ from pathlib import Path
 DEVICE_RE = re.compile(r"^[A-Za-z0-9._-]{8,80}$")
 LOGIN_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 HEARTBEAT_STALE = 45
-KICK_TIMEOUT = 45
+KICK_TIMEOUT = 5
 LEASE_DIR = Path(os.environ.get("DSH_LEASE_DIR") or r"D:\dsh\runtime\desk-lease")
 
 

@@ -22,8 +22,16 @@ if (-not $prof) {
 }
 if (-not $prof) { throw 'console-profile-missing' }
 
-Get-Process -Name 'TDHarness' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
+Get-Process -Name 'TDHarness','CompanyDesk' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object {
+    $_.Name -match '^(node|node-real)\.exe$' -and (
+      ($_.ExecutablePath -and ($_.ExecutablePath -like '*\TDH\*')) -or
+      ($_.CommandLine -and ($_.CommandLine -like '*\TDH\*'))
+    )
+  } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
 
 $dest = Join-Path $prof 'TDH'
 if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
@@ -73,6 +81,21 @@ if (Test-Path -LiteralPath $nodeReal) {
 }
 if (-not (Test-Path -LiteralPath $nodeExe)) { throw 'bundled-node-missing' }
 if ((Get-Item -LiteralPath $nodeExe).Length -lt 1MB) { throw 'bundled-node-is-wrap' }
+
+$siteYml = 'D:\dsh\site.yml'
+$siteHost = ''
+if (Test-Path -LiteralPath $siteYml) {
+  foreach ($line in [IO.File]::ReadAllLines($siteYml)) {
+    $t = ($line -split '#', 2)[0].Trim()
+    if ($t -match '^host:\s*(.+)$') { $siteHost = $Matches[1].Trim().Trim('"').Trim("'") }
+  }
+}
+if ($siteHost) {
+  $rc8 = Join-Path $prof ('.dsh-company-rc' + '8')
+  New-Item -ItemType Directory -Force -Path $rc8 | Out-Null
+  [IO.File]::WriteAllText((Join-Path $rc8 'site.login'), ('https://' + $siteHost + ':8443' + "`n"), [Text.UTF8Encoding]::new($false))
+  Write-Output ('SITE_LOGIN=' + $siteHost)
+}
 
 $desk = Join-Path $prof 'Desktop'
 New-Item -ItemType Directory -Force -Path $desk | Out-Null

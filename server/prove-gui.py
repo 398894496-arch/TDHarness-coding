@@ -81,6 +81,77 @@ def main() -> None:
         raise SystemExit("exe-still-has-office-ip")
     print("EXE_LOGIN_URL=%s" % login_url)
 
+    people_url = "https://%s:%s/company/people" % (host, port)
+    mail_url = "https://%s:%s/company/mailbox" % (host, port)
+    pcode, praw = fetch(people_url)
+    print("PEOPLE_HTTP=%s" % pcode)
+    if pcode != 200:
+        raise SystemExit("people-http")
+    try:
+        people = json.loads(praw.decode("utf-8") or "{}")
+    except ValueError:
+        raise SystemExit("people-json")
+    rows = people.get("people") if isinstance(people, dict) else None
+    if not isinstance(rows, list) or not any(str((r or {}).get("login") or "") == "tdh" for r in rows):
+        raise SystemExit("people-missing-tdh")
+    print("PEOPLE_HAS_TDH=1")
+    mcode, mraw = fetch(mail_url)
+    print("MAILBOX_HTTP=%s" % mcode)
+    if mcode != 200:
+        raise SystemExit("mailbox-http")
+    try:
+        mail = json.loads(mraw.decode("utf-8") or "{}")
+    except ValueError:
+        raise SystemExit("mailbox-json")
+    floor = mail.get("floor") if isinstance(mail, dict) else None
+    if not isinstance(floor, list) or not any(str((r or {}).get("login") or "") == "tdh" for r in floor):
+        raise SystemExit("mailbox-floor-missing-tdh")
+    print("MAILBOX_HAS_TDH=1")
+
+    gw_url = "http://%s:%s/channels" % (host, site.get("gateway_port") or "8450")
+    gcode, graw = fetch(gw_url)
+    print("CHANNELS_HTTP=%s" % gcode)
+    if gcode != 200:
+        raise SystemExit("channels-http")
+    try:
+        ch = json.loads(graw.decode("utf-8") or "{}")
+    except ValueError:
+        raise SystemExit("channels-json")
+    if not (isinstance(ch, dict) and ch.get("ok") is True and isinstance(ch.get("models"), list)):
+        raise SystemExit("channels-shape")
+    print("CHANNELS_OK=1")
+
+    shell_js = ""
+    shell_host = ""
+    with zipfile.ZipFile(zip_path, "r") as zin:
+        for name in zin.namelist():
+            norm = name.replace("\\", "/")
+            if not norm.endswith("company-shell/lib/client.js"):
+                continue
+            if "node_modules" in norm:
+                shell_js = zin.read(name).decode("utf-8", errors="replace")
+            elif not shell_js:
+                shell_js = zin.read(name).decode("utf-8", errors="replace")
+        for name in zin.namelist():
+            norm = name.replace("\\", "/")
+            if norm.endswith("company-shell/lib/index.js") and "node_modules" in norm:
+                shell_host = zin.read(name).decode("utf-8", errors="replace")
+                break
+    if '"login": "tdh"' not in shell_js:
+        raise SystemExit("zip-shell-missing-tdh")
+    if 'label: "模型"' not in shell_js:
+        raise SystemExit("zip-shell-missing-model-tab")
+    if office in shell_js:
+        raise SystemExit("zip-shell-still-office")
+    print("SHELL_TDH=1")
+    print("SHELL_MODEL_TAB=1")
+    if shell_host:
+        if office in shell_host:
+            raise SystemExit("zip-host-still-office")
+        if host not in shell_host:
+            raise SystemExit("zip-host-missing-lan")
+        print("SHELL_HOST_LAN=1")
+
     mac_path = ROOT / "client-dist" / "CompanyDesk-mac.zip"
     if mac_path.is_file() and mac_path.stat().st_size >= 20 * 1024 * 1024:
         with zipfile.ZipFile(mac_path, "r") as zin:

@@ -279,6 +279,33 @@ internal static class AppHost
         return "";
     }
 
+    // Same box as the share: use the local drive. Loopback UNC is the
+    // path that made first-open wait on SMB and left the workspace picker empty.
+    internal static string ChairPath(string companyPath)
+    {
+        if (string.IsNullOrEmpty(companyPath)) return "";
+        var n = companyPath.Replace('/', Path.DirectorySeparatorChar);
+        try
+        {
+            if (Directory.Exists(n)) return Path.GetFullPath(n);
+        }
+        catch { }
+        var prefix = Site.CompanyPath;
+        if (!string.IsNullOrEmpty(prefix))
+        {
+            var localPrefix = prefix.Replace('/', Path.DirectorySeparatorChar).TrimEnd(Path.DirectorySeparatorChar);
+            if (n.StartsWith(localPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    if (Directory.Exists(n)) return Path.GetFullPath(n);
+                }
+                catch { }
+            }
+        }
+        return ToSharePath(companyPath);
+    }
+
     internal static void EnsureShare(string smbUser, string smbPass)
     {
         for (var i = 0; i < 15; i++)
@@ -423,8 +450,8 @@ internal static class AppHost
             if (hit.Login.Length == 0) hit.Login = user;
             hit.Role = JsonField(text, "role");
             hit.Dept = JsonField(text, "dept");
-            hit.Personal = ToSharePath(JsonField(text, "personal"));
-            hit.Org = ToSharePath(JsonField(text, "org"));
+            hit.Personal = ChairPath(JsonField(text, "personal"));
+            hit.Org = ChairPath(JsonField(text, "org"));
             hit.TsAuth = JsonField(text, "ts_auth");
             hit.GwToken = JsonField(text, "gw_token");
             hit.SmbUser = JsonField(text, "smb_user");
@@ -498,6 +525,13 @@ internal static class AppHost
         try
         {
             var t = File.ReadAllText(p);
+            // 0.1.7 dropped ensureSymlink. Missing "win-junction-failed"
+            // is not a reason to RestoreProduct the whole zip.
+            if (t.IndexOf("function ensureSymlink") < 0)
+            {
+                Log("junction-skip-no-ensuresymlink");
+                return false;
+            }
             return t.IndexOf("win-junction-failed") < 0;
         }
         catch { return false; }
@@ -728,6 +762,9 @@ internal static class AppHost
             File.WriteAllText(Path.Combine(rc, "login.role"), hit.Role.Trim() + "\n");
         if (!string.IsNullOrEmpty(hit.Login))
             File.WriteAllText(Path.Combine(rc, "login.name"), hit.Login.Trim() + "\n");
+        var site = LeaseSite();
+        if (!string.IsNullOrEmpty(site))
+            File.WriteAllText(Path.Combine(rc, "site.login"), site.Trim() + "\n");
     }
 
     // Close and logout both land here. Next launch must type the password
@@ -835,6 +872,13 @@ internal static class AppHost
     internal static void StartDesk(string work, string gwToken)
     {
         var home = SyncDeskHome();
+        try
+        {
+            var org = "";
+            try { org = File.ReadAllText(Path.Combine(Rc8Dir(), "work.org")).Trim(); } catch { }
+            RunLease("pin-overlay", work, org);
+        }
+        catch (Exception pinEx) { Log("pin-overlay " + pinEx.Message); }
         if (PortUp()) return;
         var root = Root;
         var node = NodeBin();
@@ -897,6 +941,7 @@ internal static class AppHost
         // any machine we are asked to diagnose.
         Log("build " + BuildStamp.Mark + " site=" + BuildStamp.Site + " keyed=" + BuildStamp.Keyed);
         Log("start work=" + work + " sandbox=" + sandboxMode);
+        Log("open-fix-local-chair");
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
         var bootLog = Path.Combine(home, "desk-boot.log");
@@ -1009,9 +1054,18 @@ internal static class AppHost
 
     internal static void PinWorkspaces(string personal, string org)
     {
-        NameWorkspace(Rpc("workspace.create", "{\"path\":\"" + JsonEscape(personal) + "\"}"), "个人");
-        if (!string.IsNullOrEmpty(org) && !string.Equals(org, personal, StringComparison.OrdinalIgnoreCase))
-            NameWorkspace(Rpc("workspace.create", "{\"path\":\"" + JsonEscape(org) + "\"}"), "团队");
+        // Official DSH only commits UUID workspaces. Planted w-* rows
+        // show in the picker but selecting them never sticks.
+        try
+        {
+            NameWorkspace(Rpc("workspace.create", "{\"path\":\"" + JsonEscape(personal) + "\"}"), "个人");
+            if (!string.IsNullOrEmpty(org) && !string.Equals(org, personal, StringComparison.OrdinalIgnoreCase))
+                NameWorkspace(Rpc("workspace.create", "{\"path\":\"" + JsonEscape(org) + "\"}"), "团队");
+        }
+        catch (Exception ex) { Log("pin-create " + ex.Message); }
+        try { RunLease("collapse-seats", personal, org); }
+        catch (Exception ex) { Log("pin " + ex.Message); }
+        Log("pin-uuid-seats");
     }
 
     private static void NameWorkspace(string raw, string title)
@@ -1572,6 +1626,8 @@ internal sealed class ShellForm : Form
             _org = hit.Org ?? "";
             _err.Text = "正在交接会话…";
             Application.DoEvents();
+            AppHost.StopDeskNode();
+            try { AppHost.QuitLease(hit.Personal, hit.Org, _leaseWatch); } catch { }
             AppHost.AcquireLease(hit.Personal, hit.Org);
             _err.Text = "正在打开本机 Agent…";
             Application.DoEvents();

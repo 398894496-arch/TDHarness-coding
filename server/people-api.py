@@ -143,6 +143,41 @@ def smb_pair() -> tuple[str, str]:
     return "dshshare", pw[0].strip()
 
 
+def floor_rows() -> list:
+    now = int(time.time())
+    out = []
+    for p in public_people():
+        login = str(p.get("login") or "")
+        hb = 0
+        online = False
+        if login:
+            lease = desk_lease.load_lease(desk_lease.lease_path(login), login)
+            desk_lease.expire(lease, now)
+            hb = int(lease.get("heartbeat_unix") or 0)
+            online = desk_lease.is_online(lease, now)
+        out.append({
+            "login": login,
+            "role": p.get("role"),
+            "online": online,
+            "last_login_unix": hb,
+            "yuan_7d": 0,
+        })
+    return out
+
+
+def mailbox_hit(actor: str) -> dict:
+    row = person(actor) if actor else None
+    return {
+        "ok": True,
+        "login": actor or "",
+        "role": (row or {}).get("role") or "",
+        "people": public_people(),
+        "floor": floor_rows(),
+        "tickets": [],
+        "spend": {"total_yuan": 0, "days": 7, "by_model": []},
+    }
+
+
 def check_login(username: str, password: str) -> dict | None:
     login = username.strip()
     if not login or not password:
@@ -226,11 +261,19 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/company/people"):
             self._send(*json_bytes({"ok": True, "people": public_people()}))
             return
+        if path.startswith("/company/mailbox"):
+            actor = self._actor()
+            self._send(*json_bytes(mailbox_hit(actor)))
+            return
         self._send(*json_bytes({"ok": False, "error": "not-found"}, 404))
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         payload = self._read_json()
+        if path == "/company/mailbox":
+            actor = self._actor() or str(payload.get("login") or "")
+            self._send(*json_bytes(mailbox_hit(actor)))
+            return
         if path == "/company/login":
             hit = check_login(str(payload.get("username") or payload.get("login") or ""), str(payload.get("password") or ""))
             if hit is None:
