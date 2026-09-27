@@ -2,7 +2,9 @@
 # editor cannot turn a two-line edit into a whole-file diff. Everything tracked
 # here is already LF; this pins that rather than changing it.
 * text=auto eol=lf
-
 # Never touch binaries.
 *.jpg binary
 *.png binary
+**/CompanyDesk-win.zip filter=lfs diff=lfs merge=lfs -text
+**/CompanyDesk-mac.zip filter=lfs diff=lfs merge=lfs -text
+*.dmg filter=lfs diff=lfs merge=lfs -text
