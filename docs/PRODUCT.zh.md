@@ -6,7 +6,7 @@
 
 功能长什么样（带截图）：[BRIEF.zh.md](BRIEF.zh.md)。
 
-定位：DeepSeek Harness 上的 **coding 补丁树**。能用，不是成熟产品。本地文件夹 + 你自己的模型 key。不是员工安装包，不是托管 SaaS。官方上游暂时不收外部 PR。产品向的 PR 只在**本仓**合。
+定位：在客户自己的 Windows 上克隆本仓，跑 `scripts/setup-all.ps1`，得到局域网服务器（登录、种子管理员、网关、桌面客户端）。模型在设置里接：订阅列出这次登录能调的模型，API key 写在模型编辑里。不是托管 SaaS。仓库不带公司资料和订阅钥匙。只装内核用 `setup.sh`，那一条不起服务器。官方上游暂时不收外部 PR。产品向的 PR 只在**本仓**合。功能讲解：[BRIEF.zh.md](BRIEF.zh.md)。认领缺口：[WANTED.zh.md](WANTED.zh.md)。
 
 ## 参与门槛
 

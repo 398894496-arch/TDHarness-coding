@@ -923,12 +923,17 @@ internal static class AppHost
         // override it back. Both, or the shell is confined on a share anyway.
         psi.EnvironmentVariables["DSH_PERMISSION_MODE"] = sandboxMode;
         RewriteDefaultPreset(overlay, sandboxMode);
-        psi.EnvironmentVariables["DEEPSEEK_BASE_URL"] = Site.GatewayBase;
-        // This person's own token, so the gateway can attribute the spend and
-        // revoke just them. The shared string is closed: no token, no desk.
+        // Do not export DEEPSEEK_BASE_URL. The overlay cannot name the official
+        // host, and this env would send DeepSeek at the gateway instead.
+        // The provider then uses its built-in endpoint and the key saved
+        // on the Models page (DEEPSEEK_OFFICIAL_KEY).
+        // Gateway token must not occupy DEEPSEEK_API_KEY. That name is the
+        // Models page key, and an inherited env value is read-only, so the
+        // key box never appears. Grok uses GROK_API_KEY instead.
         if (string.IsNullOrEmpty(gwToken) || gwToken == "company-gateway")
             throw new Exception("login-missing-gw-token");
-        psi.EnvironmentVariables["DEEPSEEK_API_KEY"] = gwToken;
+        psi.EnvironmentVariables["GROK_API_KEY"] = gwToken;
+        try { psi.EnvironmentVariables.Remove("DEEPSEEK_API_KEY"); } catch { }
         psi.EnvironmentVariables["NO_PROXY"] = Site.NoProxy;
         psi.EnvironmentVariables["NODE_USE_ENV_PROXY"] = "0";
         foreach (var key in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy" })

@@ -1,8 +1,8 @@
-# Local model setup (coding tree)
+# Model setup
 
-This repo does **not** ship a company gateway, roster, or seats. Model traffic stays between your machine and the vendor.
+The Windows server (`scripts/setup-all.ps1`) has a gateway and a Settings page. A subscription lists the models that login can call. An API key is entered in that provider's model editor. Saved models are what the composer offers. The key stays on that machine (`D:\dsh\runtime\gateway.env` and Settings). It is not in this repo.
 
-Official `dsh` already has a Models page (API keys, custom OpenAI-compatible routes, and vendor logins that pi-ai ships). This tree adds a **CLI** that records the same local facts, with a `*_OK=1` proof and no office login.
+The rest of this page is the **optional kernel-only CLI**. It does not start the gateway. Official `dsh` already has a Models page. This CLI records the same local facts, with a `*_OK=1` proof.
 
 ## What it records
 

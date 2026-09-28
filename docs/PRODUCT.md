@@ -1,30 +1,29 @@
 # TDHarness-coding
 
-A **coding edition** of a DeepSeek Harness patch tree. **Usable, not a mature product.** Not an employee installer and not hosted SaaS.
+Two ways to use this repo. The product path is the Windows LAN server. The kernel-only path is optional.
 
-Install lives only in [README](../README.md) (run it in five minutes). This page answers: **is this what you want?**
+Install lives in [README](../README.md). This page answers: **is this what you want?**
 
 | Is | Is not |
 | --- | --- |
-| Official `@deepseek-ai/dsh` plus the kernel patches in this repo | A finished client, an SLA, or sign-in-and-go |
-| A **local** folder as the workspace, and **your** model API key | Company roster, private tailnet, per-seat quotas, office gateway |
+| Windows: clone, then `scripts/setup-all.ps1` stands up login, a seed admin, the gateway, and the desktop client on that LAN | Hosted SaaS, or a client that phones a vendor cloud for your files |
+| Models configured in Settings after install (subscription list, or an API key in the model editor) | Subscription keys, company documents, or a live roster shipped in git |
+| Optional kernel-only: a local folder plus your own key ([MODELS.md](MODELS.md)) | The kernel-only path pretending to be the full server |
 | Issues and PRs **here** | Upstream accepting PRs (they do not, for now) |
-| Known holes in [BUGS.md](../BUGS.md) | The company delivery workbench (tickets, company share, search door) |
 
 ```mermaid
 flowchart LR
-  W[Local workspace] --> D[dsh + this repo's patches]
-  D --> K[Your API key / model URL]
-  K --> P[Model vendor]
+  C[Desktop client] --> G[Gateway on this Windows server]
+  G --> V[Model vendor]
 ```
 
-Traffic does not go through a company gateway. Keys and bills stay between you and the vendor. Optional local login (ChatGPT / Grok / Claude OAuth, custom OpenAI-compatible URL, per-model context) is a CLI in this tree: [MODELS.md](MODELS.md). It writes `$DSH_HOME/.credentials.yaml`, not a company roster.
+The Windows server sends model traffic through the gateway installed on that machine. Keys stay in `gateway.env` and in Settings on that PC, not in git. The kernel-only CLI ([MODELS.md](MODELS.md)) is separate: it writes `$DSH_HOME/.credentials.yaml` and does not start the gateway.
 
 ---
 
 ## What the running desk does
 
-Added here so the page names the product, not only the patches. **These screenshots are the company delivery desk.** Cloning this repo and running `setup.sh` does not give you login, roster, tickets, or spend. That shell is private ops. This repo is the patch layer that desk runs on.
+These screenshots are the desk `setup-all.ps1` installs. `setup.sh` is only the kernel path and does not start login or the gateway.
 
 中文同一套说明：[PRODUCT.zh.md](PRODUCT.zh.md).
 

@@ -4,7 +4,7 @@
 
 产品讲解（给谁、打开之后能做什么）：[BRIEF.zh.md](BRIEF.zh.md)。
 
-本仓是 DeepSeek Harness 上的 **coding 补丁树**。能用，不是成熟产品。本地文件夹 + 你自己的模型 key。官方上游暂时不收外部 PR。产品向的 PR 只在**本仓**合。
+产品路径是 Windows 上的 `scripts/setup-all.ps1`（局域网服务器）。`setup.sh` 只装内核，不起服务器。官方上游暂时不收外部 PR。产品向的 PR 只在**本仓**合。
 
 ## 参与门槛
 

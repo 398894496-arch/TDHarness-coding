@@ -42,7 +42,9 @@ Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/
 
 ## What the running desk does
 
-This clone is the **kernel patch tree**. The shots below are the **company delivery desk** that sits on those patches (chat, tickets, roster, spend). `setup.sh` does not install that shell. Feature write-up: [docs/PRODUCT.md](docs/PRODUCT.md#what-the-running-desk-does). 中文功能：[docs/PRODUCT.zh.md](docs/PRODUCT.zh.md).
+On Windows, `scripts/setup-all.ps1` installs this desk on the LAN: login, the seed admin, the gateway, and the desktop shortcut. The optional kernel-only `setup.sh` does not start that stack. Feature write-up: [docs/PRODUCT.md](docs/PRODUCT.md#what-the-running-desk-does). 中文：[docs/PRODUCT.zh.md](docs/PRODUCT.zh.md).
+
+Models are not baked into the clone. In Settings, a subscription lists the models that login can call, and an API key is typed in that provider's model editor. The composer shows the models saved there. Put a gateway key in `D:\dsh\runtime\gateway.env` after install. Do not commit it.
 
 | Session | Colleagues |
 | --- | --- |
