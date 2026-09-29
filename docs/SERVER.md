@@ -17,7 +17,9 @@ It does **not** upload or copy:
 - Tailscale auth keys
 - office roster or office IPs
 
-Those stay on the machine that runs setup. The seed admin is created locally: `tdh` / `12345678`. Setup must log in as that account (`LOGIN_PROVE_OK=1`), compile `TDHarness.exe` for this LAN (`COMPILE_APPHOST_OK=1`), serve `/client/version.json`, and prove the AppHost login URL (`GUI_PROVE_OK=1`) before planting the desktop client. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
+**默认管理员：账号 `tdh`，密码 `12345678`。** 安装脚本用这个账号登录（`LOGIN_PROVE_OK=1`），桌面快捷方式也用它。
+
+Those stay on the machine that runs setup. Setup compiles `TDHarness.exe` for this LAN (`COMPILE_APPHOST_OK=1`), serves `/client/version.json`, and proves the AppHost login URL (`GUI_PROVE_OK=1`) before planting the desktop client. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
 
 Fake green: API login on the LAN host while `TDHarness.exe` still has another machine compiled into `Site.LoginUrl`. Setup now rebuilds that exe from `server/AppHost.cs` + this machine's `site.yml`.
 

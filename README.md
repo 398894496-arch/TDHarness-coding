@@ -17,7 +17,9 @@ git lfs pull
 pwsh -File scripts\setup-all.ps1
 ```
 
-Green: `SITE_INSTALL_OK=1`, `LOGIN_PROVE_OK=1`, `GUI_PROVE_OK=1`, `PLANT_CLIENT_OK=1`. Setup logs in as `tdh` / `12345678`, compiles `TDHarness.exe` for this LAN, writes `/client/version.json`, and plants the desktop shortcut. Open that shortcut and use the same account. Put your own model key in `D:\dsh\runtime\gateway.env`, then restart task `Autostart-Gateway`.
+**默认管理员：账号 `tdh`，密码 `12345678`。** 安装会用这个账号登录。打开桌面快捷方式后也用它。这是装机种子账号，不是仓库里的密钥。
+
+Green: `SITE_INSTALL_OK=1`, `LOGIN_PROVE_OK=1`, `GUI_PROVE_OK=1`, `PLANT_CLIENT_OK=1`. Setup compiles `TDHarness.exe` for this LAN, writes `/client/version.json`, and plants the desktop shortcut. Put your own model key in `D:\dsh\runtime\gateway.env`, then restart task `Autostart-Gateway`.
 
 This repo does **not** contain company documents, brain text, subscription keys, Tailscale auth, or an office roster. Those are local to whoever runs setup.
 
