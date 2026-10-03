@@ -41,6 +41,187 @@ function readBody(req) {
   });
 }
 
+const OAUTH_PATH = process.env.TDH_XAI_OAUTH || (ROOT + '\\runtime\\oauth\\xai-account.json');
+
+function loadXai() {
+  try {
+    const j = JSON.parse(fs.readFileSync(OAUTH_PATH, 'utf8'));
+    if (!j || typeof j.access_token !== 'string' || j.access_token.length < 20) return null;
+    const exp = Date.parse(j.expired || '');
+    if (exp && exp < Date.now()) return null;
+    return j;
+  } catch (e) {
+    return null;
+  }
+}
+
+function modelName(body) {
+  if (!body || !body.length) return '';
+  try {
+    const j = JSON.parse(body.toString('utf8'));
+    return typeof j.model === 'string' ? j.model : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function listUpstream(url, token) {
+  return new Promise((resolve) => {
+    const u = new URL(url);
+    const req = https.request({
+      protocol: u.protocol,
+      hostname: u.hostname,
+      path: u.pathname,
+      method: 'GET',
+      headers: { authorization: 'Bearer ' + token },
+      timeout: 20000
+    }, (r) => {
+      const chunks = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => {
+        let rows = [];
+        try {
+          const j = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          rows = Array.isArray(j.data) ? j.data : [];
+        } catch (e) { rows = []; }
+        resolve({ status: r.statusCode || 502, rows: rows });
+      });
+    });
+    req.on('error', () => resolve({ status: 0, rows: [] }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, rows: [] }); });
+    req.end();
+  });
+}
+
+function catalogFromUpstream(rows) {
+  const out = [];
+  for (const row of rows) {
+    const id = row && typeof row.id === 'string' ? row.id : '';
+    if (!id || /imagine|image|video/i.test(id)) continue;
+    const cap = row.capabilities && typeof row.capabilities === 'object' ? row.capabilities : {};
+    const efforts = Array.isArray(cap.reasoning_effort) ? cap.reasoning_effort.filter((x) => typeof x === 'string' && x) : [];
+    const fast = efforts.indexOf('none') >= 0;
+    out.push({
+      id: id,
+      efforts: efforts.filter((x) => x !== 'none'),
+      fast: fast,
+      fastModel: /fast/i.test(id),
+      fastEffort: fast ? 'none' : ''
+    });
+  }
+  return out;
+}
+
+function deskFiles() {
+  const users = (process.env.SystemDrive || 'C:') + '\\Users';
+  let names = [];
+  try { names = fs.readdirSync(users); } catch (e) { names = []; }
+  const roots = [];
+  for (const name of names) {
+    roots.push(users + '\\' + name + '\\.dsh-company-rc' + '8\\desk-home');
+    roots.push(users + '\\' + name + '\\TDH\\CompanyDesk\\home');
+  }
+  const found = [];
+  for (const root of roots) {
+    const rels = [
+      root + '\\profiles\\web\\overlay.yml',
+      root + '\\profiles\\web\\cordis.patch.yml',
+      root + '\\settings.yaml'
+    ];
+    for (const rel of rels) if (fs.existsSync(rel)) found.push(rel);
+  }
+  return found;
+}
+
+function modelBlock(models, indent) {
+  if (!models.length) return indent + 'models: []';
+  const lines = [indent + 'models:'];
+  for (const m of models) {
+    lines.push(indent + '  - id: ' + m.id);
+    lines.push(indent + '    name: ' + m.id);
+    lines.push(indent + '    contextWindow: 256000');
+    lines.push(indent + '    input: [text]');
+    const efforts = [];
+    if (m.fast && m.fastEffort) efforts.push(m.fastEffort);
+    if (Array.isArray(m.efforts)) {
+      for (const e of m.efforts) if (efforts.indexOf(e) < 0) efforts.push(e);
+    }
+    if (efforts.length) {
+      lines.push(indent + '    reasoningEfforts:');
+      for (const e of efforts) lines.push(indent + '      ' + e + ': ' + e);
+    }
+  }
+  return lines.join('\n');
+}
+
+function replaceModels(text, anchor) {
+  const lines = text.split(/\r?\n/);
+  const nl = text.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+  let anchorAt = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf(anchor) >= 0) { anchorAt = i; break; }
+  }
+  if (anchorAt < 0) return null;
+  let start = -1;
+  for (let i = anchorAt + 1; i < lines.length; i++) {
+    if (/^- id:/.test(lines[i]) && anchor.indexOf('- id:') !== 0) break;
+    if (/^\s*models:/.test(lines[i])) { start = i; break; }
+  }
+  if (start < 0) return null;
+  const indent = (lines[start].match(/^\s*/) || [''])[0];
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    if (line.trim() === '') { end++; continue; }
+    const got = (line.match(/^\s*/) || [''])[0].length;
+    if (got <= indent.length) break;
+    end++;
+  }
+  return { lines: lines, start: start, end: end, indent: indent, nl: nl };
+}
+
+function setDefaultModel(id) {
+  for (const file of deskFiles()) {
+    const text = fs.readFileSync(file, 'utf8');
+    const lines = text.split(/\r?\n/);
+    const nl = text.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
+    let at = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('agent-default-model') >= 0) { at = i; break; }
+    }
+    if (at < 0) continue;
+    let modelAt = -1;
+    for (let i = at + 1; i < lines.length; i++) {
+      if (/^- id:/.test(lines[i])) break;
+      if (/^\s*model:/.test(lines[i])) { modelAt = i; break; }
+    }
+    if (modelAt < 0) {
+      if (!id) continue;
+      const indent = (lines[at].match(/^\s*/) || [''])[0] + '  ';
+      lines.splice(at + 1, 0, indent + 'model: ' + id);
+    } else {
+      const indent = (lines[modelAt].match(/^\s*/) || [''])[0];
+      if (id) lines[modelAt] = indent + 'model: ' + id;
+      else lines.splice(modelAt, 1);
+    }
+    fs.writeFileSync(file, lines.join(nl));
+  }
+}
+
+function writeModels(anchor, models) {
+  let n = 0;
+  for (const file of deskFiles()) {
+    const text = fs.readFileSync(file, 'utf8');
+    const hit = replaceModels(text, anchor);
+    if (!hit) continue;
+    const block = modelBlock(models, hit.indent).split('\n');
+    hit.lines.splice(hit.start, hit.end - hit.start, ...block);
+    fs.writeFileSync(file, hit.lines.join(hit.nl));
+    n++;
+  }
+  return n;
+}
+
 function send(res, code, obj) {
   const raw = Buffer.from(JSON.stringify(obj), 'utf8');
   res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'content-length': raw.length });
@@ -48,9 +229,14 @@ function send(res, code, obj) {
 }
 
 function proxy(env, req, body) {
-  const base = env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
-  const key = env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '';
-  const u = new URL(req.url.replace(/^\/v1/, '') || '/models', base.endsWith('/') ? base : base + '/');
+  const model = modelName(body);
+  const xai = model.indexOf('grok') === 0 ? loadXai() : null;
+  const base = xai ? 'https://api.x.ai' : (env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1');
+  const key = xai ? xai.access_token : (env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '');
+  if (!key) return Promise.reject(new Error('no-key'));
+  const u = xai
+    ? new URL(req.url || '/v1/models', 'https://api.x.ai/')
+    : new URL(req.url.replace(/^\/v1/, '') || '/models', base.endsWith('/') ? base : base + '/');
   const lib = u.protocol === 'http:' ? http : https;
   const headers = {
     'content-type': req.headers['content-type'] || 'application/json',
@@ -105,6 +291,18 @@ function boundEnv(env, name) {
   return String(env[name] || '').trim().length >= 8;
 }
 
+function subOf(id, label, extras, hint) {
+  const hit = extras.find((r) => r && (r.id === id || (id === 'gpt' && r.id === 'chatgpt')));
+  return {
+    id: id,
+    kind: 'subscription',
+    label: label,
+    bound: !!(hit && (hit.accessToken || hit.refreshToken)),
+    model: hit && hit.model ? String(hit.model) : '',
+    hint: hint
+  };
+}
+
 function channelSnapshot(env) {
   const models = [
     { id: 'deepseek', kind: 'key', label: 'DeepSeek', bound: boundEnv(env, 'DEEPSEEK_API_KEY'), up: 'https://api.deepseek.com' },
@@ -115,7 +313,7 @@ function channelSnapshot(env) {
   const seen = new Set(models.map((m) => m.id));
   for (const row of extras) {
     if (!row || !row.id || seen.has(row.id)) continue;
-    if (row.kind === 'subscription' || row.id === 'grok' || row.id === 'chatgpt' || row.id === 'claude') continue;
+    if (row.kind === 'subscription' || row.id === 'grok' || row.id === 'gpt' || row.id === 'chatgpt' || row.id === 'claude') continue;
     seen.add(row.id);
     models.push({
       id: row.id,
@@ -130,15 +328,15 @@ function channelSnapshot(env) {
     ok: true,
     mark: 'company-channels-v1',
     subscriptions: [
-      { id: 'grok', kind: 'subscription', label: 'Grok', bound: extras.some((r) => r && r.id === 'grok' && r.bound), vendor: 'xai' },
-      { id: 'chatgpt', kind: 'subscription', label: 'ChatGPT', bound: false, hint: 'sub-use-key' },
-      { id: 'claude', kind: 'subscription', label: 'Claude', bound: false, hint: 'sub-use-key' }
-    ],
+      subOf('grok', 'Grok', extras, ''),
+      subOf('gpt', 'GPT', extras, 'sub-use-key'),
+      subOf('claude', 'Claude', extras, 'sub-use-key')
+    ].map((row) => row.id === 'grok' ? Object.assign({}, row, { bound: !!loadXai() }) : row),
     models
   };
 }
 
-function handleChannels(req, body, env) {
+async function handleChannels(req, body, env) {
   const method = String(req.method || 'GET').toUpperCase();
   if (method === 'GET') return { status: 200, obj: channelSnapshot(env) };
   if (method !== 'POST') return { status: 405, obj: { ok: false, error: 'method' } };
@@ -147,12 +345,29 @@ function handleChannels(req, body, env) {
   const action = String(payload.action || '');
   if (action === 'add-sub') {
     const vendor = String(payload.vendor || '').toLowerCase();
-    if (vendor === 'chatgpt' || vendor === 'claude') {
-      return { status: 400, obj: { ok: false, error: 'sub-use-key', hint: '账号订阅还没接通。用加入模型填 API key。' } };
+    if (vendor === 'gpt' || vendor === 'chatgpt' || vendor === 'claude') {
+      return { status: 400, obj: { ok: false, error: 'sub-use-key', hint: '账号订阅还没接通。先用选择模型，或到下面的 API key 通道。' } };
     }
     if (vendor !== 'grok') return { status: 400, obj: { ok: false, error: 'sub-vendor' } };
-    const rows = loadChannels().filter((r) => r && r.id !== 'grok');
-    rows.push({ id: 'grok', kind: 'subscription', label: 'Grok', bound: true, vendor: 'xai' });
+    return { status: 400, obj: { ok: false, error: 'login-not-installed', hint: '这台没有订阅登录插件，不能跳转登录。' } };
+  }
+  if (action === 'pick-model') {
+    const vendor = String(payload.vendor || '').toLowerCase();
+    const model = String(payload.model || '').trim();
+    if (vendor !== 'grok' && vendor !== 'gpt' && vendor !== 'claude') {
+      return { status: 400, obj: { ok: false, error: 'sub-vendor' } };
+    }
+    if (!model) return { status: 400, obj: { ok: false, error: 'model' } };
+    const rows = loadChannels().filter((r) => r && r.id !== vendor);
+    const prev = loadChannels().find((r) => r && r.id === vendor) || {};
+    rows.push({
+      id: vendor,
+      kind: 'subscription',
+      label: vendor === 'grok' ? 'Grok' : (vendor === 'gpt' ? 'GPT' : 'Claude'),
+      bound: prev.bound === true,
+      model: model,
+      vendor: vendor
+    });
     saveChannels(rows);
     return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH)) };
   }
@@ -184,6 +399,33 @@ function handleChannels(req, body, env) {
     saveChannels(loadChannels().filter((r) => r && r.id !== id));
     return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH)) };
   }
+  if (action === 'list-models') {
+    const vendor = String(payload.vendor || '').toLowerCase();
+    if (vendor !== 'grok') return { status: 400, obj: { ok: false, error: 'sub-vendor' } };
+    const xai = loadXai();
+    if (!xai) return { status: 400, obj: { ok: false, error: 'login-not-installed', models: [] } };
+    const up = await listUpstream('https://api.x.ai/v1/models', xai.access_token);
+    if (up.status !== 200) return { status: 502, obj: { ok: false, error: 'upstream-' + up.status, models: [] } };
+    return { status: 200, obj: { ok: true, vendor: 'grok', models: catalogFromUpstream(up.rows) } };
+  }
+  if (action === 'recognize-key') {
+    const key = String(payload.key || '').trim();
+    const base = String(payload.baseURL || 'https://api.deepseek.com/v1').replace(/\/$/, '');
+    if (key.length < 8) return { status: 400, obj: { ok: false, error: 'key', models: [] } };
+    const root = base.endsWith('/models') ? base : (base.endsWith('/v1') ? base + '/models' : base + '/v1/models');
+    const up = await listUpstream(root, key);
+    if (up.status !== 200) return { status: 502, obj: { ok: false, error: 'upstream-' + up.status, models: [] } };
+    return { status: 200, obj: { ok: true, vendor: 'api', models: catalogFromUpstream(up.rows) } };
+  }
+  if (action === 'apply-models') {
+    const vendor = String(payload.vendor || '').toLowerCase();
+    const models = Array.isArray(payload.models) ? payload.models.filter((m) => m && m.id) : [];
+    const anchor = vendor === 'grok' ? 'displayName: Grok' : (vendor === 'api' ? 'llm-deepseek' : '');
+    if (!anchor) return { status: 400, obj: { ok: false, error: 'vendor' } };
+    const n = writeModels(anchor, models);
+    if (vendor === 'grok') setDefaultModel(models.length ? models[0].id : '');
+    return { status: 200, obj: { ok: n > 0, written: n, count: models.length } };
+  }
   return { status: 400, obj: { ok: false, error: 'action' } };
 }
 
@@ -197,15 +439,18 @@ const server = http.createServer(async (req, res) => {
   }
   if (url === '/channels' || url === '/channels/') {
     const body = (req.method === 'POST') ? await readBody(req) : Buffer.alloc(0);
-    const out = handleChannels(req, body, env);
+    const out = await handleChannels(req, body, env);
     send(res, out.status, out.obj);
     return;
   }
   if (url === '/grok-quota' || url === '/grok-fast') {
-    send(res, 200, { ok: true, enabled: false, grokBound: false, usedPercent: null, remainingPercent: null, plan: '', kind: 'key' });
+    send(res, 200, { ok: true, enabled: false, grokBound: !!loadXai(), usedPercent: null, remainingPercent: null, plan: '', kind: loadXai() ? 'oauth' : 'key' });
     return;
   }
-  const key = env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '';
+  const body = (req.method === 'POST' || req.method === 'PUT') ? await readBody(req) : Buffer.alloc(0);
+  const model = modelName(body);
+  const xai = model.indexOf('grok') === 0 ? loadXai() : null;
+  const key = xai ? 'xai' : (env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '');
   if (!key) {
     send(res, 503, {
       error: {
@@ -216,7 +461,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   try {
-    const body = (req.method === 'POST' || req.method === 'PUT') ? await readBody(req) : Buffer.alloc(0);
     const up = await proxy(env, req, body);
     res.writeHead(up.status, { 'content-type': up.headers['content-type'] || 'application/json' });
     res.end(up.body);

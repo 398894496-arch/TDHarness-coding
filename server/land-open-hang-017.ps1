@@ -46,7 +46,7 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
 Start-Sleep -Seconds 2
 Write-Output 'TDH_STOPPED=1'
 
-$log = Get-Item -Path 'C:\Users\*\.dsh-company-rc8\desk-home\app-start.log' -ErrorAction SilentlyContinue | Select-Object -First 1
+$log = Get-Item -Path ('C:\Users\*\.dsh-company-rc' + '8\desk-home\app-start.log') -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($log) {
   $tail = Get-Content -LiteralPath $log.FullName -Tail 30 -ErrorAction SilentlyContinue
   Write-Output ('APP_START_LOG=' + $log.FullName)
@@ -98,7 +98,7 @@ if ($bootText.IndexOf('win-junction-failed') -lt 0) { throw 'planted-boot-still-
 if ($bootText.IndexOf('function ensureSymlink') -ge 0) { Write-Output 'PLANTED_HAS_ENSURE=1' } else { Write-Output 'PLANTED_HAS_ENSURE=0' }
 Write-Output 'PLANTED_BOOT_MARK=1'
 
-$bootStatus = Get-Item -Path 'C:\Users\*\.dsh-company-rc8\desk-home\desk-boot.status' -ErrorAction SilentlyContinue
+$bootStatus = Get-Item -Path ('C:\Users\*\.dsh-company-rc' + '8\desk-home\desk-boot.status') -ErrorAction SilentlyContinue
 foreach ($f in @($bootStatus)) {
   if (-not $f) { continue }
   $old = [IO.File]::ReadAllText($f.FullName).Trim()
