@@ -4,6 +4,14 @@
 //
 //   node kernel-selftest.mjs --prefix <kernel prefix> --home <desk DSH_HOME> [--node <node.exe>] [--report <file>]
 //
+// To try something by hand on the same throwaway copy (it never sees the real
+// conversations), keep it running for a while:
+//   --hold <seconds> [--port <n>] [--key-file <gateway token file>] [--set-context <model>=<tokens>] [--hold-log <file>]
+// --set-context declares a smaller context size for one model in the copy, so
+// that automatic compaction can be watched happening in a short conversation.
+// When the hold ends, COMPACTION_RECORDS= says how many compaction events the
+// copy's conversations recorded.
+//
 // What "works" means here:
 //   1. the composed configuration validates (--dump-config);
 //   2. the kernel starts and serves its page;
@@ -15,7 +23,8 @@
 // overlay points elsewhere is pointed into that folder too. The copy and the
 // process are removed at the end. Prints SELFTEST_OK=1 or SELFTEST_FAIL=<why>.
 import { spawn, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import zlib from "node:zlib";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -136,6 +145,36 @@ function sandboxHome(src, dest) {
 	return overlay;
 }
 
+// How many compaction events the conversations under `dir` hold. A session
+// file is a run of compressed frames, one per append.
+function compactionRecords(dir) {
+	let n = 0;
+	const walk = (d) => {
+		let names = [];
+		try { names = readdirSync(d); } catch { return; }
+		for (const name of names) {
+			const p = path.join(d, name);
+			let st;
+			try { st = statSync(p); } catch { continue; }
+			if (st.isDirectory()) walk(p);
+			else if (/\.jsonl\.zstd$/.test(name)) {
+				try {
+					const buf = readFileSync(p);
+					let at = 0;
+					while (at < buf.length) {
+						const r = zlib.zstdDecompressSync(buf.subarray(at), { info: true });
+						n += (r.buffer.toString("utf8").match(/"type":"compaction\/summary"/g) || []).length;
+						if (!r.engine || !r.engine.bytesWritten) break;
+						at += r.engine.bytesWritten;
+					}
+				} catch { /* a file being written is read next time */ }
+			}
+		}
+	};
+	walk(dir);
+	return n;
+}
+
 async function main() {
 	const fails = [];
 	const report = { prefix, version: "", checks: {} };
@@ -148,6 +187,21 @@ async function main() {
 	let child = null;
 	try {
 		const overlay = sandboxHome(home, box);
+		if (args["set-context"]) {
+			// only in the copy: one model is declared smaller than it is
+			const [model, size] = String(args["set-context"]).split("=");
+			const patch = path.join(box, "profiles", "web", "cordis.patch.yml");
+			if (existsSync(patch) && model && Number(size) > 0) {
+				const lines = readFileSync(patch, "utf8").split(/\r?\n/);
+				let inModel = false;
+				for (let i = 0; i < lines.length; i++) {
+					const m = /^\s*-\s*id:\s*(\S+)\s*$/.exec(lines[i]);
+					if (m) inModel = m[1] === model;
+					else if (inModel && /^\s*contextWindow:/.test(lines[i])) lines[i] = lines[i].replace(/contextWindow:.*/, "contextWindow: " + Number(size));
+				}
+				writeFileSync(patch, lines.join("\n"));
+			}
+		}
 		// Start the kernel the way the Windows desk does: its links become
 		// directory junctions, which an ordinary account may create.
 		const preload = [];
@@ -156,7 +210,9 @@ async function main() {
 			writeFileSync(shim, JUNCTION_SHIM);
 			preload.push("--require", shim);
 		}
-		const env = { ...process.env, DSH_HOME: box, GROK_API_KEY: "selftest", NO_PROXY: "*", NODE_USE_ENV_PROXY: "0", DSH_PERMISSION_MODE: "workspace-write" };
+		let key = "selftest";
+		if (args["key-file"] && existsSync(args["key-file"])) key = readFileSync(args["key-file"], "utf8").trim() || key;
+		const env = { ...process.env, DSH_HOME: box, GROK_API_KEY: key, NO_PROXY: "*", NODE_USE_ENV_PROXY: "0", DSH_PERMISSION_MODE: "workspace-write" };
 		delete env.DEEPSEEK_API_KEY;
 
 		// 1. configuration
@@ -167,7 +223,7 @@ async function main() {
 		if (dump.status !== 0 || bad.length) fails.push("config");
 
 		// 2. boot
-		const port = await freePort();
+		const port = Number(args.port) || await freePort();
 		const log = [];
 		child = spawn(node, [...preload, bin, "--profile", "web", "--patch", overlay, "--host", "127.0.0.1", "--port", String(port), "--no-open", "--trusted-host", "127.0.0.1"], {
 			env, cwd: box, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
@@ -177,6 +233,8 @@ async function main() {
 			const seen = (c) => {
 				const t = String(c);
 				log.push(t);
+				// while held for a look by hand, what the kernel says is kept where it can be read
+				if (args["hold-log"]) { try { appendFileSync(args["hold-log"], t); } catch { /* the log is a convenience */ } }
 				if (/dsh web: http/.test(t)) { clearTimeout(timer); resolve(true); }
 			};
 			child.stdout.on("data", seen);
@@ -213,6 +271,12 @@ async function main() {
 			try { meOk = JSON.parse(me.text).ok === true; } catch { meOk = false; }
 			report.checks.shell = { me: me.status, meOk };
 			if (!meOk) fails.push("shell");
+			if (Number(args.hold) > 0) {
+				process.stdout.write("SELFTEST_HOLD port=" + port + " seconds=" + Number(args.hold) + "\n");
+				await new Promise((r) => setTimeout(r, Number(args.hold) * 1000));
+				report.checks.compactionRecords = compactionRecords(box);
+				process.stdout.write("COMPACTION_RECORDS=" + report.checks.compactionRecords + "\n");
+			}
 		}
 	} finally {
 		killTree(child);
