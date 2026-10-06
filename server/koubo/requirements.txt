@@ -1,0 +1,14 @@
+# What koubo.py imports. Versions are the ones it was last run with.
+funasr>=1.4
+modelscope>=1.40
+torch>=2.5
+torchaudio>=2.5
+pyJianYingDraft>=0.3.0
+pymediainfo>=7
+jieba>=0.42
+numpy>=2
+pillow>=11
+rembg>=2.0.60
+onnxruntime>=1.20
+opencv-python-headless>=4.10
+requests>=2.31

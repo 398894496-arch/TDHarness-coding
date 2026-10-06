@@ -1,0 +1,11 @@
+sfx/
+music/
+broll/
+keys/
+models/
+venv/
+试听/
+assets/
+fonts/
+__pycache__/
+work/
