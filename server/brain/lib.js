@@ -170,7 +170,8 @@ function eventText(ev) {
   if (content && typeof content === 'object' && !Array.isArray(content) && content.content != null && content.text == null) content = content.content;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    return content.map((c) => (c && (c.text || c.content)) || '').join(' ');
+    // what was said, not the model's thinking on the way there
+    return content.filter((c) => !(c && /reason|think/i.test(String(c.type || '')))).map((c) => (c && (c.text || c.content)) || '').join(' ');
   }
   if (content && typeof content === 'object' && content.text) return content.text;
   if (typeof data.text === 'string') return data.text;
