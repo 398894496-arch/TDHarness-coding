@@ -6,7 +6,8 @@ That starts:
 
 - download and login on `https://<this-pc>:8443/`
 - people API on `127.0.0.1:4181`
-- knowledge search on `127.0.0.1:4182` (empty brain)
+- knowledge search on `127.0.0.1:4182` (empty until the first night)
+- task `TDH-Brain-Daily` at 00:15: reads the day's conversations and distils them into the brain (`server/brain/run-daily.ps1`)
 - model gateway on `0.0.0.0:8450`
 
 It does **not** upload or copy:
@@ -22,5 +23,9 @@ It does **not** upload or copy:
 Those stay on the machine that runs setup. Setup compiles `TDHarness.exe` for this LAN (`COMPILE_APPHOST_OK=1`), serves `/client/version.json`, and proves the AppHost login URL (`GUI_PROVE_OK=1`) before planting the desktop client. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
 
 Fake green: API login on the LAN host while `TDHarness.exe` still has another machine compiled into `Site.LoginUrl`. Setup now rebuilds that exe from `server/AppHost.cs` + this machine's `site.yml`.
+
+Optional, not run by setup: `pwsh -File server\koubo\install.ps1` for the talking-head editing tool (needs Python 3.10–3.12 and Jianying on the machine that opens the drafts).
+
+The client package carries OpenCLI for browser work. Each person loads its Chrome extension once; the agent guides them through it.
 
 Needs: Windows, Administrator, Python 3, Node 22+, Git LFS (`git lfs pull`).

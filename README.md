@@ -59,6 +59,16 @@ Models are not baked into the clone. In Settings, a subscription lists the model
 - **Personnel:** department, promote/demote, deactivate, revoke gateway token. Seed admin cannot be deactivated.
 - **Tasks:** ticket with 概览 / 工作日志, deliverables on the company disk, **提交验收** (saying “done” in chat does not count).
 
+Also on the server and in the client (October 2026):
+
+- **Knowledge base, filled every night.** Task `TDH-Brain-Daily` (00:15) reads the day's conversations where the desk keeps them, writes an evidence layer and one distilled page per person per day through the gateway, and collects corrections. The desk searches it through `127.0.0.1:4182`. That search does not yet check who is asking, so keep 4182 on the trusted LAN.
+- **Web search through the gateway.** Chinese queries go to domestic engines first (Bing China, 360) with Exa alongside; GitHub, Bilibili and YouTube have their own channels. A query starting with `深搜 ` is answered by Grok's own web search with sources; it finishes in the background and is picked up by asking the same query again.
+- **Browser work.** The Windows client ships OpenCLI with its Chrome extension in `opencli/`. The first time the agent needs a browser it checks the bridge, and if the extension is not loaded it walks the person through loading it, one step at a time.
+- **Long conversations.** Context is compacted automatically at 80% of the model's window (400K of Grok's 500K) and again if the provider reports the prompt too long. `/compact` does it by hand.
+- **Talking-head editing (optional).** `pwsh -File server\koubo\install.ps1` installs a tool that turns a recording into a Jianying (CapCut China) draft: alignment, transcription that tells the presenter from an off-screen voice, cuts, stabilisation, subtitles and layouts. The agent follows `SKILL.md` beside it.
+
+The Windows client package carries kernel 0.2.1-alpha.1. The Mac package is still the older build. `kernel.yml` pins the kernel for the kernel-only path below, not for the desk.
+
 ## Open work
 
 C1–C9 are closed in **[BUGS.md](BUGS.md)** (sandbox, secrets, junctions, search errors, local model login). Pick a remaining hole from that file, or file a Bug.
