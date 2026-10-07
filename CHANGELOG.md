@@ -4,6 +4,13 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.07.4
+
+**客户端（Windows）**
+- 自带桌面软件操作：Windows-MCP 0.8.7 连同它自己的 Python 3.14 放在 `windows-mcp/`，员工电脑什么都不用装。AI 能读窗口、点、打字、滚动、拖动、按快捷键；不开注册表和 PowerShell 工具，关掉匿名统计。路径按客户端安装位置自动算，装在哪都能找到；Mac 上这一条自动关闭。
+- 新技能 `company-desktop`：每步动作前后都看一眼、点错就撤销；导出、覆盖、删除、发送先问员工；剪映是自绘界面，剪辑走草稿，界面只做剪映独有的在线功能、检查和导出，附剪映快捷键。
+- 修正：overlay 里新增插件必须写成 `- insert:`，直接写顶层条目会被内核当成「改已有条目」静默跳过。
+
 ## 2026.10.07.3
 
 **CI**
