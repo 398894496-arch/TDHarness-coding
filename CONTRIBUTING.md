@@ -55,3 +55,9 @@ New marks need a unique `company-…-vN` string and a line in [BUGS.md](BUGS.md)
 Separate plugin repos can use the GitHub topic `dsh-plugin`. Keep the canonical hole list in [BUGS.md](BUGS.md) so it does not fork into Discord-only lore.
 
 Layout and planes: [docs/HACKING.md](docs/HACKING.md).
+
+## Every merge to main
+
+Bump `VERSION` (the release date, `YYYY.MM.DD`), add a section for it at the top of `CHANGELOG.md`, and update the version line in `README.md`. The `release-notes` check refuses a pull request that misses any of these; after the merge CI tags `v<VERSION>` and publishes a release with those notes.
+
+每次合进 main：改 `VERSION`（发布日期）、在 `CHANGELOG.md` 最上面写这一版的更新说明、同步首页版本行。漏一样 CI 不过；合并后自动打标签发 Release。
