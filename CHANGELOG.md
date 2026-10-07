@@ -4,6 +4,16 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.07.6
+
+**客户端更新流程（Windows / Mac）**
+- 检查新版不再卡住：原来只要有新版，检查程序会先把安装目录 2 万多个文件核对一遍（最长 3 分钟），而且这段时间窗口在界面线程上等，Windows 显示「没有回应」。现在检查只比对版本标记，一般几十毫秒；Windows 窗口把检查和更新都放到后台，原来那个 15 秒超时实际不起作用的问题也一并修好。
+- 更新有进度：登录框下方实时显示「正在下载新版 123 / 405 MB（30%）」「正在安装新版 12000 / 41185 个文件（29%）」，不再只弹一个「正在下载并安装」就没了下文。Mac 窗口同样显示下载和安装进度。
+- 更新真正装全：更新脚本原来只覆盖内核、插件等几个目录，`windows-mcp/`、`peekaboo/`、`skills/`、`opencli/`（以及 Windows 的 `ffmpeg/`）从不随更新下发；现在都在更新范围内。
+- Windows 窗口程序真正换新：正在运行的 `TDHarness.exe` 覆盖不了，原来只能存成 `TDHarness.exe.new` 且没人换上。现在更新时先把运行中的程序改名挪开再放新的；检查程序也会把遗留的 `.new` 换上。
+- 自动补装：已装的客户端如果缺少自己清单里列着的组件，检查程序会提示「需要补装一次」。从旧版升上来的电脑多走一轮就能补齐。
+- 在客户机临时目录实测：405 MB 下载加 41185 个文件安装共 61 秒，进度每半秒一条；运行中的 `TDHarness.exe` 被换成新文件，进程不中断。Mac 下 416 MB 37 秒。
+
 ## 2026.10.07.5
 
 **客户端（Mac）**
