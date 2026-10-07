@@ -6,7 +6,7 @@ That starts:
 
 - download and login on `https://<this-pc>:8443/`
 - people API on `127.0.0.1:4181`
-- knowledge search on `127.0.0.1:4182` (empty until the first night)
+- knowledge search on `127.0.0.1:4182`, reached from the LAN at `/company/knowledge` with a login token only (empty until the first night)
 - task `TDH-Brain-Daily` at 00:15: reads the day's conversations and distils them into the brain (`server/brain/run-daily.ps1`)
 - model gateway on `0.0.0.0:8450`
 
@@ -26,6 +26,6 @@ Fake green: API login on the LAN host while `TDHarness.exe` still has another ma
 
 Optional, not run by setup: `pwsh -File server\koubo\install.ps1` for the talking-head editing tool (needs Python 3.10–3.12 and Jianying on the machine that opens the drafts).
 
-The client package carries OpenCLI for browser work. Each person loads its Chrome extension once; the agent guides them through it.
+Both client packages (Windows, and Mac for Apple silicon and Intel) carry OpenCLI for browser work. Each person loads its Chrome extension once; the agent guides them through it.
 
 Needs: Windows, Administrator, Python 3, Node 22+, Git LFS (`git lfs pull`).

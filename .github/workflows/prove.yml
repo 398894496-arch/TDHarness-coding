@@ -35,6 +35,8 @@ jobs:
         run: node scripts/prove-search-errors.js
       - name: Prove local OAuth credential recording and custom endpoints
         run: node scripts/prove-models.js
+      - name: Prove knowledge search answers only a live login token
+        run: node scripts/prove-knowledge.js
   release-notes:
     runs-on: ubuntu-latest
     steps:
