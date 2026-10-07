@@ -658,18 +658,61 @@ internal static class AppHost
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
         ClearChildNodeOptions(psi);
-        var p = Process.Start(psi);
-        if (p == null) return "UPDATE_SKIP=1";
-        var so = p.StandardOutput.ReadToEnd();
-        p.StandardError.ReadToEnd();
-        if (!p.WaitForExit(15000))
+        // Read asynchronously: ReadToEnd() would wait for the child to exit and
+        // the timeout below would never fire.
+        var buf = new StringBuilder();
+        var p = new Process();
+        p.StartInfo = psi;
+        p.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null) lock (buf) { buf.AppendLine(e.Data); }
+        };
+        p.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { };
+        if (!p.Start()) return "UPDATE_SKIP=1";
+        p.BeginOutputReadLine();
+        p.BeginErrorReadLine();
+        if (!p.WaitForExit(20000))
         {
             try { p.Kill(); } catch { }
             Log("update-timeout");
             return "UPDATE_SKIP=1";
         }
+        p.WaitForExit();
+        string so;
+        lock (buf) { so = buf.ToString(); }
         Log("pack-update " + so.Replace("\r", " ").Replace("\n", " | "));
         return so;
+    }
+
+    // "incomplete:windows-mcp,skills" when this install lacks parts its own
+    // BUILD.json lists (an older updater did not copy them); "" otherwise.
+    internal static string UpdateReason(string so)
+    {
+        var m = Regex.Match(so ?? "", @"UPDATE_REASON=(incomplete:[A-Za-z0-9_,-]+)");
+        return m.Success ? m.Groups[1].Value : "";
+    }
+
+    // TREE_PROGRESS=<phase> <done> <total> from tree-restore.ps1, as a line
+    // for the login window.
+    internal static string ProgressText(string line)
+    {
+        var m = Regex.Match(line ?? "", @"^TREE_PROGRESS=(\w+) (\d+) (-?\d+)");
+        if (!m.Success) return "";
+        var phase = m.Groups[1].Value;
+        var done = long.Parse(m.Groups[2].Value);
+        var total = long.Parse(m.Groups[3].Value);
+        if (phase == "download")
+        {
+            var mb = (done / 1048576).ToString();
+            if (total <= 0) return "正在下载新版 " + mb + " MB…";
+            return "正在下载新版 " + mb + " / " + (total / 1048576) + " MB（" + (done * 100 / total) + "%）";
+        }
+        if (phase == "install")
+        {
+            if (total <= 0) return "正在安装新版…";
+            return "正在安装新版 " + done + " / " + total + " 个文件（" + (done * 100 / total) + "%）";
+        }
+        return "";
     }
 
     internal static void DeferServedUpdate(string mark)
@@ -733,6 +776,11 @@ internal static class AppHost
 
     internal static void RestoreProduct()
     {
+        RestoreProduct(null);
+    }
+
+    internal static void RestoreProduct(Action<string> onProgress)
+    {
         StopDeskNode();
         var restore = Path.Combine(Root, "tree-restore.ps1");
         if (!File.Exists(restore)) throw new Exception("tree-restore-missing");
@@ -743,15 +791,41 @@ internal static class AppHost
         psi.CreateNoWindow = true;
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
-        var p = Process.Start(psi);
-        if (p == null) throw new Exception("tree-restore-start-failed");
-        var so = p.StandardOutput.ReadToEnd();
-        var se = p.StandardError.ReadToEnd();
-        if (!p.WaitForExit(600000))
+        var outBuf = new StringBuilder();
+        var errBuf = new StringBuilder();
+        var p = new Process();
+        p.StartInfo = psi;
+        p.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data == null) return;
+            if (e.Data.StartsWith("TREE_PROGRESS="))
+            {
+                if (onProgress != null)
+                {
+                    try { onProgress(e.Data); } catch { }
+                }
+                return;
+            }
+            lock (outBuf) { outBuf.AppendLine(e.Data); }
+        };
+        p.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null) lock (errBuf) { errBuf.AppendLine(e.Data); }
+        };
+        if (!p.Start()) throw new Exception("tree-restore-start-failed");
+        p.BeginOutputReadLine();
+        p.BeginErrorReadLine();
+        // A 400 MB package over a slow office link can take a while; the
+        // window shows progress meanwhile, so give it room.
+        if (!p.WaitForExit(1800000))
         {
             try { p.Kill(); } catch { }
             throw new Exception("tree-restore-timeout");
         }
+        p.WaitForExit();
+        string so, se;
+        lock (outBuf) { so = outBuf.ToString(); }
+        lock (errBuf) { se = errBuf.ToString(); }
         Log("tree-restore " + so.Replace("\r", " ").Replace("\n", " | ") + " " + se);
         if (p.ExitCode != 0 || so.IndexOf("TREE_RESTORE_OK=1") < 0)
             throw new Exception("tree-restore-failed");
@@ -1618,40 +1692,113 @@ internal sealed class ShellForm : Form
             {
                 try { AppHost.EnsureCompanyNet(); }
                 catch (Exception ex) { AppHost.Log("ts-boot " + ex.Message); }
-                try
-                {
-                    BeginInvoke(new Action(delegate
-                    {
-                        _err.ForeColor = Color.FromArgb(90, 90, 90);
-                        _err.Text = "正在检查是否有新版…";
-                        Application.DoEvents();
-                        try
-                        {
-                            AppHost.GateProductTree();
-                        }
-                        catch (Exception upEx)
-                        {
-                            if (upEx.Message == "update-abort")
-                            {
-                                Close();
-                                return;
-                            }
-                            _err.ForeColor = Color.FromArgb(217, 45, 32);
-                            _err.Text = "更新失败：" + upEx.Message;
-                            return;
-                        }
-                        if (_err.Text == "正在检查是否有新版…")
-                        {
-                            _err.Text = "";
-                            _err.ForeColor = Color.FromArgb(217, 45, 32);
-                        }
-                    }));
-                }
-                catch { }
+                try { CheckForUpdate(); }
+                catch (Exception upEx) { AppHost.Log("update-check " + upEx.Message); ShowNote("", false); }
             }));
             boot.IsBackground = true;
             boot.Start();
         };
+    }
+
+    // Runs on the boot thread. Only the dialog and the label touch the UI.
+    private void CheckForUpdate()
+    {
+        ShowNote("正在检查是否有新版…", false);
+        AppHost.Log("tree-check skip-on-login");
+        if (AppHost.BootLacksWinJunction())
+        {
+            AppHost.Log("update-force-junction");
+            RunUpdate("正在修复本机安装…");
+            return;
+        }
+        var so = AppHost.CheckServedUpdate();
+        if (so.IndexOf("UPDATE_AVAILABLE=1") < 0)
+        {
+            ShowNote("", false);
+            return;
+        }
+        var served = "";
+        var m = Regex.Match(so, @"SERVED_MARK=([0-9a-f]{32})");
+        if (m.Success) served = m.Groups[1].Value;
+        var reason = AppHost.UpdateReason(so);
+        var ask = reason.Length > 0
+            ? "这台电脑缺少新版的部分组件（" + reason.Substring("incomplete:".Length) + "），需要补装一次。\n\n是 = 现在补装\n否 = 稍后再说\n取消 = 退出"
+            : "公司已发新版。\n\n点「是」一键更新，不用打开下载页。\n\n是 = 现在更新\n否 = 稍后再说\n取消 = 退出";
+        var dr = DialogResult.No;
+        Invoke(new Action(delegate
+        {
+            dr = MessageBox.Show(this, ask, "TDHarness",
+                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1);
+        }));
+        if (dr == DialogResult.Cancel)
+        {
+            BeginInvoke(new Action(delegate { Close(); }));
+            return;
+        }
+        if (dr == DialogResult.No)
+        {
+            if (served.Length == 32) AppHost.DeferServedUpdate(served);
+            AppHost.Log("update-later");
+            ShowNote("", false);
+            return;
+        }
+        RunUpdate("正在准备更新…");
+    }
+
+    // Download and install with the window alive: the label shows MB / files.
+    private void RunUpdate(string first)
+    {
+        SetLoginEnabled(false);
+        ShowNote(first, false);
+        try
+        {
+            AppHost.RestoreProduct(delegate(string line)
+            {
+                var text = AppHost.ProgressText(line);
+                if (text.Length > 0) ShowNote(text, false);
+            });
+        }
+        catch (Exception ex)
+        {
+            AppHost.Log("update-restore-fail " + ex.Message);
+            ShowNote("更新没完成（" + ex.Message + "），先用现在这版登录。", true);
+            SetLoginEnabled(true);
+            return;
+        }
+        ShowNote("更新完成，正在重新打开…", false);
+        Invoke(new Action(delegate
+        {
+            MessageBox.Show(this, "更新完成。请重新登录。", "TDHarness", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }));
+        AppHost.RelaunchSelf();
+    }
+
+    private void ShowNote(string text, bool error)
+    {
+        try
+        {
+            BeginInvoke(new Action(delegate
+            {
+                _err.ForeColor = error ? Color.FromArgb(217, 45, 32) : Color.FromArgb(90, 90, 90);
+                _err.Text = text;
+                if (!error && text.Length == 0) _err.ForeColor = Color.FromArgb(217, 45, 32);
+            }));
+        }
+        catch { }
+    }
+
+    private void SetLoginEnabled(bool on)
+    {
+        try
+        {
+            BeginInvoke(new Action(delegate
+            {
+                _go.Enabled = on;
+                _user.Enabled = on;
+                _pass.Enabled = on;
+            }));
+        }
+        catch { }
     }
 
     private void SignIn()

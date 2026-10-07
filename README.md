@@ -1,6 +1,6 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.07.5** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.07.6** · [更新说明 / Changelog](CHANGELOG.md)
 
 **A Windows machine can clone this repo and stand up a full TDH server.** That is the product path. Kernel-only coding setup is still below for people who only want the patched `dsh` CLI.
 
