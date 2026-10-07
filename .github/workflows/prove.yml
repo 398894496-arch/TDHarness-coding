@@ -28,9 +28,25 @@ jobs:
       - name: Install ripgrep for the real Linux search proof
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ripgrep
+      # The Chocolatey community feed sometimes answers nothing and choco still
+      # exits 0 with "installed 0/0", so the search proof then dies on a missing
+      # rg. Take Microsoft's packaged rg from npm first, choco only as fallback,
+      # and fail here if neither produced a working rg.
       - name: Install ripgrep for the real Windows search proof
         if: runner.os == 'Windows'
-        run: choco install ripgrep --yes --no-progress
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'rg'
+          npm install --no-save --no-fund --no-audit --prefix $dir '@vscode/ripgrep'
+          $bin = Join-Path $dir 'node_modules\@vscode\ripgrep\bin'
+          if (Test-Path (Join-Path $bin 'rg.exe')) {
+            Add-Content -Path $env:GITHUB_PATH -Value $bin
+            & (Join-Path $bin 'rg.exe') --version
+          } else {
+            choco install ripgrep --yes --no-progress
+            rg --version
+            if ($LASTEXITCODE -ne 0) { throw 'ripgrep-missing' }
+          }
       - name: Prove missing-root fallback preserves real search errors
         run: node scripts/prove-search-errors.js
       - name: Prove local OAuth credential recording and custom endpoints
