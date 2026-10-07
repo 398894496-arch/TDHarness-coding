@@ -27,7 +27,10 @@ if (base) {
 		if (!changed.includes("CHANGELOG.md")) fail("this change does not add release notes to CHANGELOG.md");
 		let old = "";
 		try { old = sh("git show origin/" + base + ":VERSION"); } catch { old = ""; }
-		if (old && old >= version) fail("VERSION must move forward from " + old);
+		// Numeric per part: 2026.10.07.10 comes after 2026.10.07.9.
+		const parts = (v) => v.split(".").map(Number);
+		const newer = (a, b) => { const x = parts(a), y = parts(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+		if (old && !newer(version, old)) fail("VERSION must move forward from " + old);
 	}
 }
 console.log("RELEASE_NOTES_OK=1 version=" + version);

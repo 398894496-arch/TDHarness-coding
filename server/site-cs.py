@@ -131,8 +131,6 @@ https://%s:%s {
 	handle /company/knowledge* {
 		uri strip_prefix /company/knowledge
 		reverse_proxy 127.0.0.1:4182 {
-			header_up X-Company-Desk {company_desk}
-			header_up X-Auth-Request-User {http.request.header.X-Auth-Request-User}
 			flush_interval -1
 		}
 	}

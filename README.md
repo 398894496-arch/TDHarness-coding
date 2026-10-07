@@ -1,6 +1,6 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.07** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.07.2** · [更新说明 / Changelog](CHANGELOG.md)
 
 **A Windows machine can clone this repo and stand up a full TDH server.** That is the product path. Kernel-only coding setup is still below for people who only want the patched `dsh` CLI.
 
@@ -59,17 +59,19 @@ Models are not baked into the clone. In Settings, a subscription lists the model
 - **Session:** 会话 / 任务, 个人 and 团队 workspaces, model picker, Full access, files.
 - **Colleagues:** who is online, role, last login, 7-day local cost estimate (not the vendor bill).
 - **Personnel:** department, promote/demote, deactivate, revoke gateway token. Seed admin cannot be deactivated.
-- **Tasks:** ticket with 概览 / 工作日志, deliverables on the company disk, **提交验收** (saying “done” in chat does not count).
+- **Tasks:** cards with state and owner (待审批 / 进行中); opening one starts a conversation pinned to that card. Deliverables go on the company disk, and only **提交验收** counts as done, not saying so in chat.
+
+The screenshots use made-up people and tasks.
 
 Also on the server and in the client (October 2026):
 
-- **Knowledge base, filled every night.** Task `TDH-Brain-Daily` (00:15) reads the day's conversations where the desk keeps them, writes an evidence layer and one distilled page per person per day through the gateway, and collects corrections. The desk searches it through `127.0.0.1:4182`. That search does not yet check who is asking, so keep 4182 on the trusted LAN.
+- **Knowledge base, filled every night.** Task `TDH-Brain-Daily` (00:15) reads the day's conversations where the desk keeps them, writes an evidence layer and one distilled page per person per day through the gateway, and collects corrections. The desk searches it through `/company/knowledge` (`127.0.0.1:4182`), and only with the login token a person got at sign-in: a revoked token or a disabled person gets nothing, a name typed into a header is ignored, and each search is logged (who, how many hits, not the question). Everyone on the roster sees the whole brain for now.
 - **Web search through the gateway.** Chinese queries go to domestic engines first (Bing China, 360) with Exa alongside; GitHub, Bilibili and YouTube have their own channels. A query starting with `深搜 ` is answered by Grok's own web search with sources; it finishes in the background and is picked up by asking the same query again.
 - **Browser work.** The Windows client ships OpenCLI with its Chrome extension in `opencli/`. The first time the agent needs a browser it checks the bridge, and if the extension is not loaded it walks the person through loading it, one step at a time.
 - **Long conversations.** Context is compacted automatically at 80% of the model's window (400K of Grok's 500K) and again if the provider reports the prompt too long. `/compact` does it by hand.
 - **Talking-head editing (optional).** `pwsh -File server\koubo\install.ps1` installs a tool that turns a recording into a Jianying (CapCut China) draft: alignment, transcription that tells the presenter from an off-screen voice, cuts, stabilisation, subtitles and layouts. The agent follows `SKILL.md` beside it.
 
-The Windows client package carries kernel 0.2.1-alpha.1. The Mac package is still the older build. `kernel.yml` pins the kernel for the kernel-only path below, not for the desk.
+Both client packages carry kernel 0.2.1-alpha.1. The Mac package runs on Apple silicon and Intel; it does not ship ffmpeg (`brew install ffmpeg` if the agent should watch videos). `kernel.yml` pins the kernel for the kernel-only path below, not for the desk.
 
 ## Open work
 

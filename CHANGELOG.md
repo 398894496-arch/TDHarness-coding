@@ -4,6 +4,24 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.07.2
+
+**服务器**
+- 知识库检索（4182）改成只认登录令牌：请求必须带员工登录时拿到的网关令牌（`Authorization: Bearer` 或 `X-Company-Gw-Token`），令牌被吊销、人被停用就立刻查不了；`X-Auth-Request-User` 这类填名字的请求头一律不信。每次检索记一行「谁、查了几条」到 `D:\dsh\logs\knowledge-search.log`，不记问题原文。暂不按部门区分谁能看什么。
+- 装机生成的 Caddy 配置不再把客户端带来的 `X-Auth-Request-User` 转给知识库。
+- 新增 `scripts/prove-knowledge.js`（CI 两个系统都跑）：无令牌、伪造名字、编造令牌、已吊销、已停用都必须 401。
+
+**客户端（Mac）**
+- Mac 安装包重做：内核 0.2.1-alpha.1、插件、技能、OpenCLI 1.8.8 与 Windows 包同一份；原生模块换成 Mac 版，Apple 芯片和 Intel 都能跑（两种架构各自通过内核自检，163 个插件全部启动）。
+- 修正：插件在 Mac 上找不到自带的 OpenCLI（按 Windows 的 node 位置推安装目录）。
+- 修正：经中继（Tailscale DERP）远程首次登录时，工作区目录写到了本机、会话却存在工位，侧栏只剩「默认工作区」。
+- 登录框不再显示内部账号名，默认填 `tdh`。
+- Mac 包不带 ffmpeg；要让 AI 看视频，先 `brew install ffmpeg`。
+
+**文档**
+- 首页截图换成 0.2.1 界面（演示数据）；中文项目讲解页补上十月新增功能。
+- 版本号比较改成按数字逐段比（`.10` 排在 `.9` 后面）。
+
 ## 2026.10.07
 
 **服务器**
@@ -17,7 +35,7 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 **客户端（Windows）**
 - 安装包换成内核 0.2.1-alpha.1、当前插件和外壳、自带 ffmpeg 和 OpenCLI 1.8.8（含 Chrome 扩展）；第一次做浏览器操作时由 AI 引导装扩展。
 - 长对话自动压缩（模型窗口的 80%，以及厂商报超长时），已在 Grok 50 万真实上限下验证。
-- Mac 安装包未更新。
+- Mac 安装包未更新（见 2026.10.07.2）。
 
 **文档**
 - 首页、服务器安装说明、产品说明补上以上内容；新增本更新说明和版本号。
