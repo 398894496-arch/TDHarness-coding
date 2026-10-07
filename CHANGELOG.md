@@ -4,6 +4,14 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.07.5
+
+**客户端（Mac）**
+- 自带桌面软件操作：Peekaboo 4.9.0 放在 `peekaboo/`。它是苹果公证过的单个程序，Apple 芯片和 Intel 通用，MCP 外壳直接用客户端自带的 Node，不用另装 Python。和 macOS-MCP 实测对比后选它：macOS-MCP 没权限就拒绝启动，权限还挂在会随升级变化的 Python 上。
+- `peekaboo/mcp-filter.cjs`：内核和 Peekaboo 都没有工具白名单，加一层转发把 `agent`、`analyze`（要另配 AI 服务商）和 `browser`（网页交给 OpenCLI）藏起来，硬调也会被挡回。开 `--allow-foreground`，剪映这类自绘界面要点前台。
+- 新技能 `company-desktop`（Mac 版）：第一次先查权限，按 Peekaboo 给出的应用名带员工开「辅助功能」「屏幕录制」；其余规矩和 Windows 版一致。
+- Mac 包不再带 Windows 的配置行。
+
 ## 2026.10.07.4
 
 **客户端（Windows）**
