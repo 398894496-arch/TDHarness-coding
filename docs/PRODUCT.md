@@ -51,6 +51,14 @@ Settings → **人员**. Accounts grouped by department. Boss and managers issue
 
 **任务** is a ticket, not a chat log. Overview vs 工作日志. Content / submission fields. Deliverables live on the company disk (`projects/inbox/` in the shot). **提交验收** is the only accept path; saying “done” in chat does not count. Route to a director for review.
 
+### Also running
+
+- **Knowledge base:** a nightly job distils each person's conversations of the day into a page the desk can search.
+- **Web search:** domestic engines first for Chinese, Exa, GitHub, Bilibili; `深搜 ` for Grok's sourced web search.
+- **Browser:** OpenCLI ships with the Windows client; the agent guides each person through loading its extension once.
+- **Long work:** automatic context compaction at 80% of the model's window, and on a too-long prompt.
+- **Talking-head editing (optional):** recording in, Jianying draft out (`server/koubo`).
+
 ---
 
 ## Who it is for
