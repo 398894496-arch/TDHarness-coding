@@ -35,6 +35,36 @@ jobs:
         run: node scripts/prove-search-errors.js
       - name: Prove local OAuth credential recording and custom endpoints
         run: node scripts/prove-models.js
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Version, release notes and front page move together
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/prove-release-notes.js
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [release-notes]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag and publish this version with its notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="$(tr -d '[:space:]' < VERSION)"
+          if gh release view "v$v" >/dev/null 2>&1; then echo "RELEASE_EXISTS=v$v"; exit 0; fi
+          awk -v v="$v" '$0 == "## " v {on=1; next} /^## / && on {exit} on' CHANGELOG.md > notes.md
+          gh release create "v$v" --target "$GITHUB_SHA" --title "TDHarness $v" --notes-file notes.md
+          echo "RELEASED=v$v"
   scan:
     runs-on: ubuntu-latest
     steps:
