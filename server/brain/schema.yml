@@ -1,0 +1,64 @@
+# Company knowledge-base skeleton (K2a).
+# Canonical layer names follow the personal vault; repo paths stay ASCII.
+# Isolation is a directory tree per dept, not a query-only filter.
+
+sample_depts:
+  - sales
+  - ops
+
+canonical_layers:
+  - id: 01-projects
+    name: "01 项目"
+    knowledge: l2
+  - id: 02-methods
+    name: "02 经验与方法"
+    knowledge: l3
+  - id: 03-evidence
+    name: "03 资料与证据"
+    knowledge: l0
+  - id: 04-done
+    name: "04 已完成与复盘"
+    knowledge: l2
+  - id: 05-logs
+    name: "05 时间日志"
+    knowledge: l1
+
+# Storage: sample-tree/dept-<id>/<layer-id>/
+# Production vault on the server uses the canonical names above, still split by dept.
+# Brain ingest still writes 10-l0 / 11-l1 / 20-l2; frontmatter contract is this file.
+# Writers go through kb-write.py (Python) or schema-write.js (Node). Do not add another schema.
+# Brain Node writers: l0-ingest, l1-daily, l1-facts, l2-promote. Inbox files are not vault notes.
+
+required_frontmatter:
+  - owner
+  - dept
+  - visibility
+
+# L2 notes (01-projects, 04-done) must carry back-pointers established when L1 was written.
+l2_required_frontmatter:
+  - backlink_l1
+  - backlink_l0
+
+visibility_values:
+  - self
+  - dept
+  - company
+  - boss
+
+evidence_level:
+  - none
+  - observed
+  - sourced
+  - accepted
+
+adopt_status:
+  - candidate
+  - adopted
+  - superseded
+
+# Relative path inside the vault to the note this one replaces.
+supersedes: relative-path
+
+# L0 production objects are zstd sessions under the brain, not in the vault.
+# Sample-tree L0 files are pointer stubs so backlinks can resolve.
+# 03-evidence notes must set evidence_level.

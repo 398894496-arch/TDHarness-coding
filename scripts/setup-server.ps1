@@ -297,6 +297,20 @@ Write-Task 'Autostart-KnowledgeSearch' $node ('"' + (Join-Path $Server 'knowledg
 Write-Task 'Autostart-Gateway' $node ('"' + (Join-Path $Server 'gw-lite.js') + '"') $Server
 Write-Task 'Autostart-Caddy-8443' $caddyExe ('run --config "' + $caddyfile + '" --adapter caddyfile') (Join-Path $Runtime 'caddy')
 
+# The brain's daily job: every night it reads the day's conversations where
+# they already are, writes the evidence layer, distils one page per person and
+# harvests corrections (server\brain\run-daily.ps1). Without it the knowledge
+# service answers from an empty folder.
+$brainJob = Join-Path $Server 'brain\run-daily.ps1'
+if (Test-Path -LiteralPath $brainJob) {
+  $brainAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $brainJob + '" -Root "' + $Root + '" -Node "' + $node + '"')
+  $brainTrigger = New-ScheduledTaskTrigger -Daily -At '00:15'
+  $brainPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  $brainSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+  Register-ScheduledTask -TaskName 'TDH-Brain-Daily' -Action $brainAction -Trigger $brainTrigger -Principal $brainPrincipal -Settings $brainSettings -Force | Out-Null
+  Write-Output 'TASK_BRAIN_DAILY=00:15'
+}
+
 try {
   New-NetFirewallRule -DisplayName 'tdh-lan-8443' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8443 -Profile Any -ErrorAction SilentlyContinue | Out-Null
   New-NetFirewallRule -DisplayName 'tdh-lan-8450' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8450 -Profile Any -ErrorAction SilentlyContinue | Out-Null
