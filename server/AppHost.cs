@@ -105,10 +105,51 @@ internal static class AppHost
 
     // 0.1.2 prints the token after listen. Kernel skip lets bare loopback in;
     // still wait so WebView2 can use the printed URL when it is already there.
+    // The desk's own pages: this machine's loopback on the desk port.
+    internal static bool IsDeskUrl(string uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return false;
+        if (uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase)) return true;
+        Uri u;
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out u)) return false;
+        if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return false;
+        var host = u.Host.ToLowerInvariant();
+        return (host == "127.0.0.1" || host == "localhost") && u.Port == DeskPort;
+    }
+
+    // Web and mail links go to the system's default browser; anything else is
+    // dropped (and logged) rather than handed to the shell.
+    internal static void OpenOutside(string uri, string why)
+    {
+        Uri u;
+        if (!Uri.TryCreate(uri ?? "", UriKind.Absolute, out u) ||
+            (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps && u.Scheme != Uri.UriSchemeMailto))
+        {
+            Log("open-outside-refused " + why + " " + (u != null ? u.Scheme : "bad-uri"));
+            return;
+        }
+        try
+        {
+            var psi = new ProcessStartInfo(u.AbsoluteUri);
+            psi.UseShellExecute = true;
+            Process.Start(psi);
+            Log("open-outside " + why + " " + u.Host);
+        }
+        catch (Exception ex) { Log("open-outside-failed " + ex.Message); }
+    }
+
     internal static string WaitDeskNavigateUrl(int timeoutMs)
     {
         var deadline = Environment.TickCount + Math.Max(0, timeoutMs);
         var url = DeskNavigateUrl();
+        // This host never writes web-runtime.out (StartDesk drains the kernel's
+        // output only when it exits), so the tokened URL cannot appear. Waiting
+        // for it held a blank window for the whole timeout on every open.
+        if (!File.Exists(Path.Combine(DeskHome, "web-runtime.out")))
+        {
+            Log("desk-nav bare");
+            return url;
+        }
         while (url.IndexOf("?token=") < 0 && unchecked(deadline - Environment.TickCount) > 0)
         {
             Thread.Sleep(200);
@@ -719,6 +760,29 @@ internal static class AppHost
 
     internal static void StopDeskNode()
     {
+        // The scan below reads each node process's module path, and that read
+        // fails often enough that the old kernel survived a new login. A kernel
+        // that survives keeps the plugin code and the identity it started with.
+        // Kill the one this host started by the pid it wrote down.
+        try
+        {
+            var pidFile = Path.Combine(Rc8Dir(), "desk.pid");
+            if (File.Exists(pidFile))
+            {
+                int pid;
+                if (int.TryParse(File.ReadAllText(pidFile).Trim(), out pid))
+                {
+                    var old = Process.GetProcessById(pid);
+                    if (old.ProcessName.IndexOf("node", StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        old.Kill();
+                        old.WaitForExit(3000);
+                        Log("pid-kill-node " + pid);
+                    }
+                }
+            }
+        }
+        catch { }
         var root = Root;
         foreach (var name in new[] { "node", "node-real" })
         {
@@ -933,6 +997,18 @@ internal static class AppHost
         if (string.IsNullOrEmpty(gwToken) || gwToken == "company-gateway")
             throw new Exception("login-missing-gw-token");
         psi.EnvironmentVariables["GROK_API_KEY"] = gwToken;
+        // Media tools every desk ships with (ffmpeg, ffprobe). Put them on PATH
+        // for the kernel, so the agent's shell finds them by name and "this
+        // machine has no ffmpeg" stops being an answer.
+        var ffBin = Path.Combine(root, "ffmpeg", "bin");
+        if (File.Exists(Path.Combine(ffBin, "ffmpeg.exe")))
+        {
+            var curPath = psi.EnvironmentVariables["PATH"];
+            if (string.IsNullOrEmpty(curPath)) curPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+            psi.EnvironmentVariables["PATH"] = ffBin + ";" + curPath;
+            Log("ffmpeg-on-path");
+        }
+        else Log("ffmpeg-missing " + ffBin);
         try { psi.EnvironmentVariables.Remove("DEEPSEEK_API_KEY"); } catch { }
         psi.EnvironmentVariables["NO_PROXY"] = Site.NoProxy;
         psi.EnvironmentVariables["NODE_USE_ENV_PROXY"] = "0";
@@ -952,6 +1028,7 @@ internal static class AppHost
         var bootLog = Path.Combine(home, "desk-boot.log");
         var p = Process.Start(psi);
         if (p == null) throw new Exception("desk-start-failed");
+        try { File.WriteAllText(Path.Combine(Rc8Dir(), "desk.pid"), p.Id.ToString()); } catch { }
         var drain = new System.Threading.Thread(new System.Threading.ThreadStart(delegate
         {
             try
@@ -964,10 +1041,10 @@ internal static class AppHost
         }));
         drain.IsBackground = true;
         drain.Start();
-        for (var i = 0; i < 90; i++)
+        for (var i = 0; i < 450; i++)
         {
             Application.DoEvents();
-            System.Threading.Thread.Sleep(1000);
+            System.Threading.Thread.Sleep(200);
             if (PortUp()) return;
             if (p.HasExited)
                 throw new Exception("desk-exit " + p.ExitCode + HeadError(bootLog));
@@ -1743,10 +1820,21 @@ internal sealed class ShellForm : Form
         }
         _web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
         _web.CoreWebView2.Settings.AreDevToolsEnabled = false;
+        // The desk window shows the desk and nothing else. A page that asks for a
+        // new window (an external link, the browser panel's "open outside"
+        // button) used to be loaded into this window, which replaced the whole
+        // desk with that page and left no way back. Such pages, and any attempt to
+        // move this window off the desk, open in the system browser instead.
         _web.CoreWebView2.NewWindowRequested += delegate(object sender, CoreWebView2NewWindowRequestedEventArgs e)
         {
             e.Handled = true;
-            _web.CoreWebView2.Navigate(e.Uri);
+            AppHost.OpenOutside(e.Uri, "new-window");
+        };
+        _web.CoreWebView2.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            if (AppHost.IsDeskUrl(e.Uri)) return;
+            e.Cancel = true;
+            AppHost.OpenOutside(e.Uri, "navigation");
         };
         _web.CoreWebView2.Navigate(AppHost.WaitDeskNavigateUrl(8000));
     }

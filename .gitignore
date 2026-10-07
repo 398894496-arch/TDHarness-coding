@@ -7,3 +7,5 @@ node_modules/
 *.key
 .DS_Store
 web-runtime.err
+
+__pycache__/

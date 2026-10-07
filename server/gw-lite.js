@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const http = require('http');
+const gwSearch = require('./gw-search.js');
 const https = require('https');
 const path = require('path');
 const { URL } = require('url');
@@ -9,6 +10,11 @@ const { URL } = require('url');
 const ROOT = process.env.TDH_ROOT || 'D:\\dsh';
 const ENV_PATH = process.env.TDH_GW_ENV || (ROOT + '\\runtime\\gateway.env');
 const CHANNELS_PATH = process.env.TDH_CHANNELS || (ROOT + '\\runtime\\channels.json');
+// Usage ledger: one line per model call, by person. The people service reads it
+// for the 同事 page. Tokens only; no prompt or answer text is kept.
+const USAGE_DIR = process.env.TDH_USAGE_DIR || path.join(ROOT, 'runtime', 'usage');
+const TOKENS_PATH = process.env.TDH_GW_TOKENS || path.join(ROOT, 'runtime', 'gw-tokens.json');
+const ROSTER_PATH = process.env.TDH_ROSTER || path.join(ROOT, 'runtime', 'roster.json');
 const PORT = Number(process.env.TDH_GW_PORT || 8450);
 const KEY_PRESET = {
   openai: { id: 'gpt', label: 'OpenAI', up: 'https://api.openai.com/v1', env: 'OPENAI_API_KEY' },
@@ -43,16 +49,117 @@ function readBody(req) {
 
 const OAUTH_PATH = process.env.TDH_XAI_OAUTH || (ROOT + '\\runtime\\oauth\\xai-account.json');
 
-function loadXai() {
+const XAI_TOKEN_URL = process.env.TDH_XAI_TOKEN_URL || 'https://auth.x.ai/oauth2/token';
+const XAI_BASE = (process.env.TDH_XAI_BASE || 'https://api.x.ai').replace(/\/$/, '');
+// Renew this long before expiry so a chat that starts now does not die mid-stream.
+const XAI_PREEMPT_MS = 5 * 60 * 1000;
+let xaiRenewing = null;
+
+function readXai() {
   try {
     const j = JSON.parse(fs.readFileSync(OAUTH_PATH, 'utf8'));
     if (!j || typeof j.access_token !== 'string' || j.access_token.length < 20) return null;
-    const exp = Date.parse(j.expired || '');
-    if (exp && exp < Date.now()) return null;
     return j;
   } catch (e) {
     return null;
   }
+}
+
+function xaiFresh(j, slackMs) {
+  const exp = Date.parse(j.expired || '');
+  return !exp || exp - Date.now() > slackMs;
+}
+
+function xaiCanRenew(j) {
+  return typeof j.refresh_token === 'string' && j.refresh_token.length >= 8 && !!xaiClientId(j);
+}
+
+// The login file names its own OAuth client in the id_token audience, so no
+// client id is written into this repo.
+function xaiClientId(j) {
+  try {
+    const part = String(j.id_token || '').split('.')[1] || '';
+    const claims = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
+    const aud = Array.isArray(claims.aud) ? claims.aud[0] : claims.aud;
+    return typeof aud === 'string' ? aud : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function xaiBound() {
+  const j = readXai();
+  return !!(j && (xaiFresh(j, 0) || xaiCanRenew(j)));
+}
+
+function postForm(url, form) {
+  return new Promise((resolve) => {
+    const u = new URL(url);
+    const lib = u.protocol === 'http:' ? http : https;
+    const raw = Buffer.from(new URLSearchParams(form).toString(), 'utf8');
+    const req = lib.request({
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'http:' ? 80 : 443),
+      path: u.pathname,
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': raw.length },
+      timeout: 20000
+    }, (r) => {
+      const chunks = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => {
+        let obj = null;
+        try { obj = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { obj = null; }
+        resolve({ status: r.statusCode || 502, obj: obj });
+      });
+    });
+    req.on('error', () => resolve({ status: 0, obj: null }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, obj: null }); });
+    req.end(raw);
+  });
+}
+
+async function renewXai(j) {
+  const up = await postForm(XAI_TOKEN_URL, {
+    grant_type: 'refresh_token',
+    client_id: xaiClientId(j),
+    refresh_token: j.refresh_token
+  });
+  const t = up.obj;
+  if (up.status !== 200 || !t || typeof t.access_token !== 'string' || t.access_token.length < 20) return null;
+  // The refresh token rotates. Write the new one before anything can fail, or
+  // the next renewal presents a token the vendor has already retired.
+  const now = Date.now();
+  const next = Object.assign({}, j, { access_token: t.access_token });
+  if (typeof t.refresh_token === 'string' && t.refresh_token) next.refresh_token = t.refresh_token;
+  if (typeof t.id_token === 'string' && t.id_token) next.id_token = t.id_token;
+  const ttl = typeof t.expires_in === 'number' && t.expires_in > 0 ? t.expires_in : 3600;
+  next.expires_in = ttl;
+  next.expired = new Date(now + ttl * 1000).toISOString().replace(/\.\d+Z$/, 'Z');
+  next.last_refresh = new Date(now).toISOString().replace(/\.\d+Z$/, 'Z');
+  const tmp = OAUTH_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(next));
+  fs.renameSync(tmp, OAUTH_PATH);
+  return next;
+}
+
+// A usable login, renewed first when it is about to lapse. null means the
+// caller must not send a Grok request.
+async function loadXai() {
+  const j = readXai();
+  if (!j) return null;
+  if (xaiFresh(j, XAI_PREEMPT_MS)) return j;
+  if (!xaiCanRenew(j)) return xaiFresh(j, 0) ? j : null;
+  if (!xaiRenewing) {
+    xaiRenewing = renewXai(j).then(
+      (v) => { xaiRenewing = null; return v; },
+      () => { xaiRenewing = null; return null; }
+    );
+  }
+  const renewed = await xaiRenewing;
+  if (renewed) return renewed;
+  return xaiFresh(j, 0) ? j : null;
 }
 
 function modelName(body) {
@@ -68,9 +175,11 @@ function modelName(body) {
 function listUpstream(url, token) {
   return new Promise((resolve) => {
     const u = new URL(url);
-    const req = https.request({
+    const lib = u.protocol === 'http:' ? http : https;
+    const req = lib.request({
       protocol: u.protocol,
       hostname: u.hostname,
+      port: u.port || (u.protocol === 'http:' ? 80 : 443),
       path: u.pathname,
       method: 'GET',
       headers: { authorization: 'Bearer ' + token },
@@ -93,133 +202,173 @@ function listUpstream(url, token) {
   });
 }
 
-function catalogFromUpstream(rows) {
+// "Fast" is xAI's priority service tier, a per-request field every chat model
+// accepts. It is not the "none" reasoning level: that one stays in `efforts`
+// and is offered as a level like the others.
+const FAST_PATH = process.env.TDH_GROK_FAST || (ROOT + '\\runtime\\grok-fast.json');
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
+
+function readFastFile() {
+  try {
+    const j = JSON.parse(fs.readFileSync(FAST_PATH, 'utf8'));
+    return {
+      models: Array.isArray(j.models) ? j.models.filter((x) => typeof x === 'string') : [],
+      probed: j.probed && typeof j.probed === 'object' && !Array.isArray(j.probed) ? j.probed : {}
+    };
+  } catch (e) {
+    return { models: [], probed: {} };
+  }
+}
+
+function writeFastFile(state) {
+  fs.mkdirSync(path.dirname(FAST_PATH), { recursive: true });
+  const tmp = FAST_PATH + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n');
+  fs.renameSync(tmp, FAST_PATH);
+}
+
+// Models a person marked fast, limited to the ones the vendor was seen to
+// serve on the priority tier.
+function loadFast() {
+  const state = readFastFile();
+  return new Set(state.models.filter((id) => state.probed[id] && state.probed[id].fast === true));
+}
+
+function saveFast(ids) {
+  const state = readFastFile();
+  state.models = ids;
+  writeFastFile(state);
+}
+
+function postJson(url, token, obj, timeoutMs) {
+  return new Promise((resolve) => {
+    const u = new URL(url);
+    const lib = u.protocol === 'http:' ? http : https;
+    const raw = Buffer.from(JSON.stringify(obj), 'utf8');
+    const req = lib.request({
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'http:' ? 80 : 443),
+      path: u.pathname,
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': raw.length, authorization: 'Bearer ' + token },
+      agent: u.protocol === 'http:' ? keepHttp : keepHttps,
+      timeout: timeoutMs || 45000
+    }, (r) => {
+      const chunks = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => {
+        let j = null;
+        try { j = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { j = null; }
+        resolve({ status: r.statusCode || 502, obj: j });
+      });
+    });
+    req.on('error', () => resolve({ status: 0, obj: null }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, obj: null }); });
+    req.end(raw);
+  });
+}
+
+// What this login can really do with one model, learned by asking once.
+//   usable: a plain chat request is answered
+//   fast:   a request for the priority tier is answered ON the priority tier
+//   image:  a message carrying a picture is answered
+// The listing does not say either, and some listed models refuse chat outright.
+// A failure that says nothing about the model (network, 5xx, 401, 429) is not
+// recorded, so it is asked again next time.
+// A 64x64 picture. The vendor refuses small ones (under 8x8, then under 512
+// pixels in all) as an invalid image, which reads exactly like "this model
+// takes no pictures" and is not.
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsItjJhMbywi+hcEKLNXzWgQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQELgtZCaEttSk+KwAAAABJRU5ErkJggg==';
+// Bump when what a probe asks changes, so earlier answers are asked again.
+const PROBE_REV = 3;
+
+// A reply that is neither a clear yes (200) nor a clear refusal of this model.
+function undecided(status) {
+  return status !== 200 && (status < 400 || status >= 500 || status === 401 || status === 429);
+}
+
+async function probeModel(id, token) {
+  const ask = { model: id, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] };
+  const url = XAI_BASE + '/v1/chat/completions';
+  let fast = false;
+  const tiered = await postJson(url, token, Object.assign({ service_tier: 'priority' }, ask));
+  if (tiered.status === 200) {
+    fast = !!(tiered.obj && tiered.obj.service_tier === 'priority');
+  } else {
+    if (undecided(tiered.status)) return null;
+    const plain = await postJson(url, token, ask);
+    if (undecided(plain.status)) return null;
+    if (plain.status !== 200) return { rev: PROBE_REV, usable: false, fast: false, image: false };
+  }
+  const seen = await postJson(url, token, {
+    model: id,
+    max_tokens: 1,
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }, { type: 'image_url', image_url: { url: PIXEL } }] }]
+  });
+  if (undecided(seen.status)) return null;
+  // A complaint about the picture itself says nothing about the model.
+  if (seen.status !== 200 && seen.obj && seen.obj.code === 'invalid_image') return null;
+  return { rev: PROBE_REV, usable: true, fast: fast, image: seen.status === 200 };
+}
+
+let probing = null;
+
+async function probeMissing(ids, token) {
+  const state = readFastFile();
+  const todo = ids.filter((id) => !state.probed[id] || state.probed[id].rev !== PROBE_REV);
+  if (!todo.length) return state.probed;
+  if (!probing) {
+    probing = Promise.all(todo.map((id) => probeModel(id, token).then((got) => [id, got]))).then((rows) => {
+      const fresh = readFastFile();
+      for (const [id, got] of rows) if (got) fresh.probed[id] = got;
+      writeFastFile(fresh);
+      probing = null;
+      return fresh.probed;
+    }, () => { probing = null; return readFastFile().probed; });
+  }
+  return probing;
+}
+
+// Ask for the priority tier when this model is marked fast and the caller did
+// not choose a tier itself.
+function withFastTier(body) {
+  if (!body || !body.length) return body;
+  let j = null;
+  try { j = JSON.parse(body.toString('utf8')); } catch (e) { return body; }
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return body;
+  if (typeof j.model !== 'string' || Object.prototype.hasOwnProperty.call(j, 'service_tier')) return body;
+  if (!loadFast().has(j.model)) return body;
+  j.service_tier = 'priority';
+  return Buffer.from(JSON.stringify(j), 'utf8');
+}
+
+// Context windows as the vendor itself stated them when it refused an
+// oversized prompt ("... > 500000 tokens"), measured 2026-10-04. Its model
+// listing does not carry this number. grok-4.3 accepted an 858k-token prompt,
+// so its entry is a floor, not the limit. A model not listed here gets no
+// `context` and the desk falls back to its own conservative default.
+const CONTEXT_MEASURED = {
+  'grok-4.7': 500000,
+  'grok-4.6': 500000,
+  'grok-4.3': 850000
+};
+
+function catalogFromUpstream(rows, probed) {
+  const fast = loadFast();
   const out = [];
   for (const row of rows) {
     const id = row && typeof row.id === 'string' ? row.id : '';
-    if (!id || /imagine|image|video/i.test(id)) continue;
+    if (!id || !MODEL_ID.test(id) || /imagine|image|video/i.test(id)) continue;
+    const seen = probed && probed[id] ? probed[id] : null;
+    if (seen && seen.usable === false) continue;
     const cap = row.capabilities && typeof row.capabilities === 'object' ? row.capabilities : {};
     const efforts = Array.isArray(cap.reasoning_effort) ? cap.reasoning_effort.filter((x) => typeof x === 'string' && x) : [];
-    const fast = efforts.indexOf('none') >= 0;
-    out.push({
-      id: id,
-      efforts: efforts.filter((x) => x !== 'none'),
-      fast: fast,
-      fastModel: /fast/i.test(id),
-      fastEffort: fast ? 'none' : ''
-    });
+    const row1 = { id: id, efforts: efforts, fast: !!(seen && seen.fast), fastOn: fast.has(id), image: !!(seen && seen.image) };
+    if (CONTEXT_MEASURED[id]) row1.context = CONTEXT_MEASURED[id];
+    out.push(row1);
   }
   return out;
-}
-
-function deskFiles() {
-  const users = (process.env.SystemDrive || 'C:') + '\\Users';
-  let names = [];
-  try { names = fs.readdirSync(users); } catch (e) { names = []; }
-  const roots = [];
-  for (const name of names) {
-    roots.push(users + '\\' + name + '\\.dsh-company-rc' + '8\\desk-home');
-    roots.push(users + '\\' + name + '\\TDH\\CompanyDesk\\home');
-  }
-  const found = [];
-  for (const root of roots) {
-    const rels = [
-      root + '\\profiles\\web\\overlay.yml',
-      root + '\\profiles\\web\\cordis.patch.yml',
-      root + '\\settings.yaml'
-    ];
-    for (const rel of rels) if (fs.existsSync(rel)) found.push(rel);
-  }
-  return found;
-}
-
-function modelBlock(models, indent) {
-  if (!models.length) return indent + 'models: []';
-  const lines = [indent + 'models:'];
-  for (const m of models) {
-    lines.push(indent + '  - id: ' + m.id);
-    lines.push(indent + '    name: ' + m.id);
-    lines.push(indent + '    contextWindow: 256000');
-    lines.push(indent + '    input: [text]');
-    const efforts = [];
-    if (m.fast && m.fastEffort) efforts.push(m.fastEffort);
-    if (Array.isArray(m.efforts)) {
-      for (const e of m.efforts) if (efforts.indexOf(e) < 0) efforts.push(e);
-    }
-    if (efforts.length) {
-      lines.push(indent + '    reasoningEfforts:');
-      for (const e of efforts) lines.push(indent + '      ' + e + ': ' + e);
-    }
-  }
-  return lines.join('\n');
-}
-
-function replaceModels(text, anchor) {
-  const lines = text.split(/\r?\n/);
-  const nl = text.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
-  let anchorAt = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].indexOf(anchor) >= 0) { anchorAt = i; break; }
-  }
-  if (anchorAt < 0) return null;
-  let start = -1;
-  for (let i = anchorAt + 1; i < lines.length; i++) {
-    if (/^- id:/.test(lines[i]) && anchor.indexOf('- id:') !== 0) break;
-    if (/^\s*models:/.test(lines[i])) { start = i; break; }
-  }
-  if (start < 0) return null;
-  const indent = (lines[start].match(/^\s*/) || [''])[0];
-  let end = start + 1;
-  while (end < lines.length) {
-    const line = lines[end];
-    if (line.trim() === '') { end++; continue; }
-    const got = (line.match(/^\s*/) || [''])[0].length;
-    if (got <= indent.length) break;
-    end++;
-  }
-  return { lines: lines, start: start, end: end, indent: indent, nl: nl };
-}
-
-function setDefaultModel(id) {
-  for (const file of deskFiles()) {
-    const text = fs.readFileSync(file, 'utf8');
-    const lines = text.split(/\r?\n/);
-    const nl = text.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
-    let at = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].indexOf('agent-default-model') >= 0) { at = i; break; }
-    }
-    if (at < 0) continue;
-    let modelAt = -1;
-    for (let i = at + 1; i < lines.length; i++) {
-      if (/^- id:/.test(lines[i])) break;
-      if (/^\s*model:/.test(lines[i])) { modelAt = i; break; }
-    }
-    if (modelAt < 0) {
-      if (!id) continue;
-      const indent = (lines[at].match(/^\s*/) || [''])[0] + '  ';
-      lines.splice(at + 1, 0, indent + 'model: ' + id);
-    } else {
-      const indent = (lines[modelAt].match(/^\s*/) || [''])[0];
-      if (id) lines[modelAt] = indent + 'model: ' + id;
-      else lines.splice(modelAt, 1);
-    }
-    fs.writeFileSync(file, lines.join(nl));
-  }
-}
-
-function writeModels(anchor, models) {
-  let n = 0;
-  for (const file of deskFiles()) {
-    const text = fs.readFileSync(file, 'utf8');
-    const hit = replaceModels(text, anchor);
-    if (!hit) continue;
-    const block = modelBlock(models, hit.indent).split('\n');
-    hit.lines.splice(hit.start, hit.end - hit.start, ...block);
-    fs.writeFileSync(file, hit.lines.join(hit.nl));
-    n++;
-  }
-  return n;
 }
 
 function send(res, code, obj) {
@@ -228,34 +377,132 @@ function send(res, code, obj) {
   res.end(raw);
 }
 
-function proxy(env, req, body) {
-  const model = modelName(body);
-  const xai = model.indexOf('grok') === 0 ? loadXai() : null;
-  const base = xai ? 'https://api.x.ai' : (env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1');
+// One warm connection per vendor instead of a new TLS handshake for every
+// message; through a proxied line the handshake alone is a visible pause.
+const keepHttps = new https.Agent({ keepAlive: true, maxSockets: 16 });
+const keepHttp = new http.Agent({ keepAlive: true, maxSockets: 16 });
+
+// Who is calling: the desk sends its person's gateway token (dsh_...). The
+// token and roster files are read again when a token is not known yet, so a
+// person added or a token minted after start is still recognised.
+let whoCache = { at: 0, map: {} };
+function readJsonFile(p) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '')); } catch (e) { return null; }
+}
+function callerOf(req) {
+  const h = String(req.headers.authorization || req.headers['x-company-gw-token'] || '');
+  const tok = h.replace(/^Bearer\s+/i, '').trim();
+  if (!/^dsh_/.test(tok)) return '';
+  if (!whoCache.map[tok] && Date.now() - whoCache.at > 5000) {
+    const tokens = (readJsonFile(TOKENS_PATH) || {}).tokens || [];
+    const people = (readJsonFile(ROSTER_PATH) || {}).people || [];
+    const byPid = {};
+    for (const p of people) if (p && p.pid) byPid[p.pid] = p.login;
+    const map = {};
+    for (const t of tokens) if (t && t.token && !t.revoked_at && byPid[t.pid]) map[t.token] = byPid[t.pid];
+    whoCache = { at: Date.now(), map };
+  }
+  return whoCache.map[tok] || '';
+}
+
+// Read the token counts out of a vendor answer as it passes. Chat completions
+// put them in a final "usage" object (streamed or not); the Responses API puts
+// them in response.usage on its last event. The last one seen wins.
+function usageTap() {
+  let tail = '';
+  let whole = '';
+  let found = null;
+  const take = (obj) => {
+    const u = obj && (obj.usage || (obj.response && obj.response.usage));
+    if (!u || typeof u !== 'object') return;
+    const input = Number(u.prompt_tokens != null ? u.prompt_tokens : u.input_tokens) || 0;
+    const output = Number(u.completion_tokens != null ? u.completion_tokens : u.output_tokens) || 0;
+    const cached = Number((u.prompt_tokens_details && u.prompt_tokens_details.cached_tokens) || (u.input_tokens_details && u.input_tokens_details.cached_tokens) || 0);
+    const reasoning = Number((u.completion_tokens_details && u.completion_tokens_details.reasoning_tokens) || (u.output_tokens_details && u.output_tokens_details.reasoning_tokens) || 0);
+    if (input || output) found = { input, output, cached, reasoning };
+  };
+  return {
+    feed(chunk) {
+      const text = chunk.toString('utf8');
+      if (whole.length < 4 * 1024 * 1024) whole += text;
+      tail += text;
+      let i;
+      while ((i = tail.indexOf('\n')) >= 0) {
+        const line = tail.slice(0, i).trim();
+        tail = tail.slice(i + 1);
+        if (line.startsWith('data:') && line.indexOf('usage') >= 0) {
+          try { take(JSON.parse(line.slice(5).trim())); } catch (e) { /* not json */ }
+        }
+      }
+    },
+    end() {
+      if (!found && whole && whole.trim().charAt(0) === '{') {
+        try { take(JSON.parse(whole)); } catch (e) { /* not json */ }
+      }
+      return found;
+    }
+  };
+}
+
+function recordUsage(row) {
+  try {
+    fs.mkdirSync(USAGE_DIR, { recursive: true });
+    const d = new Date(row.t);
+    const name = 'usage-' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '.jsonl';
+    fs.appendFileSync(path.join(USAGE_DIR, name), JSON.stringify(row) + '\n');
+  } catch (e) { /* a ledger write must never break a model call */ }
+}
+
+// Pass the vendor's answer through as it arrives. Holding it until it was
+// complete meant a streamed reply reached the desk in one piece at the very
+// end: the person watched an empty screen for the whole generation.
+function relay(env, req, body, xai, res) {
+  const base = xai ? XAI_BASE : (env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1');
   const key = xai ? xai.access_token : (env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '');
   if (!key) return Promise.reject(new Error('no-key'));
   const u = xai
-    ? new URL(req.url || '/v1/models', 'https://api.x.ai/')
+    ? new URL(req.url || '/v1/models', XAI_BASE + '/')
     : new URL(req.url.replace(/^\/v1/, '') || '/models', base.endsWith('/') ? base : base + '/');
-  const lib = u.protocol === 'http:' ? http : https;
+  const plain = u.protocol === 'http:';
   const headers = {
     'content-type': req.headers['content-type'] || 'application/json',
     authorization: 'Bearer ' + key
   };
+  if (req.headers.accept) headers.accept = req.headers.accept;
+  if (body && body.length) headers['content-length'] = body.length;
   return new Promise((resolve, reject) => {
-    const up = lib.request({
+    const up = (plain ? http : https).request({
       protocol: u.protocol,
       hostname: u.hostname,
-      port: u.port || (u.protocol === 'http:' ? 80 : 443),
+      port: u.port || (plain ? 80 : 443),
       path: u.pathname + u.search,
       method: req.method,
-      headers
+      headers,
+      agent: plain ? keepHttp : keepHttps,
+      // Idle time, not total time: a large upload or a long answer keeps the
+      // socket busy and is fine. Without it a stalled vendor connection held
+      // the caller for good.
+      timeout: 180000
     }, (r) => {
-      const chunks = [];
-      r.on('data', (c) => chunks.push(c));
-      r.on('end', () => resolve({ status: r.statusCode || 502, headers: r.headers, body: Buffer.concat(chunks) }));
+      const out = { 'content-type': r.headers['content-type'] || 'application/json', 'cache-control': 'no-store' };
+      // Tell anything between here and the desk not to collect the stream.
+      if (/text\/event-stream/i.test(String(r.headers['content-type'] || ''))) out['x-accel-buffering'] = 'no';
+      res.writeHead(r.statusCode || 502, out);
+      if (typeof res.flushHeaders === 'function') res.flushHeaders();
+      const tap = (r.statusCode || 0) < 300 && /\/(chat\/completions|responses|messages)$/.test(u.pathname) ? usageTap() : null;
+      const settle = () => {
+        if (!tap) return;
+        const used = tap.end();
+        if (used) recordUsage(Object.assign({ t: Date.now(), login: callerOf(req) || 'unknown', model: modelName(body) || 'unknown', vendor: xai ? 'xai' : 'other' }, used));
+      };
+      r.on('data', (c) => { res.write(c); if (tap) tap.feed(c); });
+      r.on('end', () => { res.end(); settle(); resolve(); });
+      r.on('error', () => { res.end(); settle(); resolve(); });
     });
+    up.on('timeout', () => up.destroy(new Error('upstream-idle')));
     up.on('error', reject);
+    // The desk gave up (closed the tab, pressed stop): stop paying for the rest.
+    res.on('close', () => { if (!res.writableEnded) up.destroy(); });
     if (body && body.length) up.write(body);
     up.end();
   });
@@ -331,7 +578,7 @@ function channelSnapshot(env) {
       subOf('grok', 'Grok', extras, ''),
       subOf('gpt', 'GPT', extras, 'sub-use-key'),
       subOf('claude', 'Claude', extras, 'sub-use-key')
-    ].map((row) => row.id === 'grok' ? Object.assign({}, row, { bound: !!loadXai() }) : row),
+    ].map((row) => row.id === 'grok' ? Object.assign({}, row, { bound: xaiBound() }) : row),
     models
   };
 }
@@ -402,11 +649,13 @@ async function handleChannels(req, body, env) {
   if (action === 'list-models') {
     const vendor = String(payload.vendor || '').toLowerCase();
     if (vendor !== 'grok') return { status: 400, obj: { ok: false, error: 'sub-vendor' } };
-    const xai = loadXai();
+    const xai = await loadXai();
     if (!xai) return { status: 400, obj: { ok: false, error: 'login-not-installed', models: [] } };
-    const up = await listUpstream('https://api.x.ai/v1/models', xai.access_token);
+    const up = await listUpstream(XAI_BASE + '/v1/models', xai.access_token);
     if (up.status !== 200) return { status: 502, obj: { ok: false, error: 'upstream-' + up.status, models: [] } };
-    return { status: 200, obj: { ok: true, vendor: 'grok', models: catalogFromUpstream(up.rows) } };
+    const ids = up.rows.map((r) => (r && typeof r.id === 'string' ? r.id : '')).filter((id) => MODEL_ID.test(id) && !/imagine|image|video/i.test(id));
+    const probed = await probeMissing(ids, xai.access_token);
+    return { status: 200, obj: { ok: true, vendor: 'grok', models: catalogFromUpstream(up.rows, probed) } };
   }
   if (action === 'recognize-key') {
     const key = String(payload.key || '').trim();
@@ -417,14 +666,21 @@ async function handleChannels(req, body, env) {
     if (up.status !== 200) return { status: 502, obj: { ok: false, error: 'upstream-' + up.status, models: [] } };
     return { status: 200, obj: { ok: true, vendor: 'api', models: catalogFromUpstream(up.rows) } };
   }
-  if (action === 'apply-models') {
+  if (action === 'set-fast') {
     const vendor = String(payload.vendor || '').toLowerCase();
-    const models = Array.isArray(payload.models) ? payload.models.filter((m) => m && m.id) : [];
-    const anchor = vendor === 'grok' ? 'displayName: Grok' : (vendor === 'api' ? 'llm-deepseek' : '');
-    if (!anchor) return { status: 400, obj: { ok: false, error: 'vendor' } };
-    const n = writeModels(anchor, models);
-    if (vendor === 'grok') setDefaultModel(models.length ? models[0].id : '');
-    return { status: 200, obj: { ok: n > 0, written: n, count: models.length } };
+    if (vendor !== 'grok') return { status: 400, obj: { ok: false, error: 'sub-vendor' } };
+    const ids = [];
+    for (const id of Array.isArray(payload.models) ? payload.models : []) {
+      if (typeof id === 'string' && MODEL_ID.test(id) && ids.indexOf(id) < 0) ids.push(id);
+    }
+    saveFast(ids);
+    return { status: 200, obj: { ok: true, vendor: 'grok', models: ids } };
+  }
+  if (action === 'apply-models') {
+    // The model list lives in each desk's own profile and the desk writes it.
+    // This side used to edit desk files on the server and reached only the
+    // install template.
+    return { status: 400, obj: { ok: false, error: 'desk-side', hint: '这台桌面的界面壳版本太旧，请更新客户端。' } };
   }
   return { status: 400, obj: { ok: false, error: 'action' } };
 }
@@ -444,12 +700,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (url === '/grok-quota' || url === '/grok-fast') {
-    send(res, 200, { ok: true, enabled: false, grokBound: !!loadXai(), usedPercent: null, remainingPercent: null, plan: '', kind: loadXai() ? 'oauth' : 'key' });
+    send(res, 200, { ok: true, enabled: false, grokBound: xaiBound(), usedPercent: null, remainingPercent: null, plan: '', kind: xaiBound() ? 'oauth' : 'key' });
     return;
   }
   const body = (req.method === 'POST' || req.method === 'PUT') ? await readBody(req) : Buffer.alloc(0);
+  // The desk's web_search and web_fetch tools come here (company-web-search),
+  // and are answered by the search route (gw-search.js). It needs no model key.
+  if (req.method === 'POST' && (url === '/search' || url === '/fetch')) {
+    const ctx = {
+      upFetch: (u, init) => fetch(u, init),
+      port: PORT,
+      caller: callerOf(req) || 'desk',
+      note: (line) => { try { console.log(line); } catch (e) { /* log only */ } },
+      hasGrok: () => xaiBound(),
+      grokUp: () => XAI_BASE,
+      grokBearer: async () => { const x = await loadXai(); if (!x) throw new Error('grok-not-bound'); return x.access_token; }
+    };
+    if (url === '/search') await gwSearch.handleSearch(res, body, ctx);
+    else await gwSearch.handleFetch(res, body, ctx);
+    return;
+  }
   const model = modelName(body);
-  const xai = model.indexOf('grok') === 0 ? loadXai() : null;
+  // The vendor's file store has no model in the request (an upload is
+  // multipart, a lookup has no body), so it is recognised by its path. A video
+  // too large to send inline is uploaded there and then named in the question.
+  const xaiFiles = /^\/v1\/(files|language-models)(\/|$)/.test(url);
+  const xai = (model.indexOf('grok') === 0 || xaiFiles) ? await loadXai() : null;
   const key = xai ? 'xai' : (env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '');
   if (!key) {
     send(res, 503, {
@@ -461,11 +737,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   try {
-    const up = await proxy(env, req, body);
-    res.writeHead(up.status, { 'content-type': up.headers['content-type'] || 'application/json' });
-    res.end(up.body);
+    await relay(env, req, xai ? withFastTier(body) : body, xai, res);
   } catch (e) {
-    send(res, 502, { error: { message: 'upstream-failed', type: 'bad_gateway' } });
+    if (!res.headersSent) send(res, 502, { error: { message: 'upstream-failed', type: 'bad_gateway' } });
+    else res.end();
   }
 });
 

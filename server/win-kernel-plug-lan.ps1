@@ -57,4 +57,19 @@ if (-not (Test-Path -LiteralPath $pkg)) { $pkg = Join-Path $Prefix 'lib\node_mod
 $ver = (Get-Content -LiteralPath $pkg -Raw -Encoding UTF8 | ConvertFrom-Json).version
 if ($ver -ne $Want) { throw ('dsh-version want=' + $Want + ' got=' + $ver) }
 Write-Output ('DSH_VER=' + $ver)
+
+# Boot the new kernel against a copy of the desk's own home before anyone is
+# switched to it. Installed and patched is not the same as working: a kernel
+# the company plugins do not fit installs and patches fine.
+$selftest = Join-Path $PSScriptRoot 'kernel-selftest.mjs'
+if (-not (Test-Path -LiteralPath $selftest)) { throw 'selftest-missing' }
+$deskUser = Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue |
+  Where-Object { Test-Path (Join-Path $_.FullName 'TDH\CompanyDesk') } | Select-Object -First 1
+if (-not $deskUser) { throw 'desk-missing' }
+$deskHome = Join-Path $deskUser.FullName ('.dsh-company-rc' + '8\desk-home')
+$ErrorActionPreference = 'Continue'
+& $node $selftest --prefix $Prefix --home $deskHome --node $node --report (Join-Path $Prefix 'selftest.json') 2>&1 | ForEach-Object { [string]$_ }
+$st = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($st -ne 0) { throw 'selftest-failed (see selftest.json in the prefix)' }
 Write-Output 'KERNEL_PLUG_OK=1'
