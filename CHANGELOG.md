@@ -4,6 +4,11 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.07.3
+
+**CI**
+- Windows 检查不再因为 Chocolatey 源抽风而失败：ripgrep 改从 npm 装微软打包的版本（`@vscode/ripgrep`），装不上才退回 choco，装完核对 `rg --version`，失败就在安装这一步报错，不再拖到后面的搜索检查。
+
 ## 2026.10.07.2
 
 **服务器**
