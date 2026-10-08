@@ -214,6 +214,74 @@ def login_from_token(token: str) -> str:
     return ""
 
 
+_SHARE_CHECKED_AT = 0.0
+_SHARE_LOCK = threading.Lock()
+
+# dshshare 是员工电脑挂公司共享盘用的本机账户。2026-10-08 实测：安装脚本建它时把错误吞了，
+# 账户根本不存在，远程员工登录全部 company-disk-not-mounted（本机桌面走环回挂盘，掩盖了问题）。
+# 登录时自检：不存在就建、被禁用就启用、密码按 dshshare.pass 对齐、共享权限补齐。10 分钟最多查一次。
+_SHARE_HEAL_PS = r"""
+$ErrorActionPreference = 'Stop'
+$pw = ([IO.File]::ReadAllText($env:TDH_SHARE_PASS_FILE).Trim().Split("`n")[0]).Trim()
+if (-not $pw) { throw 'share-pass-empty' }
+$sec = ConvertTo-SecureString $pw -AsPlainText -Force
+$u = Get-LocalUser -Name dshshare -ErrorAction SilentlyContinue
+if (-not $u) {
+  New-LocalUser -Name dshshare -Password $sec -PasswordNeverExpires -UserMayNotChangePassword -AccountNeverExpires -Description 'TDH company share (SMB only)' | Out-Null
+  'SHARE_ACCOUNT=created'
+} else {
+  Set-LocalUser -Name dshshare -Password $sec -PasswordNeverExpires $true
+  if (-not $u.Enabled) { Enable-LocalUser -Name dshshare; 'SHARE_ACCOUNT=enabled' } else { 'SHARE_ACCOUNT=ok' }
+}
+Grant-SmbShareAccess -Name 'dsh-company' -AccountName 'dshshare' -AccessRight Full -Force | Out-Null
+"""
+
+
+def ensure_share_account(pass_path: Path) -> None:
+    global _SHARE_CHECKED_AT
+    if os.name != "nt":
+        return
+    with _SHARE_LOCK:
+        if time.time() - _SHARE_CHECKED_AT < 600:
+            return
+        import subprocess
+
+        env = dict(os.environ, TDH_SHARE_PASS_FILE=str(pass_path))
+        try:
+            r = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", _SHARE_HEAL_PS],
+                capture_output=True, text=True, timeout=45, env=env,
+            )
+            tail = (r.stdout or "").strip().splitlines()[-1:] or [""]
+            if r.returncode == 0:
+                _SHARE_CHECKED_AT = time.time()
+                sys.stdout.write("SHARE_HEAL rc=0 %s\n" % tail[0])
+            else:
+                err = (r.stderr or "").strip().splitlines()[-1:] or [""]
+                sys.stdout.write("SHARE_HEAL rc=%s %s\n" % (r.returncode, err[0][:200]))
+        except Exception as e:  # noqa: BLE001  自检失败不挡登录，下次登录再试
+            sys.stdout.write("SHARE_HEAL error %s\n" % str(e)[:200])
+        sys.stdout.flush()
+
+
+
+def ensure_personal_dir(row: dict) -> None:
+    """员工个人工作区（emp-<login>）。2026-10-08 实测：「添加人员」只写花名册不建目录，
+    新员工登录报 company-workspace-missing。添加时建、登录时再补，只建公司盘下面的路径。"""
+    raw = str((row or {}).get("personal") or "").strip()
+    if not raw:
+        return
+    try:
+        target = Path(raw).resolve()
+        company = (ROOT / "company").resolve()
+        if company not in target.parents:
+            return
+        target.mkdir(parents=True, exist_ok=True)
+    except Exception as e:  # noqa: BLE001  建不了不挡登录，客户端会报 workspace-missing
+        sys.stdout.write("PERSONAL_DIR error %s\n" % str(e)[:200])
+        sys.stdout.flush()
+
+
 def smb_pair() -> tuple[str, str]:
     path = ROOT / "runtime" / "dshshare.pass"
     if not path.is_file():
@@ -221,6 +289,7 @@ def smb_pair() -> tuple[str, str]:
     pw = path.read_text(encoding="utf-8-sig").strip().splitlines()
     if not pw or not pw[0].strip():
         return "", ""
+    ensure_share_account(path)
     return "dshshare", pw[0].strip()
 
 
@@ -325,7 +394,8 @@ def mailbox_hit(actor: str, **extra) -> dict:
 
 
 def check_login(username: str, password: str) -> dict | None:
-    login = username.strip()
+    # 账号只允许小写（LOGIN_RE），员工常输入大写 DK，统一转小写再比对。
+    login = username.strip().lower()
     if not login or not password:
         return None
     stored = pass_map().get(login)
@@ -335,6 +405,7 @@ def check_login(username: str, password: str) -> dict | None:
     if not row or row.get("status") != "active":
         return None
     pid = str(row.get("pid") or ("p-" + login))
+    ensure_personal_dir(row)
     smb_user, smb_pass = smb_pair()
     return {
         "ok": True,
@@ -481,6 +552,7 @@ class Handler(BaseHTTPRequestHandler):
                 "personal": str(ROOT / "company" / ("emp-" + login)),
                 "pid": "p-" + secrets.token_hex(6),
             })
+            ensure_personal_dir(data["people"][-1])
             PASS_FILE.parent.mkdir(parents=True, exist_ok=True)
             with PASS_FILE.open("a", encoding="utf-8") as fh:
                 fh.write("%s:%s\n" % (login, pw))

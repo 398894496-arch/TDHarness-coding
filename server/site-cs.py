@@ -71,9 +71,17 @@ def emit_caddy(site: dict[str, str]) -> str:
 	skip_install_trust
 	local_certs
 	auto_https disable_redirects
+	default_sni %s
+	# 员工常只输入 host:8443 不带 https://，浏览器就发明文 http。同端口识别明文请求并跳到 https。
+	servers :%s {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
 }
 
-https://%s:%s {
+https://%s:%s, https://:%s {
 	tls internal
 	log {
 		output file D:/dsh/logs/caddy-sec.log
@@ -146,7 +154,7 @@ https://%s:%s {
 		file_server
 	}
 }
-""" % (host, lp)
+""" % (host, lp, host, lp, lp)
 
 
 def extract_zip(src: Path, dst: Path, names: list[str]) -> int:
@@ -350,6 +358,9 @@ def rewrite_zip(src: Path, dst: Path, host: str) -> int:
             if base == "employee.auth":
                 n += 1
                 continue
+            if name.endswith(".exe.new"):
+                n += 1
+                continue
             data = zin.read(item.filename)
             shell = "company-shell/" in name
             if "node_modules" not in name or shell:
@@ -367,18 +378,79 @@ def rewrite_zip(src: Path, dst: Path, host: str) -> int:
     return n
 
 
+def retarget_zip(src: Path, dst: Path, old: str, new: str) -> int:
+    import re
+    import zipfile
+
+    pat = re.compile(re.escape(old.encode("ascii")) + rb"(?![0-9A-Za-z-])")
+    new_b = new.encode("ascii")
+    n = 0
+    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w") as zout:
+        for item in zin.infolist():
+            name = item.filename.replace("\\", "/")
+            # 残留的 TDHarness.exe.new 会被客户端自更新换成正式 exe；它是旧编译，地址是占位符，一启动就崩。
+            if name.endswith(".exe.new"):
+                n += 1
+                continue
+            data = zin.read(item.filename)
+            if ("node_modules" not in name or "company-shell/" in name) and not name.endswith(".exe"):
+                data, k = pat.subn(new_b, data)
+                n += k
+            zout.writestr(item, data)
+    tmp.replace(dst)
+    return n
+
+
+def reseal_zip(src: Path) -> int:
+    """包内文件改过之后重算 BUILD.json 的 files 清单和封条（与 build-stamp.py seal 同算法）。
+    客户现场没有公司 watermark.key（也不该有），封条改为站点级 sha256，并注明 seal_kind。"""
+    import hashlib
+    import zipfile
+
+    skip_base = {"BUILD.json", ".DS_Store"}
+    with zipfile.ZipFile(src, "r") as zin:
+        infos = zin.infolist()
+        names = [i.filename.replace("\\", "/") for i in infos]
+        key = "CompanyDesk/BUILD.json" if "CompanyDesk/BUILD.json" in names else "BUILD.json"
+        body = json.loads(zin.read(key).decode("utf-8-sig"))
+        root = key[: -len("BUILD.json")]
+        files = {}
+        for info in infos:
+            name = info.filename.replace("\\", "/")
+            if name.endswith("/") or not name.startswith(root):
+                continue
+            rel = name[len(root):]
+            parts = rel.split("/")
+            if rel in skip_base or any(x == "__MACOSX" or x.startswith("._") or x == ".DS_Store" for x in parts):
+                continue
+            data = zin.read(info.filename)
+            if ((info.external_attr >> 16) & 0o170000) == 0o120000:
+                files[rel] = hashlib.sha256(b"symlink:" + data).hexdigest()
+            else:
+                files[rel] = hashlib.sha256(data).hexdigest()
+    body.pop("seal", None)
+    body["files"] = files
+    body["seal_kind"] = "site-sha256"
+    canon = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+    body["seal"] = hashlib.sha256(canon).hexdigest()
+    replace_zip_member(src, src, key, (json.dumps(body, indent=2) + "\n").encode("utf-8"))
+    return len(files)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--site", required=True)
     ap.add_argument(
         "cmd",
-        choices=("emit-cs", "emit-caddy", "emit-stamp", "print", "print-mark", "rewrite-zip", "extract-zip", "replace-zip"),
+        choices=("emit-cs", "emit-caddy", "emit-stamp", "print", "print-mark", "rewrite-zip", "retarget-zip", "reseal-zip", "extract-zip", "replace-zip"),
     )
     ap.add_argument("--out")
     ap.add_argument("--src")
     ap.add_argument("--names")
     ap.add_argument("--name")
     ap.add_argument("--file")
+    ap.add_argument("--old")
     args = ap.parse_args()
     site = load_site(Path(args.site))
     if args.cmd == "print":
@@ -395,6 +467,17 @@ def main() -> None:
             raise SystemExit("rewrite-zip needs --src and --out")
         n = rewrite_zip(Path(args.src), Path(args.out), site["host"])
         sys.stdout.write("REWRITE_HITS=%s\n" % n)
+        return
+    if args.cmd == "retarget-zip":
+        if not args.src or not args.out or not args.old:
+            raise SystemExit("retarget-zip needs --src --out --old")
+        n = retarget_zip(Path(args.src), Path(args.out), args.old, site["host"])
+        sys.stdout.write("RETARGET_HITS=%s\n" % n)
+        return
+    if args.cmd == "reseal-zip":
+        if not args.src:
+            raise SystemExit("reseal-zip needs --src")
+        sys.stdout.write("RESEALED_FILES=%s\n" % reseal_zip(Path(args.src)))
         return
     if args.cmd == "extract-zip":
         if not args.src or not args.out or not args.names:

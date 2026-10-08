@@ -25,6 +25,52 @@ internal static class AppHost
     internal const int DeskPort = 17803;
     internal const string ShareDrive = "Z:";
 
+    // 桌面只留一个 TDHarness 图标：用户自己的桌面上的 .lnk。旧安装器在每个桌面（含公用桌面、OneDrive 桌面）
+    // 都写了 .lnk + .url，员工看到 4 个。公用桌面删不掉（没管理员权限）就算了，不影响启动。
+    internal static void TidyExtraShortcuts()
+    {
+        try
+        {
+            var keep = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (string.IsNullOrEmpty(keep)) return;
+            var keepLnk = Path.Combine(keep, "TDHarness.lnk");
+            if (!File.Exists(keepLnk)) return;
+            var dirs = new System.Collections.Generic.List<string>();
+            Action<string> add = delegate(string p)
+            {
+                if (string.IsNullOrEmpty(p)) return;
+                try { p = Path.GetFullPath(p); } catch { return; }
+                foreach (var x in dirs) if (string.Equals(x, p, StringComparison.OrdinalIgnoreCase)) return;
+                dirs.Add(p);
+            };
+            add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+            add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop"));
+            try { add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory)); } catch { }
+            try
+            {
+                foreach (var d in Directory.GetDirectories(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "OneDrive*"))
+                    add(Path.Combine(d, "Desktop"));
+            }
+            catch { }
+            var keepFull = Path.GetFullPath(keep);
+            foreach (var dir in dirs)
+            {
+                if (string.Equals(dir, keepFull, StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var name in new[] { "TDHarness.lnk", "TDHarness.url" })
+                {
+                    try { var f = Path.Combine(dir, name); if (File.Exists(f)) File.Delete(f); } catch { }
+                }
+            }
+            try { var u = Path.Combine(keep, "TDHarness.url"); if (File.Exists(u)) File.Delete(u); } catch { }
+            var menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs");
+            if (File.Exists(Path.Combine(menu, "TDHarness.lnk")))
+            {
+                try { var u = Path.Combine(menu, "TDHarness.url"); if (File.Exists(u)) File.Delete(u); } catch { }
+            }
+        }
+        catch { }
+    }
+
     [STAThread]
     private static int Main()
     {
@@ -35,6 +81,7 @@ internal static class AppHost
             ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; }
             catch { }
+            TidyExtraShortcuts();
             Application.Run(new ShellForm());
             return 0;
         }

@@ -4,6 +4,38 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.08
+
+客户现场交付中暴露的问题，全部在一键安装里修掉（`setup-server.ps1` 安装时对 LFS 模板包打补丁，补丁和工具在 `server/site-patches/`，400 MB 的模板包不用重传）。
+
+**换网不再失效**
+- 站点地址默认改用本机 mDNS 名 `<计算机名>.local`，不再写死 IP。原来服务器换网或 DHCP 换了地址，所有已装客户端、Caddy 证书、安装包同时失效。跨网段/VLAN 仍可 `-HostName <IP>` 指定。
+- Caddy 同时接受主机名和 IP 访问；同一端口收到明文 http 自动跳 https（员工只输 `host:8443` 时浏览器报 "client sent an HTTP request to an HTTPS server"）。
+- 网关 8450 改为 IPv4/IPv6 双栈监听：按 `.local` 解析常先拿到 IPv6 链路本地地址，原来只听 `0.0.0.0`，桌面端先超时再重试。
+- 新增 `server/retarget-site.ps1`：改计算机名后一条命令把站点、两个客户端包、exe、签名全部改指新名字。
+
+**员工电脑首次登录**
+- 共享盘账户 `dshshare`：安装脚本用 `net.exe` 建账户失败时把错误吞了，远程员工全部 `company-disk-not-mounted`。现在安装时核实并兜底重建，登录接口每次登录也自检（不存在就建、禁用就启用、密码对齐）。
+- 「添加人员」只写花名册不建个人目录，新员工登录 `company-workspace-missing`。现在添加时建，登录时再补。
+- 登录账号不区分大小写（账号只允许小写，员工常输大写）。
+- 团队工作区（共享盘根）新建会话报 `session/workspace-attach-failed`：`desk-lease.js` 用 JS 版 `fs.realpathSync`，对 UNC 共享根多带一个尾斜杠，和内核 `fs.promises.realpath` 严格比对不上。改用 `realpathSync.native`。
+- 安装后桌面不再出现 4 个图标：安装器只在用户桌面建一个 `.lnk`（失败才退回 `.url`），客户端启动时清掉旧安装留下的副本。
+
+**安全与完整性**
+- 本机 17803 的 `/company/*` 路由补上和官方 `/api` 同一套来源校验（Host 必须回环、拒跨站、Origin 必须同源）。原来任意网页都能让浏览器打这些接口，包括改花名册。
+- 一键更新验签：每个站点安装时生成 Ed25519 密钥（私钥只在服务器），`version.json` 带 sha256 并签名；客户端 `pack-verify.js` 验签、核哈希，不对就不装。旧装机没有公钥时放行一次并装上公钥。
+- 产品树重新封条：包内文件改过后重算 `BUILD.json`，`tree-check` 回到 `TREE_OK=1`；启动时改为后台跑、只记录（全量约 3 万文件，服务器实测 144 秒），更新装完再跑一次。
+- 客户端不再把遗留的 `TDHarness.exe.new` 换上：模板包里残留的那份是旧编译，地址是占位符，一启动就崩。安装和改址都会剔除它，换入前也检查占位符。
+
+**模型与生图**
+- 设置页显示 Grok 订阅额度百分比：网关 `/grok-quota` 查 `cli-chat-proxy.grok.com/v1/billing`，缓存 60 秒。
+- 网关补上 `/images`、`/videos`（`gw-media.js`），`company-grok-media` 插件原来调过去必定失败。
+- 生成的图片直接显示在对话里（存进附件库，`finalizeContent` 返回图片块），原来只回一行路径。
+- 所有客户端新会话默认 `grok-4.7` + High（overlay 每次启动同步、最后一层生效，会话里仍可手动切换）。
+
+**客户现场发布**
+- 新增 `server/publish-site-update.ps1 [-BumpMark]`：打补丁、重编 exe 和安装器、重新封条、签名一步完成；`-BumpMark` 换版本标记，已装客户端下次启动提示更新。
+
 ## 2026.10.07.6
 
 **客户端更新流程（Windows / Mac）**

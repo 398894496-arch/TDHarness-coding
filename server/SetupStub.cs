@@ -531,6 +531,52 @@ internal static class Setup
         Log("bridge-skip in-tree-vbs " + root);
     }
 
+    // 桌面只留一个 TDHarness 图标：用户自己的桌面上的 .lnk。旧安装器在每个桌面（含公用桌面、OneDrive 桌面）
+    // 都写了 .lnk + .url，员工看到 4 个。公用桌面删不掉（没管理员权限）就算了，不影响启动。
+    internal static void TidyExtraShortcuts()
+    {
+        try
+        {
+            var keep = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (string.IsNullOrEmpty(keep)) return;
+            var keepLnk = Path.Combine(keep, "TDHarness.lnk");
+            if (!File.Exists(keepLnk)) return;
+            var dirs = new System.Collections.Generic.List<string>();
+            Action<string> add = delegate(string p)
+            {
+                if (string.IsNullOrEmpty(p)) return;
+                try { p = Path.GetFullPath(p); } catch { return; }
+                foreach (var x in dirs) if (string.Equals(x, p, StringComparison.OrdinalIgnoreCase)) return;
+                dirs.Add(p);
+            };
+            add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+            add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop"));
+            try { add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory)); } catch { }
+            try
+            {
+                foreach (var d in Directory.GetDirectories(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "OneDrive*"))
+                    add(Path.Combine(d, "Desktop"));
+            }
+            catch { }
+            var keepFull = Path.GetFullPath(keep);
+            foreach (var dir in dirs)
+            {
+                if (string.Equals(dir, keepFull, StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var name in new[] { "TDHarness.lnk", "TDHarness.url" })
+                {
+                    try { var f = Path.Combine(dir, name); if (File.Exists(f)) File.Delete(f); } catch { }
+                }
+            }
+            try { var u = Path.Combine(keep, "TDHarness.url"); if (File.Exists(u)) File.Delete(u); } catch { }
+            var menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs");
+            if (File.Exists(Path.Combine(menu, "TDHarness.lnk")))
+            {
+                try { var u = Path.Combine(menu, "TDHarness.url"); if (File.Exists(u)) File.Delete(u); } catch { }
+            }
+        }
+        catch { }
+    }
+
     private static void WriteShortcuts(string dest)
     {
         var app = Path.Combine(dest, "TDHarness.exe");
@@ -539,12 +585,17 @@ internal static class Setup
             Log("shortcut-skip no-app");
             return;
         }
-        foreach (var dir in DeskFolders())
-            WriteShortcutAt(dir, app, dest);
+        // 桌面只放一个：用户自己的桌面（重定向到 OneDrive 时就是那个）。.lnk 建不出来才退回 .url。
+        var desk = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        if (string.IsNullOrEmpty(desk)) desk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop");
+        try { Directory.CreateDirectory(desk); } catch { }
+        if (!WriteOneLnk(Path.Combine(desk, "TDHarness.lnk"), app, dest))
+            WriteUrlFallback(Path.Combine(desk, "TDHarness.url"), app, dest);
         var menuDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs");
         Directory.CreateDirectory(menuDir);
-        WriteOneLnk(Path.Combine(menuDir, "TDHarness.lnk"), app, dest);
-        WriteUrlFallback(Path.Combine(menuDir, "TDHarness.url"), app, dest);
+        if (!WriteOneLnk(Path.Combine(menuDir, "TDHarness.lnk"), app, dest))
+            WriteUrlFallback(Path.Combine(menuDir, "TDHarness.url"), app, dest);
+        TidyExtraShortcuts();
     }
 
     private static string[] DeskFolders()
