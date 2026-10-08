@@ -3,6 +3,7 @@
 const fs = require('fs');
 const http = require('http');
 const gwSearch = require('./gw-search.js');
+const gwMedia = require('./gw-media.js');
 const https = require('https');
 const path = require('path');
 const { URL } = require('url');
@@ -160,6 +161,42 @@ async function loadXai() {
   const renewed = await xaiRenewing;
   if (renewed) return renewed;
   return xaiFresh(j, 0) ? j : null;
+}
+
+// Grok 订阅额度：和 EasyCLI 管理面板同一个接口（cli-chat-proxy.grok.com/v1/billing?format=credits），
+// 用服务器自己绑定的 OAuth 令牌查。结果缓存 60 秒，避免桌面端轮询打满上游。
+const GROK_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing?format=credits';
+let grokQuotaCache = { at: 0, val: null };
+
+async function grokQuota() {
+  if (grokQuotaCache.val && Date.now() - grokQuotaCache.at < 60 * 1000) return grokQuotaCache.val;
+  const x = await loadXai();
+  if (!x) return null;
+  const headers = {
+    Authorization: 'Bearer ' + x.access_token,
+    'x-xai-token-auth': 'xai-grok-cli',
+    'x-grok-client-version': '0.2.91',
+    accept: '*/*',
+    'user-agent': 'grok-pager/0.2.91 grok-shell/0.2.91 (windows; x86_64)'
+  };
+  if (typeof x.sub === 'string' && x.sub) headers['x-userid'] = x.sub;
+  const r = await fetch(GROK_BILLING_URL, { headers, signal: AbortSignal.timeout(8000) });
+  if (!r.ok) throw new Error('grok-billing-http-' + r.status);
+  const o = await r.json();
+  const c = (o && o.config) || o || {};
+  const period = c.currentPeriod || c.current_period || null;
+  const raw = c.creditUsagePercent != null ? c.creditUsagePercent : c.credit_usage_percent;
+  // 上游按 protobuf JSON 省略 0 值：有本周周期但没给百分比 = 本周还没用。
+  let used = raw != null && isFinite(Number(raw)) ? Number(raw) : (period ? 0 : null);
+  if (used != null) used = Math.max(0, Math.min(100, used));
+  const val = {
+    usedPercent: used,
+    remainingPercent: used == null ? null : 100 - used,
+    resetsAt: (period && period.end) || c.billingPeriodEnd || '',
+    plan: period && /WEEKLY/i.test(String(period.type || '')) ? '每周额度' : ''
+  };
+  grokQuotaCache = { at: Date.now(), val };
+  return val;
 }
 
 function modelName(body) {
@@ -699,6 +736,13 @@ const server = http.createServer(async (req, res) => {
     send(res, out.status, out.obj);
     return;
   }
+  if (url === '/grok-quota' && xaiBound()) {
+    let q = null;
+    let err = '';
+    try { q = await grokQuota(); } catch (e) { err = String((e && e.message) || e); }
+    send(res, 200, Object.assign({ ok: true, enabled: !!q, grokBound: true, kind: 'oauth', usedPercent: null, remainingPercent: null, plan: '', resetsAt: '' }, q || {}, err ? { quotaError: err } : {}));
+    return;
+  }
   if (url === '/grok-quota' || url === '/grok-fast') {
     send(res, 200, { ok: true, enabled: false, grokBound: xaiBound(), usedPercent: null, remainingPercent: null, plan: '', kind: xaiBound() ? 'oauth' : 'key' });
     return;
@@ -718,6 +762,24 @@ const server = http.createServer(async (req, res) => {
     };
     if (url === '/search') await gwSearch.handleSearch(res, body, ctx);
     else await gwSearch.handleFetch(res, body, ctx);
+    return;
+  }
+  // 生图/生视频门：员工端 company-grok-media 插件 POST 到这里，用服务器绑定的同一个 Grok 订阅。
+  if (req.method === 'POST' && (url === '/images' || url === '/videos')) {
+    const ctx = {
+      upFetch: (u, init) => fetch(u, init),
+      note: (line) => { try { console.log(line); } catch (e) { /* log only */ } },
+      caller: callerOf(req) || 'desk',
+      grokBearer: async () => { const x = await loadXai(); if (!x) throw new Error('grok-not-bound'); return x.access_token; },
+      grokUp: () => XAI_BASE
+    };
+    try {
+      if (url === '/videos') await gwMedia.handleVideos(res, body, ctx);
+      else await gwMedia.handleImages(res, body, ctx);
+    } catch (e) {
+      if (!res.headersSent) send(res, 502, { error: { message: String((e && e.message) || e), type: 'media_failed' } });
+      else res.end();
+    }
     return;
   }
   const model = modelName(body);
@@ -744,6 +806,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  process.stdout.write('LISTEN=0.0.0.0:' + PORT + '\n');
+// 双栈监听：员工端按 <主机名>.local 解析时常先拿到 IPv6 链路本地地址，只听 0.0.0.0 会被拒，桌面端要等超时重试。
+server.listen({ port: PORT, host: '::', ipv6Only: false }, () => {
+  process.stdout.write('LISTEN=[::]:' + PORT + ' dual-stack\n');
 });

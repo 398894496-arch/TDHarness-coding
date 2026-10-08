@@ -25,6 +25,52 @@ internal static class AppHost
     internal const int DeskPort = 17803;
     internal const string ShareDrive = "Z:";
 
+    // 桌面只留一个 TDHarness 图标：用户自己的桌面上的 .lnk。旧安装器在每个桌面（含公用桌面、OneDrive 桌面）
+    // 都写了 .lnk + .url，员工看到 4 个。公用桌面删不掉（没管理员权限）就算了，不影响启动。
+    internal static void TidyExtraShortcuts()
+    {
+        try
+        {
+            var keep = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (string.IsNullOrEmpty(keep)) return;
+            var keepLnk = Path.Combine(keep, "TDHarness.lnk");
+            if (!File.Exists(keepLnk)) return;
+            var dirs = new System.Collections.Generic.List<string>();
+            Action<string> add = delegate(string p)
+            {
+                if (string.IsNullOrEmpty(p)) return;
+                try { p = Path.GetFullPath(p); } catch { return; }
+                foreach (var x in dirs) if (string.Equals(x, p, StringComparison.OrdinalIgnoreCase)) return;
+                dirs.Add(p);
+            };
+            add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+            add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop"));
+            try { add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory)); } catch { }
+            try
+            {
+                foreach (var d in Directory.GetDirectories(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "OneDrive*"))
+                    add(Path.Combine(d, "Desktop"));
+            }
+            catch { }
+            var keepFull = Path.GetFullPath(keep);
+            foreach (var dir in dirs)
+            {
+                if (string.Equals(dir, keepFull, StringComparison.OrdinalIgnoreCase)) continue;
+                foreach (var name in new[] { "TDHarness.lnk", "TDHarness.url" })
+                {
+                    try { var f = Path.Combine(dir, name); if (File.Exists(f)) File.Delete(f); } catch { }
+                }
+            }
+            try { var u = Path.Combine(keep, "TDHarness.url"); if (File.Exists(u)) File.Delete(u); } catch { }
+            var menu = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs");
+            if (File.Exists(Path.Combine(menu, "TDHarness.lnk")))
+            {
+                try { var u = Path.Combine(menu, "TDHarness.url"); if (File.Exists(u)) File.Delete(u); } catch { }
+            }
+        }
+        catch { }
+    }
+
     [STAThread]
     private static int Main()
     {
@@ -35,6 +81,7 @@ internal static class AppHost
             ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
             try { ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; }
             catch { }
+            TidyExtraShortcuts();
             Application.Run(new ShellForm());
             return 0;
         }
@@ -1300,6 +1347,38 @@ internal static class AppHost
         return TcpUp(Site.Host, 8443, 1500) || TcpUp(Site.Host, 445, 800);
     }
 
+    // 「连不上公司网」时说清原因。@@net-hint
+    // 1) 公司地址被代理软件的 fake-ip 改写成 198.18.x（Clash TUN 常见）；2) 解析到了这台电脑自己（和服务器重名）。
+    internal static string CompanyNetHint()
+    {
+        try
+        {
+            var host = Site.Host ?? "";
+            System.Net.IPAddress lit;
+            if (host.Length == 0 || System.Net.IPAddress.TryParse(host, out lit)) return "";
+            var addrs = System.Net.Dns.GetHostAddresses(host);
+            foreach (var a in addrs)
+            {
+                if (a.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                var b = a.GetAddressBytes();
+                if (b[0] == 198 && (b[1] == 18 || b[1] == 19))
+                    return "公司地址 " + host + " 被代理软件改写了（fake-ip）。请在 Clash 等代理里把 +.local 设为直连，或关掉 TUN 后再登录";
+            }
+            if (!File.Exists(@"D:\dsh\site.yml"))
+            {
+                var mine = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var a in System.Net.Dns.GetHostAddresses(System.Net.Dns.GetHostName())) mine.Add(a.ToString());
+                foreach (var a in addrs)
+                {
+                    if (System.Net.IPAddress.IsLoopback(a) || mine.Contains(a.ToString()))
+                        return "公司地址 " + host + " 解析到了这台电脑自己：这台电脑和公司服务器重名了，请改这台电脑的计算机名后重启";
+                }
+            }
+        }
+        catch { }
+        return "";
+    }
+
     internal static bool OnCompanyNet()
     {
         if (OnOfficeLan()) return true;
@@ -1457,12 +1536,13 @@ internal static class AppHost
         var text = File.ReadAllText(overlay);
         text = Regex.Replace(text, @"(?m)^- id: web-search-deepseek\r?\n(?:  .*\r?\n)*", "");
         text = Regex.Replace(text, @"(?m)^- id: web\r?\n(?:  .*\r?\n)*", "");
-        text = Regex.Replace(text, @"(?m)^- id: tool-web\r?\n(?:  .*\r?\n)*", "");
+        // tool-web 以安装包模板为准，模板没有才补默认值。@@tool-web-template
+        var hasToolWeb = Regex.IsMatch(text, @"(?m)^- id: tool-web\r?$");
         text = Regex.Replace(text, @"(?m)^- id: company-web-search\r?\n(?:  .*\r?\n)*", "");
         var block =
             "- id: web-search-deepseek\n  disabled: true\n" +
             "- id: web\n  config:\n    searchProvider: company\n    fetchProvider: company\n" +
-            "- id: tool-web\n  config:\n    fetch: true\n    searchTimeoutMs: 60000\n    fetchTimeoutMs: 90000\n" +
+            (hasToolWeb ? "" : "- id: tool-web\n  config:\n    fetch: true\n    searchTimeoutMs: 170000\n    fetchTimeoutMs: 90000\n    searchMaxQueries: 1\n") +
             "- id: company-web-search\n  config:\n    baseURL: " + door + "\n";
         var idx = text.IndexOf("- id: ");
         if (idx < 0) throw new Exception("overlay-no-rows");
@@ -1829,7 +1909,8 @@ internal sealed class ShellForm : Form
             try { hit = AppHost.CheckLogin(user, pass); }
             catch (WebException)
             {
-                _err.Text = "连不上公司网，请稍后再试";
+                var netHint = AppHost.CompanyNetHint();
+                _err.Text = netHint.Length > 0 ? netHint : "连不上公司网，请稍后再试";
                 return;
             }
             catch { hit = null; }

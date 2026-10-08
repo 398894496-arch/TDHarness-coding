@@ -64,6 +64,11 @@ function Find-Node {
 }
 function Detect-LanHost {
   if ($HostName) { return $HostName }
+  # Default to this box's mDNS name (<computername>.local): clients bake the host in, and an IP
+  # breaks every installed desk the day the office changes network or DHCP hands out a new lease.
+  # Pass -HostName <ip> when clients sit on another subnet/VLAN (mDNS does not cross routers).
+  $cn = ([string]$env:COMPUTERNAME).ToLowerInvariant()
+  if ($cn -match '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$') { return ($cn + '.local') }
   $rows = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object {
       $_.IPAddress -and
@@ -203,6 +208,25 @@ $ErrorActionPreference = 'Continue'
 & net.exe user dshshare $sharePass /add 2>&1 | Out-Null
 & net.exe user dshshare $sharePass 2>&1 | Out-Null
 $ErrorActionPreference = $prevShare
+# Do not trust net.exe: on a site install it failed silently here and every remote desk got
+# company-disk-not-mounted. Verify, fall back to New-LocalUser, then stop. people-api heals it too.
+if (-not (Get-LocalUser -Name dshshare -ErrorAction SilentlyContinue)) {
+  New-LocalUser -Name dshshare -Password (ConvertTo-SecureString $sharePass -AsPlainText -Force) -PasswordNeverExpires -UserMayNotChangePassword -AccountNeverExpires -Description 'TDH company share (SMB only)' | Out-Null
+}
+$shareUser = Get-LocalUser -Name dshshare -ErrorAction SilentlyContinue
+if (-not $shareUser) { throw 'dshshare-account-missing' }
+if (-not $shareUser.Enabled) { Enable-LocalUser -Name dshshare }
+Set-LocalUser -Name dshshare -PasswordNeverExpires $true
+$hideKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList'
+if (-not (Test-Path -LiteralPath $hideKey)) { New-Item -Path $hideKey -Force | Out-Null }
+New-ItemProperty -Path $hideKey -Name dshshare -PropertyType DWord -Value 0 -Force | Out-Null
+# The desk on this box mounts its own share by the site name; loopback NTLM refuses a name that is
+# not the machine's own unless it is listed here.
+if ($lan -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+  $msv = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0'
+  $bch = @((Get-ItemProperty $msv -Name BackConnectionHostNames -ErrorAction SilentlyContinue).BackConnectionHostNames) | Where-Object { $_ }
+  New-ItemProperty -Path $msv -Name BackConnectionHostNames -PropertyType MultiString -Value (@($bch + $lan) | Select-Object -Unique) -Force | Out-Null
+}
 try { Grant-SmbShareAccess -Name 'dsh-company' -AccountName 'dshshare' -AccessRight Full -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
 try { Grant-SmbShareAccess -Name 'dsh-company' -AccountName 'Everyone' -AccessRight Change -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
 try { icacls.exe $Company /grant '*S-1-1-0:(OI)(CI)M' /T /C | Out-Null } catch {}
@@ -247,8 +271,29 @@ Write-Output ('CLIENT_WIN=' + $winZip)
 Write-Output ('CLIENT_MAC=' + $macZip)
 if ($winZip -ne 1) { throw 'client-win-zip-missing-git-lfs-pull' }
 
+# Fixes that are not in the LFS template yet (server\site-patches): /company/* caller check,
+# signed one-click update, tree-check back on, Grok images shown in chat, default model,
+# workspace realpath on UNC roots. The update signing key never leaves this box.
+$signDir = Join-Path $Runtime 'pack-sign'
+if (-not (Test-Path -LiteralPath (Join-Path $signDir 'pack-sign.key'))) {
+  & $node (Join-Path $Server 'pack-sign.js') keygen --dir $signDir
+  if ($LASTEXITCODE -ne 0) { throw 'pack-sign-keygen-failed' }
+}
+foreach ($zn in 'CompanyDesk-win.zip', 'CompanyDesk-mac.zip') {
+  $zp = Join-Path $Dist $zn
+  if (-not (Test-Path -LiteralPath $zp)) { continue }
+  & $py (Join-Path $Server 'site-patches\apply_site_patches.py') --zip $zp --patches (Join-Path $Server 'site-patches') --pub (Join-Path $signDir 'pack-sign.pub')
+  if ($LASTEXITCODE -ne 0) { throw ('site-patch-failed-' + $zn) }
+}
+
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'compile-apphost.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'compile-apphost-failed' }
+foreach ($zn in 'CompanyDesk-win.zip', 'CompanyDesk-mac.zip') {
+  $zp = Join-Path $Dist $zn
+  if (-not (Test-Path -LiteralPath $zp)) { continue }
+  & $py $sitePy --site $SiteYml reseal-zip --src $zp
+  if ($LASTEXITCODE -ne 0) { throw ('reseal-failed-' + $zn) }
+}
 
 function Write-ClientVersion {
   $winP = Join-Path $Dist 'CompanyDesk-win.zip'
@@ -273,6 +318,13 @@ function Write-ClientVersion {
   Write-Output 'VERSION_JSON_OK=1'
 }
 Write-ClientVersion
+$prevSign = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+$signOut = & $node (Join-Path $Server 'pack-sign.js') sign --dist $Dist --dir $signDir 2>&1 | Out-String
+$signRc = $LASTEXITCODE
+$ErrorActionPreference = $prevSign
+Write-Output $signOut.Trim()
+if ($signRc -ne 0) { throw 'pack-sign-failed' }
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'pack-setup.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'pack-setup-failed' }
