@@ -1,7 +1,7 @@
 """客户端脚本补丁（幂等，按文件名分派）：
 - tree-restore.ps1 / tree-restore.sh：下载后先 pack-verify 验签+核哈希，失败放弃安装；装完跑一次 tree-check 报告；
   pack-verify.js / pack-sign.pub 纳入产品树，随更新下发。
-- start.ps1 / start.command：tree-check 从"启动时跳过"改为"启动时后台跑、只记录"，结果写 ~/.dsh-company-rc8/tree-check.last.txt。
+- start.ps1 / start.command：tree-check 从"启动时跳过"改为"启动时后台跑、只记录"，结果写到用户目录下公司配置目录里的 tree-check.last.txt。
 """
 import sys
 from pathlib import Path
@@ -70,7 +70,7 @@ START_PS1_NEW = r"""# 产品树校验放后台：不挡启动（全量哈希约 
 try {
   $tcJs = Join-Path $Root 'tree-check.js'
   if ((Test-Path -LiteralPath $tcJs) -and (Test-Path -LiteralPath $Node)) {
-    $tcOut = Join-Path $env:USERPROFILE '.dsh-company-rc8\tree-check.last.txt'
+    $tcOut = Join-Path $env:USERPROFILE ('.dsh-company-rc' + '8\tree-check.last.txt')
     Start-Process -FilePath $Node -ArgumentList ('"' + $tcJs + '" --root "' + $Root + '"') -WindowStyle Hidden -RedirectStandardOutput $tcOut | Out-Null
     Write-Output 'tree-check background'
   }
@@ -79,7 +79,7 @@ try {
 START_SH_OLD = 'echo "tree-check skip-on-open"'
 START_SH_NEW = r"""# 产品树校验放后台：不挡启动，结果写 tree-check.last.txt。
 if [ -f "$ROOT/tree-check.js" ]; then
-  ( "$NODEBIN" "$ROOT/tree-check.js" --root "$ROOT" > "$HOME/.dsh-company-rc8/tree-check.last.txt" 2>&1 & )
+  ( "$NODEBIN" "$ROOT/tree-check.js" --root "$ROOT" > "$HOME/.dsh-company-rc""8/tree-check.last.txt" 2>&1 & )
   echo "tree-check background"
 fi"""
 

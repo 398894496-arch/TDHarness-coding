@@ -43,11 +43,13 @@ def main():
     scripts = load(pdir / "patch_client_scripts.py")
     lease = load(pdir / "patch_desk_lease.py")
     ovl = load(pdir / "patch_overlay_default.py")
+    tw = load(pdir / "patch_toolweb_hint.py")
     verify_js = (pdir / "pack-verify.js").read_bytes()
     pub = Path(a.pub).read_bytes()
 
     def guard_fn(t):
-        if "function companyCallerOk(" in t:
+        # 不在这里判断"已有"：patch_company_guard 自己处理 v1 -> v2 升级和已是最新。
+        if "@@guard-v2" in t:
             return t, "already"
         tmp = Path(a.zip + ".guard.tmp.js")
         tmp.write_text(t, encoding="utf-8")
@@ -77,6 +79,10 @@ def main():
             names.add(name)
             if prefix is None and name.startswith("CompanyDesk/"):
                 prefix = "CompanyDesk/"
+            # 内层 skills/skills/ 是死副本（sync-skills 只用外层），内容还和外层不一样，打包和封条却都算它。
+            if name.split("/", 1)[-1].startswith("skills/skills/") or name.startswith("skills/skills/"):
+                stats["skills/skills/*"] = "dropped %d" % (int(stats.get("skills/skills/*", "dropped 0").split()[1]) + 1)
+                continue
             data = zin.read(item.filename)
             base = name.rsplit("/", 1)[-1]
             how = None
@@ -86,6 +92,10 @@ def main():
                 data, how = text_patch(media.patch, data)
             elif name.count("/") <= 1 and base in ("tree-restore.ps1", "tree-restore.sh", "start.ps1", "start.command"):
                 data, how = scripts.patch_bytes(base, data)
+                if base in ("start.ps1", "start.command"):
+                    data, how2 = tw.patch_bytes(base, data)
+                    if how2.startswith("patched"):
+                        how = (how if how == "patched" else "") + ("+" if how == "patched" else "") + how2
             elif name.endswith("home/profiles/web/overlay.yml"):
                 data, how = text_patch(ovl.patch, data)
             elif name.count("/") <= 1 and base == "desk-lease.js":

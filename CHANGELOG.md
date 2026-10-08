@@ -35,6 +35,13 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 - 公司 Grok 来源（网关 8450 上的 grok-4.7 / grok-4.6，支持图片）写进 overlay，所有角色都有。原来只有管理员在「设置 > 模型」配置过才有，普通员工默认退回 DeepSeek 官方线路，报 `MISSING_CREDENTIAL`。
 - 员工端不再直连任何模型厂商：订阅和 key 只放服务器，经网关 8450 反代分发。内核自带的 DeepSeek 官方直连在客户端清空（插件保留，内核 SDK 引用它）；公司要用 DeepSeek 就把 key 填进服务器 `gateway.env`，由网关代理。
 
+**第二轮自审修复**
+- `/company/*` 写操作（POST 等）必须带同源 Origin；没有任何浏览器标记的跨站表单、no-cors 请求一律拒绝。读操作不变（跨站读本来就被 CORS 挡住）。本机没有脚本对这些接口发写请求。
+- 搜索超时不再被启动程序覆盖：Windows 窗口程序、`start.ps1`、Mac `start.command` 原来每次启动删掉模板的 `tool-web`，写死搜索 60 秒（深搜 40~70 秒卡边界）、丢掉 `searchMaxQueries`。现在以模板为准，统一为搜索 170 秒、抓取 90 秒、每次一条查询。
+- 默认模型强制为公司定的值，不再因模板里已有别的默认（如 grok-4.6 / medium）而跳过。
+- 「连不上公司网」时说清原因：公司地址被代理软件 fake-ip 改写（198.18.x，常见于 Clash TUN），或解析到了本机（和服务器重名）。
+- 安装包去掉内层 `skills/skills/` 死副本（同步只用外层，内容还不一致）。
+
 **客户现场发布**
 - 新增 `server/publish-site-update.ps1 [-BumpMark]`：打补丁、重编 exe 和安装器、重新封条、签名一步完成；`-BumpMark` 换版本标记，已装客户端下次启动提示更新。
 

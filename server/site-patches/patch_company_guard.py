@@ -18,7 +18,9 @@ function companyCallerOk(req) {
 	if (!loop) return false;
 	if (String(one(h["sec-fetch-site"]) || "") === "cross-site") return false;
 	const origin = one(h.origin);
-	if (origin === undefined) return true;
+	// 写操作必须带同源 Origin（浏览器同源 POST 一定带）；没带标记的跨站表单、no-cors 请求一律拒。@@guard-v2
+	const method = String((req && req.method) || "GET").toUpperCase();
+	if (origin === undefined) return method === "GET" || method === "HEAD" || method === "OPTIONS";
 	try { return new URL(origin).host === hostUrl.host; } catch { return false; }
 }
 
@@ -39,10 +41,26 @@ function guardCompanyRoute(spec) {
 
 ANCHOR_WEB = '\tconst web = typeof ctx.get === "function" ? ctx.get("webServer") : null;\n\tif (web == null || typeof web.register !== "function") return;\n'
 
+V1_LINE = "\tif (origin === undefined) return true;\n"
+V2_LINE = (
+    "\t// 写操作必须带同源 Origin（浏览器同源 POST 一定带）；没带标记的跨站表单、no-cors 请求一律拒。@@guard-v2\n"
+    "\tconst method = String((req && req.method) || \"GET\").toUpperCase();\n"
+    "\tif (origin === undefined) return method === \"GET\" || method === \"HEAD\" || method === \"OPTIONS\";\n"
+)
+
+
 def patch(path: Path) -> str:
     t = path.read_text(encoding="utf-8")
     if "function companyCallerOk(" in t:
-        return "already"
+        if "@@guard-v2" in t:
+            return "already"
+        crlf = "\r\n" in t
+        u = t.replace("\r\n", "\n")
+        if u.count(V1_LINE) != 1:
+            raise SystemExit("anchor-guard-v1")
+        u = u.replace(V1_LINE, V2_LINE, 1)
+        path.write_text(u.replace("\n", "\r\n") if crlf else u, encoding="utf-8")
+        return "patched routes=upgrade-v2"
     crlf = "\r\n" in t
     t = t.replace("\r\n", "\n")
     assert t.count(ANCHOR_WEB) == 1, "web anchor"

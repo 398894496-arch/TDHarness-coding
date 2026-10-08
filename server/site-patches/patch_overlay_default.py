@@ -60,9 +60,28 @@ def patch(t):
     if NO_DIRECT_MARK not in out:
         out += NO_DIRECT_ROW
         changed = True
-    if "id: agent-default-model" not in out:
+    # 默认模型强制为公司定的值：模板里可能已有别的默认（办公室包是 grok-4.6 / medium），不能见到就跳过。
+    want = DEFAULT_ROW.split("\n", 1)[1]
+    block = re.search(r"(?m)^- id: agent-default-model\n(?:  .*\n)*", out)
+    if block is None:
         out += DEFAULT_ROW
         changed = True
+    elif block.group(0) != want:
+        out = out[: block.start()] + want + out[block.end():]
+        changed = True
+    # tool-web：搜索 170 秒（深搜 40~70 秒，60 秒卡边界）、抓取 90 秒、每次一条查询。保留模板里的其它键。
+    tw = re.search(r"(?m)^- id: tool-web\n(?:  .*\n)*", out)
+    if tw is not None:
+        body = tw.group(0)
+        nb = body
+        for key, val in (("searchTimeoutMs", "170000"), ("fetchTimeoutMs", "90000"), ("searchMaxQueries", "1")):
+            if re.search(r"(?m)^    %s:" % key, nb):
+                nb = re.sub(r"(?m)^    %s:.*$" % key, "    %s: %s" % (key, val), nb)
+            else:
+                nb = nb.rstrip("\n") + "\n    %s: %s\n" % (key, val)
+        if nb != body:
+            out = out[: tw.start()] + nb + out[tw.end():]
+            changed = True
     return (out, "patched") if changed else (t, "already")
 
 
