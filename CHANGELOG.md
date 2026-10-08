@@ -4,6 +4,22 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.08.4
+
+**模型：所有 key 都能用，钥匙只在服务器**
+- 网关按模型名把请求分到各家：OpenAI（`gpt-*`、`o1/o3/o4*`）、Anthropic（`claude-*`，走它的 OpenAI 兼容接口）、DeepSeek、xAI、Kimi、智谱 GLM，以及在设置里添加的任意 OpenAI 兼容地址。原来除 Grok 外的所有请求都发给同一个地址，填了 Anthropic / OpenAI 的 key 也调不通。
+- 修正：设置里添加的自定义 key 原来会写进 `DEEPSEEK_API_KEY`，把真的 DeepSeek key 覆盖掉；现在各存各的（`KEY_<ID>`）。
+- 新接口 `/v1/company-models`：列出这台服务器真正能调的模型和站点默认（`gateway.env` 的 `DEFAULT_MODEL` / `DEFAULT_EFFORT`）。员工端（所有角色）登录后自动同步，选择器里不会再出现调不通的模型，也不再依赖管理员手动「应用」。
+- 公开模板不再写死 Grok 和 grok-4.7：只配了 DeepSeek 的服务器，员工默认就是 DeepSeek。旧版本写进 overlay 的 Grok 来源和默认模型会被自动清掉；还没有这个接口的网关（办公室 gw-mux）可用打包参数 `--default-model` 指定站点默认。
+- 某个模型缺 key 时，网关会说清是哪一家缺、由管理员在设置里加、存在服务器上。
+- ChatGPT / Claude 的个人订阅不做团队反代（个人方案，不允许多人共用），请用它们的 API key。
+
+**安装与文档**
+- 修正：重跑 `setup-server.ps1` 会覆盖花名册和 `PASSWORDS.txt`，把除种子管理员外的账号和密码全部清掉；现在只在首次安装时写入。
+- 首页补上 TDH 是什么、员工从哪下载客户端、装完怎么改默认密码；安装命令改用 Windows 自带的 PowerShell（原来要求的 `pwsh` 很多机器没有）。
+- `docs/SERVER.md` 的模型一节改成一张表：每家 key 写在哪、对应哪些模型、Grok 订阅文件怎么得到。`server/gateway.env.example` 列出全部可填项。产品说明（中英）、中文讲解同步改。
+- `BUGS.md`：已关闭的 C2b–C9 挪到「已完成」，目前没有待认领条目（原来放在「认领这些」下面，读起来像还没做）。
+
 ## 2026.10.08.3
 
 **文档和安装入口**

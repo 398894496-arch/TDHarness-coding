@@ -35,7 +35,10 @@ def text_patch(fn, data):
 
 
 class Patcher:
-    def __init__(self, pdir, pub_path):
+    def __init__(self, pdir, pub_path, default_model=None, default_effort=None):
+        self.default_model = default_model
+        self.default_effort = default_effort
+        self.msync = load(pdir / "patch_model_sync.py")
         self.guard = load(pdir / "patch_company_guard.py")
         self.media = load(pdir / "patch_grok_media.py")
         self.scripts = load(pdir / "patch_client_scripts.py")
@@ -68,11 +71,15 @@ class Patcher:
         base = rel.rsplit("/", 1)[-1]
         top = "/" not in rel
         if rel.endswith("company-shell/lib/index.js"):
-            return text_patch(self.guard_fn, data)
+            data, how = text_patch(self.guard_fn, data)
+            data, how2 = text_patch(self.msync.patch, data)
+            if str(how2).startswith("patched"):
+                how = ("patched+" if str(how).startswith("patched") else "") + "model-sync"
+            return data, how
         if rel.endswith("company-grok-media/lib/index.js"):
             return text_patch(self.media.patch, data)
         if rel.endswith("home/profiles/web/overlay.yml"):
-            return text_patch(self.ovl.patch, data)
+            return text_patch(lambda t: self.ovl.patch(t, self.default_model, self.default_effort), data)
         if top and base in ("tree-restore.ps1", "tree-restore.sh", "start.ps1", "start.command"):
             data, how = self.scripts.patch_bytes(base, data)
             if base in ("start.ps1", "start.command"):
@@ -177,8 +184,10 @@ def main():
     ap.add_argument("--patches", required=True)
     ap.add_argument("--pub", required=True)
     ap.add_argument("--bump-mark", action="store_true", help="zip 模式：换新的版本标记，已装客户端才会收到更新")
+    ap.add_argument("--default-model", default=None, help="站点强制的默认模型（网关没有 /v1/company-models 时用，如办公室 gw-mux）")
+    ap.add_argument("--default-effort", default=None)
     a = ap.parse_args()
-    pt = Patcher(Path(a.patches), a.pub)
+    pt = Patcher(Path(a.patches), a.pub, a.default_model, a.default_effort)
     stats = run_zip(a, pt) if a.zip else run_dir(a, pt)
     for k in sorted(stats):
         print("PATCH %s %s" % (stats[k], k))

@@ -7,7 +7,7 @@ Install lives in [README](../README.md). This page answers: **is this what you w
 | Is | Is not |
 | --- | --- |
 | Windows: clone, then `scripts/setup-all.ps1` stands up login, a seed admin, the gateway, and the desktop client on that LAN | Hosted SaaS, or a client that phones a vendor cloud for your files |
-| Models configured in Settings after install (subscription list, or an API key in the model editor) | Subscription keys, company documents, or a live roster shipped in git |
+| Model keys and subscriptions added on the server after install (Settings → 模型 writes `gateway.env`); every desk lists what the server can reach | Keys on employee machines, or subscription keys, company documents, or a live roster shipped in git |
 | Optional kernel-only: a local folder plus your own key ([MODELS.md](MODELS.md)) | The kernel-only path pretending to be the full server |
 | Issues and PRs **here** | Upstream accepting PRs (they do not, for now) |
 
@@ -17,7 +17,7 @@ flowchart LR
   G --> V[Model vendor]
 ```
 
-The Windows server sends model traffic through the gateway installed on that machine. Keys stay in `gateway.env` and in Settings on that PC, not in git. The kernel-only CLI ([MODELS.md](MODELS.md)) is separate: it writes `$DSH_HOME/.credentials.yaml` and does not start the gateway.
+The Windows server sends model traffic through the gateway installed on that machine, which routes each model to its vendor (OpenAI, Anthropic, DeepSeek, xAI / Grok subscription, Kimi, GLM, or any OpenAI-compatible endpoint). Keys stay in `gateway.env` on that PC, not in git and not on the desks. See [SERVER.md](SERVER.md#models-keys-stay-on-this-machine). The kernel-only CLI ([MODELS.md](MODELS.md)) is separate: it writes `$DSH_HOME/.credentials.yaml` and does not start the gateway.
 
 ---
 
