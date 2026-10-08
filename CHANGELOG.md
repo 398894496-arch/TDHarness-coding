@@ -4,6 +4,13 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.08.2
+
+**客户现场和公司办公室用同一套客户端补丁**
+- `server/site-patches/apply_site_patches.py` 新增目录模式（`--dir`）：办公室打包流程在组装好的客户端目录上、封条之前调用；客户现场 / 一键安装仍在成品包上调用（`--zip`）。两边同一份补丁代码，不会再出现一边有一边没有。
+- 补上漏网的一项：换入 `TDHarness.exe.new` 前检查占位符（`patch_pack_update.py`）。原来只在客户机上手动替换过，一键安装出来的包里没有。
+- 启动时同步跑完整 tree-check 的 Mac 启动脚本（办公室包）也改为后台运行。
+
 ## 2026.10.08
 
 客户现场交付中暴露的问题，全部在一键安装里修掉（`setup-server.ps1` 安装时对 LFS 模板包打补丁，补丁和工具在 `server/site-patches/`，400 MB 的模板包不用重传）。

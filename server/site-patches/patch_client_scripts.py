@@ -77,6 +77,12 @@ try {
 } catch { Write-Output 'tree-check background-failed' }"""
 
 START_SH_OLD = 'echo "tree-check skip-on-open"'
+MAC_SYNC_RUN = (
+    'if [ -f "$ROOT/tree-check.js" ] && [ -f "$ROOT/BUILD.json" ]; then\n'
+    '  TREE_OUT="$("$NODEBIN" "$ROOT/tree-check.js" --root "$ROOT" || true)"\n'
+    "  printf '%s\\n' \"$TREE_OUT\"\n"
+    'fi\n'
+)
 START_SH_NEW = r"""# 产品树校验放后台：不挡启动，结果写 tree-check.last.txt。
 if [ -f "$ROOT/tree-check.js" ]; then
   ( "$NODEBIN" "$ROOT/tree-check.js" --root "$ROOT" > "$HOME/.dsh-company-rc""8/tree-check.last.txt" 2>&1 & )
@@ -118,9 +124,12 @@ def patch_text(name, t):
     if name == "start.command":
         if "tree-check background" in t:
             return t, "already"
-        if START_SH_OLD not in t:
-            return t, "no-skip-line"
-        return t.replace(START_SH_OLD, START_SH_NEW, 1), "patched"
+        if START_SH_OLD in t:
+            return t.replace(START_SH_OLD, START_SH_NEW, 1), "patched"
+        # 办公室 Mac 包没经过 site-cs 的"改成跳过"那一步：同步跑完整 tree-check 再开桌面，直接改成后台。
+        if MAC_SYNC_RUN in t:
+            return t.replace(MAC_SYNC_RUN, START_SH_NEW + "\n", 1), "patched"
+        return t, "no-skip-line"
     return t, "skip"
 
 

@@ -51,13 +51,15 @@ def provider_row(base):
 def patch(t):
     out = t if t.endswith("\n") else t + "\n"
     changed = False
-    if PROVIDER_MARK not in out:
+    # 模板自带 llm-pi-ai（办公室包：经办公室网关的多家模型）就以模板为准，不覆盖它的模型列表。
+    has_pi = re.search(r"(?m)^- id: llm-pi-ai$", out) is not None
+    if PROVIDER_MARK not in out and not has_pi:
         m = re.search(r"- id: company-grok-media\n  config:\n    baseURL: (\S+)", out)
         if not m:
             raise SystemExit("anchor-overlay-grok-media-baseURL")
         out += provider_row(m.group(1).rstrip("/"))
         changed = True
-    if NO_DIRECT_MARK not in out:
+    if NO_DIRECT_MARK not in out and re.search(r"(?m)^- id: llm-deepseek$", out) is None:
         out += NO_DIRECT_ROW
         changed = True
     # 默认模型强制为公司定的值：模板里可能已有别的默认（办公室包是 grok-4.6 / medium），不能见到就跳过。
