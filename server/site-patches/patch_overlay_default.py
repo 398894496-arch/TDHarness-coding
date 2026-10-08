@@ -1,9 +1,14 @@
-"""overlay.yml：公司默认模型 grok-4.7 + High（幂等）。overlay 每次启动都从安装包同步、最后一层生效，
-所以所有客户端新会话默认都是它；会话里仍可手动切换。2026-10-08 用户要求。"""
+"""overlay.yml：公司模型来源 + 默认模型（幂等）。overlay 每次启动从安装包同步、最后一层生效。
+- Grok 来源 office（网关 8450）：原来只在管理员用「设置 > 模型」配置后才写进各自本机配置，
+  普通员工没有，默认模型指向不存在的来源，退回 DeepSeek 官方线路报 MISSING_CREDENTIAL（2026-10-08 实测）。
+- 默认 grok-4.7 + High，会话里仍可手动切换。
+网关地址取 overlay 里 company-grok-media 的 baseURL（安装时已改写成站点地址）。"""
+import re
 import sys
 from pathlib import Path
 
-ROW = """# 公司默认模型：新会话一律 grok-4.7 + High（2026-10-08 定）。会话里仍可手动切换。
+PROVIDER_MARK = "# @@company-grok-provider"
+DEFAULT_ROW = """# 公司默认模型：新会话一律 grok-4.7 + High（2026-10-08 定）。会话里仍可手动切换。
 - id: agent-default-model
   config:
     provider: office
@@ -12,12 +17,39 @@ ROW = """# 公司默认模型：新会话一律 grok-4.7 + High（2026-10-08 定
 """
 
 
+def provider_row(base):
+    models = ""
+    for mid in ("grok-4.7", "grok-4.6"):
+        models += (
+            "          - id: %s\n            name: %s\n            contextWindow: 500000\n"
+            "            input: [text, image]\n            reasoningEfforts:\n"
+            "              low: low\n              medium: medium\n              high: high\n              xhigh: xhigh\n" % (mid, mid)
+        )
+    return (
+        PROVIDER_MARK + "\n"
+        "# 公司 Grok 来源，所有角色都有（不再依赖管理员在设置页配置过）。key 是桌面启动时注入的网关令牌。\n"
+        "- id: llm-pi-ai\n  config:\n    providers:\n      office:\n"
+        "        displayName: Grok\n        apiKeyEnv: GROK_API_KEY\n        api: openai-completions\n"
+        "        baseURL: %s/v1\n        reasoning: high\n        compat:\n"
+        "          supportsStore: false\n          supportsDeveloperRole: false\n"
+        "          supportsReasoningEffort: true\n          supportsUsageInStreaming: true\n"
+        "        models:\n%s" % (base, models)
+    )
+
+
 def patch(t):
-    if "id: agent-default-model" in t:
-        return t, "already"
-    if not t.endswith("\n"):
-        t += "\n"
-    return t + ROW, "patched"
+    out = t if t.endswith("\n") else t + "\n"
+    changed = False
+    if PROVIDER_MARK not in out:
+        m = re.search(r"- id: company-grok-media\n  config:\n    baseURL: (\S+)", out)
+        if not m:
+            raise SystemExit("anchor-overlay-grok-media-baseURL")
+        out += provider_row(m.group(1).rstrip("/"))
+        changed = True
+    if "id: agent-default-model" not in out:
+        out += DEFAULT_ROW
+        changed = True
+    return (out, "patched") if changed else (t, "already")
 
 
 if __name__ == "__main__":

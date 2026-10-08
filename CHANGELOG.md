@@ -32,6 +32,7 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 - 网关补上 `/images`、`/videos`（`gw-media.js`），`company-grok-media` 插件原来调过去必定失败。
 - 生成的图片直接显示在对话里（存进附件库，`finalizeContent` 返回图片块），原来只回一行路径。
 - 所有客户端新会话默认 `grok-4.7` + High（overlay 每次启动同步、最后一层生效，会话里仍可手动切换）。
+- 公司 Grok 来源（网关 8450 上的 grok-4.7 / grok-4.6，支持图片）写进 overlay，所有角色都有。原来只有管理员在「设置 > 模型」配置过才有，普通员工默认退回 DeepSeek 官方线路，报 `MISSING_CREDENTIAL`。
 
 **客户现场发布**
 - 新增 `server/publish-site-update.ps1 [-BumpMark]`：打补丁、重编 exe 和安装器、重新封条、签名一步完成；`-BumpMark` 换版本标记，已装客户端下次启动提示更新。
