@@ -4,6 +4,12 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.08
+
+**客户端（Windows / Mac）**
+- 修正：「记住每个文件上次编辑到哪」的插件 `company-edit-pos` 一直没被加载。包里那份被拍平了（`index.js` 放在根目录，没有 `package.json`，配置目录里也没有它的链接），内核每次启动都报「cannot resolve profile bundle」后跳过。现在按源码完整放入，插件数从 164 变成 165，自测全部启动。
+- 打包时 overlay 里新增的第三方 MCP 条目统一写成 `- insert:`（内核只认这种写法新增条目）。
+
 ## 2026.10.07.6
 
 **客户端更新流程（Windows / Mac）**
