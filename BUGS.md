@@ -10,7 +10,9 @@ How to land a change: [CONTRIBUTING.md](CONTRIBUTING.md). What the patches are f
 
 ## Claim these
 
-Each row is work that is **not done**. “Done” means the green line in that section, not a comment.
+Nothing is open right now: C1–C9 and C2b are closed (below). Found a hole? File a **Bug**, or open a **Task** issue that names the problem and its green line (“done” means a line a script prints, not a comment), then fork + PR. When a new item is listed here, “done” means the green line in its section.
+
+## Completed contributor work
 
 ### C2b. Linux CIFS mount points
 
@@ -112,8 +114,6 @@ This is **not** “the agent is sandboxed.” The review confirms that (1) can p
 **Done when:** `MODELS_PROVE_OK=1` on Linux and Windows CI; public status JSON does not echo access tokens; overlay contains `apiKeyEnv` / `contextWindow` and not the secret.
 
 ---
-
-## Completed contributor work
 
 ### C2. Refuse mapped and SUBST drive roots before ACL grants
 

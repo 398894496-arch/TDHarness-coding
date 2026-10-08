@@ -22,8 +22,45 @@ const KEY_PRESET = {
   anthropic: { id: 'opus', label: 'Anthropic', up: 'https://api.anthropic.com', env: 'ANTHROPIC_API_KEY' },
   kimi: { id: 'kimi', label: 'Kimi', up: 'https://api.moonshot.cn/v1', env: 'KIMI_API_KEY' },
   glm: { id: 'glm', label: '智谱 GLM', up: 'https://open.bigmodel.cn/api/paas/v4', env: 'GLM_API_KEY' },
-  deepseek: { id: 'deepseek', label: 'DeepSeek', up: 'https://api.deepseek.com/v1', env: 'DEEPSEEK_API_KEY' }
+  deepseek: { id: 'deepseek', label: 'DeepSeek', up: 'https://api.deepseek.com/v1', env: 'DEEPSEEK_API_KEY' },
+  xai: { id: 'grok-key', label: 'xAI', up: 'https://api.x.ai/v1', env: 'XAI_API_KEY' }
 };
+
+// Where a model id goes. Keys live only in gateway.env on this server; desks send every
+// model to this gateway with their own per-person token and never hold a vendor key.
+// First match wins. Anthropic is reached through its OpenAI-compatible endpoint, so desks
+// keep speaking one dialect. A model nothing matches falls back to the old single-key route.
+const VENDORS = [
+  { id: 'grok', label: 'Grok', match: /^grok/i, env: 'XAI_API_KEY', base: 'https://api.x.ai/v1', baseEnv: 'XAI_BASE_URL' },
+  { id: 'claude', label: 'Anthropic', match: /^(claude-|opus)/i, env: 'ANTHROPIC_API_KEY', base: 'https://api.anthropic.com/v1', baseEnv: 'ANTHROPIC_BASE_URL' },
+  { id: 'gpt', label: 'OpenAI', match: /^(gpt-|o[1-9]|chatgpt|codex)/i, env: 'OPENAI_API_KEY', base: 'https://api.openai.com/v1', baseEnv: 'OPENAI_BASE_URL' },
+  { id: 'kimi', label: 'Kimi', match: /^(kimi|moonshot)/i, env: 'KIMI_API_KEY', base: 'https://api.moonshot.cn/v1', baseEnv: 'KIMI_BASE_URL' },
+  { id: 'glm', label: '智谱 GLM', match: /^glm/i, env: 'GLM_API_KEY', base: 'https://open.bigmodel.cn/api/paas/v4', baseEnv: 'GLM_BASE_URL' },
+  { id: 'deepseek', label: 'DeepSeek', match: /^deepseek/i, env: 'DEEPSEEK_API_KEY', base: 'https://api.deepseek.com/v1', baseEnv: 'DEEPSEEK_BASE_URL' }
+];
+
+function keyOk(v) { return typeof v === 'string' && v.trim().length >= 8; }
+
+/** Route for one request: { vendor, label, base (OpenAI-style, ends at the version), key, grok } or { missing }. */
+async function routeFor(model, url, env) {
+  const xaiFiles = /^\/v1\/(files|language-models)(\/|$)/.test(url);
+  if (model.indexOf('grok') === 0 || xaiFiles) {
+    const x = await loadXai();
+    if (x) return { vendor: 'xai', label: 'Grok', base: XAI_BASE + '/v1', key: x.access_token, grok: true };
+  }
+  for (const row of loadChannels()) {
+    if (!row || !row.custom || !row.env || !Array.isArray(row.models) || row.models.indexOf(model) < 0) continue;
+    if (keyOk(env[row.env]) && row.up) return { vendor: row.id, label: String(row.label || row.id), base: String(row.up).replace(/\/$/, ''), key: env[row.env].trim(), grok: false };
+  }
+  for (const v of VENDORS) {
+    if (!v.match.test(model)) continue;
+    if (keyOk(env[v.env])) return { vendor: v.id, label: v.label, base: String(env[v.baseEnv] || v.base).replace(/\/$/, ''), key: env[v.env].trim(), grok: v.id === 'grok' };
+    return { missing: v.label, model: model };
+  }
+  const key = env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '';
+  if (!keyOk(key)) return { missing: '', model: model };
+  return { vendor: 'other', label: 'default', base: String(env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1').replace(/\/$/, ''), key: key.trim(), grok: false };
+}
 
 function loadEnv(p) {
   const out = {};
@@ -209,7 +246,7 @@ function modelName(body) {
   }
 }
 
-function listUpstream(url, token) {
+function listUpstream(url, token, extra) {
   return new Promise((resolve) => {
     const u = new URL(url);
     const lib = u.protocol === 'http:' ? http : https;
@@ -219,7 +256,7 @@ function listUpstream(url, token) {
       port: u.port || (u.protocol === 'http:' ? 80 : 443),
       path: u.pathname,
       method: 'GET',
-      headers: { authorization: 'Bearer ' + token },
+      headers: Object.assign({ authorization: 'Bearer ' + token }, extra || {}),
       timeout: 20000
     }, (r) => {
       const chunks = [];
@@ -493,13 +530,67 @@ function recordUsage(row) {
 // Pass the vendor's answer through as it arrives. Holding it until it was
 // complete meant a streamed reply reached the desk in one piece at the very
 // end: the person watched an empty screen for the whole generation.
-function relay(env, req, body, xai, res) {
-  const base = xai ? XAI_BASE : (env.DEEPSEEK_BASE_URL || env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1');
-  const key = xai ? xai.access_token : (env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '');
+// What desks may pick: every model this server can reach, plus the site default. Desks fetch
+// this at login (company-shell) and list exactly these, so the picker never offers a model the
+// gateway would refuse. Cached; a key added or removed in Settings clears the cache.
+let companyModelsCache = { at: 0, val: null };
+const NOT_CHAT = /(embed|tts|whisper|dall-e|davinci|babbage|audio|realtime|moderation|transcribe|search|computer-use|instruct|image|imagine|video)/i;
+const VISION = /^(grok-|claude-|gpt-4o|gpt-4\.1|gpt-5|o3|o4|glm-4v|kimi-.*vision)/i;
+
+async function companyModels(env) {
+  if (companyModelsCache.val && Date.now() - companyModelsCache.at < 10 * 60 * 1000) return companyModelsCache.val;
+  const out = [];
+  const seen = new Set();
+  const add = (rows, vendor) => {
+    for (const r of rows) {
+      if (!r || !r.id || seen.has(r.id) || !MODEL_ID.test(r.id) || NOT_CHAT.test(r.id)) continue;
+      seen.add(r.id);
+      out.push(Object.assign({ vendor: vendor, efforts: [], image: VISION.test(r.id) }, r));
+    }
+  };
+  const xai = await loadXai();
+  if (xai) {
+    const up = await listUpstream(XAI_BASE + '/v1/models', xai.access_token);
+    if (up.status === 200) {
+      const ids = up.rows.map((r) => (r && typeof r.id === 'string' ? r.id : '')).filter((id) => MODEL_ID.test(id) && !NOT_CHAT.test(id));
+      add(catalogFromUpstream(up.rows, await probeMissing(ids, xai.access_token)), 'grok');
+    }
+  }
+  for (const v of VENDORS) {
+    if (!keyOk(env[v.env]) || (v.id === 'grok' && xai)) continue;
+    const base = String(env[v.baseEnv] || v.base).replace(/\/$/, '');
+    const extra = v.id === 'claude' ? { 'x-api-key': env[v.env].trim(), 'anthropic-version': '2023-06-01' } : null;
+    const up = await listUpstream(base + '/models', env[v.env].trim(), extra);
+    if (up.status === 200) add(up.rows.map((r) => ({ id: r && r.id })), v.id);
+  }
+  for (const row of loadChannels()) {
+    if (row && row.custom && row.env && keyOk(env[row.env]) && Array.isArray(row.models)) add(row.models.map((id) => ({ id: id })), row.id);
+  }
+  // Site default: DEFAULT_MODEL / DEFAULT_EFFORT in gateway.env when set and reachable; else the
+  // first model of the first vendor that has one (subscription first, then keys in table order).
+  let pick = out.find((m) => m.id === String(env.DEFAULT_MODEL || '').trim()) || null;
+  if (!pick) {
+    for (const vid of ['grok', 'gpt', 'claude', 'deepseek', 'kimi', 'glm']) {
+      pick = out.find((m) => m.vendor === vid);
+      if (pick) break;
+    }
+  }
+  if (!pick) pick = out[0] || null;
+  const want = String(env.DEFAULT_EFFORT || 'high').trim();
+  const val = {
+    ok: true,
+    models: out,
+    default: pick ? { model: pick.id, effort: pick.efforts.indexOf(want) >= 0 ? want : (pick.efforts.indexOf('high') >= 0 ? 'high' : '') } : null
+  };
+  companyModelsCache = { at: Date.now(), val: val };
+  return val;
+}
+
+function relay(route, req, body, res) {
+  const key = route && route.key;
   if (!key) return Promise.reject(new Error('no-key'));
-  const u = xai
-    ? new URL(req.url || '/v1/models', XAI_BASE + '/')
-    : new URL(req.url.replace(/^\/v1/, '') || '/models', base.endsWith('/') ? base : base + '/');
+  const base = route.base.endsWith('/') ? route.base : route.base + '/';
+  const u = new URL((req.url || '/v1/models').replace(/^\/v1\/?/, '') || 'models', base);
   const plain = u.protocol === 'http:';
   const headers = {
     'content-type': req.headers['content-type'] || 'application/json',
@@ -530,7 +621,7 @@ function relay(env, req, body, xai, res) {
       const settle = () => {
         if (!tap) return;
         const used = tap.end();
-        if (used) recordUsage(Object.assign({ t: Date.now(), login: callerOf(req) || 'unknown', model: modelName(body) || 'unknown', vendor: xai ? 'xai' : 'other' }, used));
+        if (used) recordUsage(Object.assign({ t: Date.now(), login: callerOf(req) || 'unknown', model: modelName(body) || 'unknown', vendor: route.vendor }, used));
       };
       r.on('data', (c) => { res.write(c); if (tap) tap.feed(c); });
       r.on('end', () => { res.end(); settle(); resolve(); });
@@ -661,8 +752,10 @@ async function handleChannels(req, body, env) {
     const id = String((preset && preset.id) || payload.id || '').toLowerCase();
     const key = String(payload.key || '').trim();
     if (!id || key.length < 8) return { status: 400, obj: { ok: false, error: 'key' } };
-    if (preset && preset.env) writeEnvLine(preset.env, key);
-    else if (id === 'deepseek' || presetName === 'custom') writeEnvLine('DEEPSEEK_API_KEY', key);
+    // A custom OpenAI-compatible endpoint gets its own key name; it used to overwrite DEEPSEEK_API_KEY.
+    const custom = !preset && id !== 'deepseek';
+    const envName = preset && preset.env ? preset.env : (custom ? 'KEY_' + id.toUpperCase().replace(/[^A-Z0-9]+/g, '_') : 'DEEPSEEK_API_KEY');
+    writeEnvLine(envName, key);
     const rows = loadChannels().filter((r) => r && r.id !== id);
     rows.push({
       id,
@@ -670,8 +763,11 @@ async function handleChannels(req, body, env) {
       label: String((preset && preset.label) || payload.id || id),
       bound: true,
       up: String((preset && preset.up) || payload.up || ''),
-      models: String(payload.models || '').split(/[,\s]+/).filter(Boolean)
+      models: String(payload.models || '').split(/[,\s]+/).filter(Boolean),
+      env: envName,
+      custom: custom
     });
+    companyModelsCache = { at: 0, val: null };
     saveChannels(rows);
     return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH)) };
   }
@@ -736,6 +832,10 @@ const server = http.createServer(async (req, res) => {
     send(res, out.status, out.obj);
     return;
   }
+  if (req.method === 'GET' && (url === '/v1/company-models' || url === '/company-models')) {
+    try { send(res, 200, await companyModels(env)); } catch (e) { send(res, 502, { ok: false, error: String((e && e.message) || e) }); }
+    return;
+  }
   if (url === '/grok-quota' && xaiBound()) {
     let q = null;
     let err = '';
@@ -786,20 +886,19 @@ const server = http.createServer(async (req, res) => {
   // The vendor's file store has no model in the request (an upload is
   // multipart, a lookup has no body), so it is recognised by its path. A video
   // too large to send inline is uploaded there and then named in the question.
-  const xaiFiles = /^\/v1\/(files|language-models)(\/|$)/.test(url);
-  const xai = (model.indexOf('grok') === 0 || xaiFiles) ? await loadXai() : null;
-  const key = xai ? 'xai' : (env.DEEPSEEK_API_KEY || env.OPENAI_API_KEY || '');
-  if (!key) {
+  const route = await routeFor(model, url, env);
+  if (!route || route.missing !== undefined) {
+    const who = route && route.missing ? route.missing + ' ' : '';
     send(res, 503, {
       error: {
-        message: 'gateway.env has no model key. Use Settings > 模型 to add a key or subscription.',
+        message: 'This server has no ' + who + 'key or subscription for "' + (model || '?') + '". An admin adds it in Settings > 模型; it is stored in gateway.env on the server, never on the desk.',
         type: 'gateway_not_configured'
       }
     });
     return;
   }
   try {
-    await relay(env, req, xai ? withFastTier(body) : body, xai, res);
+    await relay(route, req, route.grok ? withFastTier(body) : body, res);
   } catch (e) {
     if (!res.headersSent) send(res, 502, { error: { message: 'upstream-failed', type: 'bad_gateway' } });
     else res.end();

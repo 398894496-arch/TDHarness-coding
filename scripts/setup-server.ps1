@@ -178,9 +178,18 @@ $rosterJson = @'
   ]
 }
 '@
-[IO.File]::WriteAllText($rosterPath, $rosterJson.Trim() + "`n", $Utf8NoBom)
+# Seed only on a first install. Re-running setup on a live server used to overwrite the roster and
+# PASSWORDS.txt, which wiped every account except the seed admin.
+if (-not (Test-Path -LiteralPath $rosterPath)) {
+  [IO.File]::WriteAllText($rosterPath, $rosterJson.Trim() + "`n", $Utf8NoBom)
+  Write-Output 'ROSTER_SEEDED=1'
+} else { Write-Output 'ROSTER_KEPT=1' }
 $passPath = Join-Path $Runtime 'caddy\PASSWORDS.txt'
-[IO.File]::WriteAllText($passPath, "tdh:12345678`n", $Utf8NoBom)
+if (-not (Test-Path -LiteralPath $passPath)) {
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $passPath) | Out-Null
+  [IO.File]::WriteAllText($passPath, "tdh:12345678`n", $Utf8NoBom)
+  Write-Output 'PASSWORDS_SEEDED=1'
+} else { Write-Output 'PASSWORDS_KEPT=1' }
 $gwEnv = Join-Path $Runtime 'gateway.env'
 if (-not (Test-Path -LiteralPath $gwEnv)) {
   Copy-Item -LiteralPath (Join-Path $Server 'gateway.env.example') -Destination $gwEnv
