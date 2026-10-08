@@ -2,12 +2,23 @@
 - Grok 来源 office（网关 8450）：原来只在管理员用「设置 > 模型」配置后才写进各自本机配置，
   普通员工没有，默认模型指向不存在的来源，退回 DeepSeek 官方线路报 MISSING_CREDENTIAL（2026-10-08 实测）。
 - 默认 grok-4.7 + High，会话里仍可手动切换。
+- 关掉员工端的厂商直连（DeepSeek 官方线路）：订阅和 key 只在服务器，客户端只走网关。
 网关地址取 overlay 里 company-grok-media 的 baseURL（安装时已改写成站点地址）。"""
 import re
 import sys
 from pathlib import Path
 
 PROVIDER_MARK = "# @@company-grok-provider"
+NO_DIRECT_MARK = "# @@company-no-direct-vendor"
+NO_DIRECT_ROW = NO_DIRECT_MARK + """
+# 员工端不直连任何模型厂商：订阅和 key 只放服务器，经网关 8450 反代分发给客户端。
+# 内核自带的 DeepSeek 官方直连：插件保留（内核 SDK 引用它），模型清空，key 指向一个永不设置的变量。
+# 公司要给员工用 DeepSeek：key 填服务器 gateway.env，模型加到上面的 office 来源里。
+- id: llm-deepseek
+  config:
+    apiKeyEnv: DEEPSEEK_OFFICIAL_KEY
+    models: []
+"""
 DEFAULT_ROW = """# 公司默认模型：新会话一律 grok-4.7 + High（2026-10-08 定）。会话里仍可手动切换。
 - id: agent-default-model
   config:
@@ -45,6 +56,9 @@ def patch(t):
         if not m:
             raise SystemExit("anchor-overlay-grok-media-baseURL")
         out += provider_row(m.group(1).rstrip("/"))
+        changed = True
+    if NO_DIRECT_MARK not in out:
+        out += NO_DIRECT_ROW
         changed = True
     if "id: agent-default-model" not in out:
         out += DEFAULT_ROW
