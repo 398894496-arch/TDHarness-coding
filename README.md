@@ -1,6 +1,6 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.08.2** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.08.3** · [更新说明 / Changelog](CHANGELOG.md)
 
 **A Windows machine can clone this repo and stand up a full TDH server.** That is the product path. Kernel-only coding setup is still below for people who only want the patched `dsh` CLI.
 
@@ -20,6 +20,8 @@ pwsh -File scripts\setup-all.ps1
 ```
 
 **默认管理员：账号 `tdh`，密码 `12345678`。** 安装会用这个账号登录。打开桌面快捷方式后也用它。这是装机种子账号，不是仓库里的密钥。
+
+The site address defaults to this PC's `<computername>.local`; add `-HostName <ip>` only for clients on another subnet. Client updates are signed with a key setup creates on this PC: back it up ([docs/SERVER.md](docs/SERVER.md#client-updates-are-signed)).
 
 Green: `SITE_INSTALL_OK=1`, `LOGIN_PROVE_OK=1`, `GUI_PROVE_OK=1`, `PLANT_CLIENT_OK=1`. Setup compiles `TDHarness.exe` for this LAN, writes `/client/version.json`, and plants the desktop shortcut. Put your own model key in `D:\dsh\runtime\gateway.env`, then restart task `Autostart-Gateway`.
 
@@ -48,7 +50,7 @@ Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/
 
 On Windows, `scripts/setup-all.ps1` installs this desk on the LAN: login, the seed admin, the gateway, and the desktop shortcut. The optional kernel-only `setup.sh` does not start that stack. Feature write-up: [docs/PRODUCT.md](docs/PRODUCT.md#what-the-running-desk-does). 中文：[docs/PRODUCT.zh.md](docs/PRODUCT.zh.md).
 
-Models are not baked into the clone. In Settings, a subscription lists the models that login can call, and an API key is typed in that provider's model editor. The composer shows the models saved there. Put a gateway key in `D:\dsh\runtime\gateway.env` after install. Do not commit it.
+Model keys and subscriptions are not in the clone and never go to the desks: they live on the server (`D:\dsh\runtime\gateway.env` for an API key, `D:\dsh\runtime\oauth\xai-account.json` for a Grok subscription), and every desk reaches models only through the gateway on 8450 with a revocable per-person token. Desks come with the company Grok provider and default to `grok-4.7` High; the kernel's direct vendor route is off on desks. Do not commit keys. Details: [docs/SERVER.md](docs/SERVER.md#models-keys-stay-on-this-machine).
 
 | Session | Colleagues |
 | --- | --- |

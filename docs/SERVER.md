@@ -8,7 +8,7 @@ That starts:
 - people API on `127.0.0.1:4181`
 - knowledge search on `127.0.0.1:4182`, reached from the LAN at `/company/knowledge` with a login token only (empty until the first night)
 - task `TDH-Brain-Daily` at 00:15: reads the day's conversations and distils them into the brain (`server/brain/run-daily.ps1`)
-- model gateway on `0.0.0.0:8450`
+- model gateway on port 8450, IPv4 and IPv6 (clients that resolve `<name>.local` often get the IPv6 link-local address first)
 
 It does **not** upload or copy:
 
@@ -23,6 +23,34 @@ It does **not** upload or copy:
 Those stay on the machine that runs setup. Setup compiles `TDHarness.exe` for this LAN (`COMPILE_APPHOST_OK=1`), serves `/client/version.json`, and proves the AppHost login URL (`GUI_PROVE_OK=1`) before planting the desktop client. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
 
 Fake green: API login on the LAN host while `TDHarness.exe` still has another machine compiled into `Site.LoginUrl`. Setup now rebuilds that exe from `server/AppHost.cs` + this machine's `site.yml`.
+
+## Site address
+
+Setup bakes the site address into every client it builds. The default is this PC's mDNS name, `<computername>.local` (for a computer named `TDH`: `https://tdh.local:8443/`), so a network change or a new DHCP lease does not break installed desks. Pass `-HostName <ip>` to `setup-server.ps1` only when clients sit on another subnet or VLAN: mDNS does not cross routers.
+
+- Port 8443 also answers plain http and redirects to https, so `tdh.local:8443` typed without `https://` works.
+- A desk running Clash (or another proxy) in TUN / fake-ip mode resolves `.local` to `198.18.x.x`. Add `+.local` to its fake-ip filter or turn TUN off. The client says this in the login box instead of a bare "连不上公司网".
+- Renamed the computer? Run `pwsh -File server\retarget-site.ps1` once: it moves `site.yml`, Caddy, both client zips, `TDHarness.exe` and the signature to the new name. Desks installed under the old name must reinstall from the new URL.
+
+## Models: keys stay on this machine
+
+Subscriptions and keys live only on this server; desks reach models through the gateway on 8450 with a per-person gateway token (revocable from 人员). A Grok subscription is the OAuth file `D:\dsh\runtime\oauth\xai-account.json` (the gateway renews it); an API key goes in `gateway.env`. Every desk gets the company Grok provider and defaults to `grok-4.7` with High reasoning; the kernel's direct DeepSeek route is emptied on desks. Settings shows the weekly Grok quota, and the gateway serves `/images` and `/videos` for the Grok media tools.
+
+## Client updates are signed
+
+Setup creates an Ed25519 key in `D:\dsh\runtime\pack-sign\`. Clients ship with its public half and refuse an update whose `version.json` signature or zip sha256 does not match. **Back up `pack-sign.key`.** Losing it means every installed desk refuses the next update until it is reinstalled. Never copy it off this machine otherwise.
+
+To publish a client update on a site (fixes in `server\site-patches`, new build mark, recompiled exe and installer, resealed, signed):
+
+```powershell
+pwsh -File server\publish-site-update.ps1 -BumpMark
+```
+
+Desks see the new mark on their next launch and offer the update. The product tree check runs in the background on every launch and once after an update; results go to `tree-check.last.txt` in the desk's config folder.
+
+## Accounts on first login
+
+The login API heals the two things a remote desk needs before it can open: the `dshshare` Windows account that every desk mounts the company share with, and the person's `emp-<login>` folder. Login names are matched case-insensitively.
 
 Optional, not run by setup: `pwsh -File server\koubo\install.ps1` for the talking-head editing tool (needs Python 3.10–3.12 and Jianying on the machine that opens the drafts).
 

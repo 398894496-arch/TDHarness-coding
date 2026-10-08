@@ -1,4 +1,6 @@
 # One command after git clone. Administrator. Finds git/node/python, pulls LFS, installs the server.
+# -HostName <ip>: only when clients sit on another subnet/VLAN (default: this PC's <name>.local).
+param([string]$HostName = '')
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 
@@ -58,7 +60,9 @@ if (-not (Test-Path -LiteralPath $caddy) -or (Get-Item -LiteralPath $caddy).Leng
   throw 'caddy-exe-missing-git-lfs-pull'
 }
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repo 'scripts\setup-server.ps1') -Repo $Repo
+$serverArgs = @('-Repo', $Repo)
+if ($HostName) { $serverArgs += @('-HostName', $HostName) }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repo 'scripts\setup-server.ps1') @serverArgs
 if ($LASTEXITCODE -ne 0) { throw 'server-setup-failed' }
 
 $npm = Get-Command npm -ErrorAction SilentlyContinue

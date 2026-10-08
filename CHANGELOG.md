@@ -4,6 +4,14 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.08.3
+
+**文档和安装入口**
+- `docs/SERVER.md` 补上运维要点：站点地址默认 `<计算机名>.local`（跨网段用 `-HostName <IP>`，员工电脑开 Clash 要把 `+.local` 设为直连）、8443 的 http 自动跳转、改计算机名后用 `retarget-site.ps1`、模型订阅和 key 只放服务器、一键更新签名（**`pack-sign.key` 必须备份**）、用 `publish-site-update.ps1 -BumpMark` 发布更新、首次登录自动补共享账户和个人目录。
+- 首页 README 的模型说明改成现状：员工端默认就有公司 Grok 来源（grok-4.7 High），不直连厂商。
+- `setup-all.ps1` 接收并转发 `-HostName`：原来只有 `setup-server.ps1` 认这个参数，按首页用 `setup-all.ps1` 安装的人没法给跨网段的客户指定 IP。
+- 版本检查改为精确匹配版本行（`2026.10.08` 是 `2026.10.08.2` 的子串，原来会误判通过），并把中文讲解页 `docs/BRIEF.zh.md` 的版本行也纳入检查（它上一版就漏改了）。
+
 ## 2026.10.08.2
 
 **客户现场和公司办公室用同一套客户端补丁**
