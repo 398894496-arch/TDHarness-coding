@@ -4,6 +4,16 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.09
+
+**生成的图片、视频：对话里直接看，直接下载**（客户现场反馈：生成的视频点「下载查看」只下来一串失败的 `file.json`）
+- 根因：侧边栏插件 dsh-better-sidebar 的文件路由不认会话内相对路径（`artifacts/x.mp4`），回 400「is not an absolute path」，WebView2 把这段 JSON 当文件存下来，显示「无法下载」。生图生视频插件返回的恰好是相对路径，所以几乎每次生成的文件都下不了。现在相对路径按会话工作目录解析。
+- AI 交付（present）的文件卡片：图片在对话里直接显示（点开在侧边栏看大图），视频直接显示播放器；每张卡片加「下载」按钮，一点就存到本机。
+- 侧边栏文件预览的工具栏加常驻「下载到本机」按钮（图片、视频、任何文件）。
+- `generate_image` / `generate_video` 改为返回绝对路径，预览、下载、「在文件夹中显示」用的是同一个路径，不受会话所在工作区影响。
+- 实现为站点补丁 `server/site-patches/patch_media_download.py`（幂等），一键安装和 `publish-site-update.ps1` 都会打；办公室打包流程同一份。
+- 已知未修：文件卡片「在文件管理器中显示」在部分电脑上报错（内核要求路径解析前后写法一致），需要那台电脑的日志再定。
+
 ## 2026.10.08.4
 
 **模型：所有 key 都能用，钥匙只在服务器**
