@@ -3,7 +3,7 @@
     python apply_site_patches.py --zip CompanyDesk-win.zip --patches DIR --pub pack-sign.pub [--bump-mark]
   目录模式（办公室打包流程，在组装好的 CompanyDesk 目录上、封条之前）：
     python apply_site_patches.py --dir <CompanyDesk 目录> --patches DIR --pub pack-sign.pub
-内容：/company/* 来源校验；生图在对话里显示；生成的图片视频在对话里显示和下载（含侧边栏下载修复）；更新验签 + tree-check；换 exe 前检查；
+内容：/company/* 来源校验；生图在对话里显示；更新验签 + tree-check；换 exe 前检查；
 团队工作区 realpath；公司模型来源与默认模型；tool-web 以模板为准；删掉 skills/skills 死副本；
 放入 pack-verify.js 和本服务器的 pack-sign.pub。zip 模式之后要用 site-cs.py reseal-zip 重新封条。
 """
@@ -39,6 +39,8 @@ class Patcher:
         self.default_model = default_model
         self.default_effort = default_effort
         self.msync = load(pdir / "patch_model_sync.py")
+        self.resume = load(pdir / "patch_resume_download.py")
+        self.dhsync = load(pdir / "patch_desk_home_sync.py")
         self.guard = load(pdir / "patch_company_guard.py")
         self.media = load(pdir / "patch_grok_media.py")
         self.scripts = load(pdir / "patch_client_scripts.py")
@@ -46,7 +48,6 @@ class Patcher:
         self.ovl = load(pdir / "patch_overlay_default.py")
         self.tw = load(pdir / "patch_toolweb_hint.py")
         self.pupd = load(pdir / "patch_pack_update.py")
-        self.mdl = load(pdir / "patch_media_download.py")
         self.verify_js = (pdir / "pack-verify.js").read_bytes()
         self.pub = Path(pub_path).read_bytes()
         self.tmp = pdir / ".guard.tmp.js"
@@ -78,23 +79,22 @@ class Patcher:
                 how = ("patched+" if str(how).startswith("patched") else "") + "model-sync"
             return data, how
         if rel.endswith("company-grok-media/lib/index.js"):
-            data, how = text_patch(self.media.patch, data)
-            data, how2 = text_patch(self.mdl.patch_grok_media, data)
-            if str(how2).startswith("patched"):
-                how = ("patched+" if str(how).startswith("patched") else "") + "media-download"
-            return data, how
-        mdl_fn = self.mdl.for_member(rel)
-        if mdl_fn is not None:
-            return text_patch(mdl_fn, data)
+            return text_patch(self.media.patch, data)
         if rel.endswith("home/profiles/web/overlay.yml"):
             return text_patch(lambda t: self.ovl.patch(t, self.default_model, self.default_effort), data)
         if top and base in ("tree-restore.ps1", "tree-restore.sh", "start.ps1", "start.command"):
             data, how = self.scripts.patch_bytes(base, data)
+            if base in ("tree-restore.ps1", "tree-restore.sh"):
+                data, how3 = self.resume.patch_bytes(base, data)
+                if how3 == "patched":
+                    how = ("patched+" if how == "patched" else "") + "resume"
             if base in ("start.ps1", "start.command"):
                 data, how2 = self.tw.patch_bytes(base, data)
                 if how2.startswith("patched"):
                     how = ("patched+" if how == "patched" else "") + how2
             return data, how
+        if top and base == "sync-desk-home.sh":
+            return text_patch(self.dhsync.patch, data)
         if top and base == "desk-lease.js":
             return text_patch(self.lease.patch, data)
         if top and base == "pack-update-check.js":
