@@ -4,6 +4,16 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.09.2
+
+**Mac 客户端打不开（停在「正在打开本机 Agent…」）**
+- 原因：`ego-browser` 已不随包发（配置里本来就禁用），但 Mac 启动脚本 `sync-desk-home.sh` 还强制检查它的依赖，找不到就退出，登录框都不弹。公开 Mac 包和办公室 Mac 包都受影响；之前的 Mac 包自测只检查了插件能否加载，没有真正走启动流程。
+- 修正（`site-patches/patch_desk_home_sync.py`）：只有包里确实带了 `ego-browser` 才检查它的依赖。
+- 新增 `scripts/prove-client-boot.sh`：按安装流程给 Mac 包打补丁、解压，在全新的用户目录下跑启动前的同步步骤，打印 `CLIENT_BOOT_OK=1`。发 Mac 包前必须跑；对未打补丁的包它会复现这次的失败。
+
+**更新下载断点续传**
+- 离开办公室经中继下载 400 MB 更新包，约 110 KB/s，中途被重置后整次更新失败、退回旧版。现在 Windows（`tree-restore.ps1`）和 Mac（`tree-restore.sh`）都从断点接着下、最多重试 30 次，60 秒没有进度就重连（`site-patches/patch_resume_download.py`）。用会主动断开连接的测试服务器在 macOS 和 Windows PowerShell 5.1 上各验过：断两次后续传完成，文件哈希一致。
+
 ## 2026.10.09
 
 **生成的图片、视频：对话里直接看，直接下载**（客户现场反馈：生成的视频点「下载查看」只下来一串失败的 `file.json`）
@@ -13,16 +23,6 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 - `generate_image` / `generate_video` 改为返回绝对路径，预览、下载、「在文件夹中显示」用的是同一个路径，不受会话所在工作区影响。
 - 实现为站点补丁 `server/site-patches/patch_media_download.py`（幂等），一键安装和 `publish-site-update.ps1` 都会打；办公室打包流程同一份。
 - 已知未修：文件卡片「在文件管理器中显示」在部分电脑上报错（内核要求路径解析前后写法一致），需要那台电脑的日志再定。
-
-## 2026.10.09
-
-**Mac 客户端打不开（停在「正在打开本机 Agent…」）**
-- 原因：`ego-browser` 已不随包发（配置里本来就禁用），但 Mac 启动脚本 `sync-desk-home.sh` 还强制检查它的依赖，找不到就退出，登录框都不弹。公开 Mac 包和办公室 Mac 包都受影响；之前的 Mac 包自测只检查了插件能否加载，没有真正走启动流程。
-- 修正（`site-patches/patch_desk_home_sync.py`）：只有包里确实带了 `ego-browser` 才检查它的依赖。
-- 新增 `scripts/prove-client-boot.sh`：按安装流程给 Mac 包打补丁、解压，在全新的用户目录下跑启动前的同步步骤，打印 `CLIENT_BOOT_OK=1`。发 Mac 包前必须跑；对未打补丁的包它会复现这次的失败。
-
-**更新下载断点续传**
-- 离开办公室经中继下载 400 MB 更新包，约 110 KB/s，中途被重置后整次更新失败、退回旧版。现在 Windows（`tree-restore.ps1`）和 Mac（`tree-restore.sh`）都从断点接着下、最多重试 30 次，60 秒没有进度就重连（`site-patches/patch_resume_download.py`）。用会主动断开连接的测试服务器在 macOS 和 Windows PowerShell 5.1 上各验过：断两次后续传完成，文件哈希一致。
 
 ## 2026.10.08.4
 
