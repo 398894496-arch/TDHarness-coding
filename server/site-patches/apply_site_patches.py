@@ -3,7 +3,7 @@
     python apply_site_patches.py --zip CompanyDesk-win.zip --patches DIR --pub pack-sign.pub [--bump-mark]
   目录模式（办公室打包流程，在组装好的 CompanyDesk 目录上、封条之前）：
     python apply_site_patches.py --dir <CompanyDesk 目录> --patches DIR --pub pack-sign.pub
-内容：/company/* 来源校验；生图在对话里显示；生成的图片视频在对话里显示和下载（含侧边栏下载修复）；更新验签 + tree-check；更新下载断点续传；Mac 启动不再要求未随包发的 ego-browser；换 exe 前检查；
+内容：/company/* 来源校验；生图在对话里显示；生成的图片视频在对话里显示和下载（含侧边栏下载修复）；更新验签 + tree-check；更新下载断点续传；增量更新（只下变化的文件，失败退回整包）；Mac 启动不再要求未随包发的 ego-browser；换 exe 前检查；
 团队工作区 realpath；公司模型来源与默认模型；tool-web 以模板为准；删掉 skills/skills 死副本；
 放入 pack-verify.js 和本服务器的 pack-sign.pub。zip 模式之后要用 site-cs.py reseal-zip 重新封条。
 """
@@ -40,6 +40,7 @@ class Patcher:
         self.default_effort = default_effort
         self.msync = load(pdir / "patch_model_sync.py")
         self.resume = load(pdir / "patch_resume_download.py")
+        self.delta = load(pdir / "patch_delta_update.py")
         self.dhsync = load(pdir / "patch_desk_home_sync.py")
         self.guard = load(pdir / "patch_company_guard.py")
         self.media = load(pdir / "patch_grok_media.py")
@@ -96,6 +97,9 @@ class Patcher:
                 data, how3 = self.resume.patch_bytes(base, data)
                 if how3 == "patched":
                     how = ("patched+" if how == "patched" else "") + "resume"
+                data, how4 = self.delta.patch_bytes(base, data)
+                if how4 == "patched":
+                    how = ("patched+" if str(how).startswith("patched") or how == "resume" else "") + "delta"
             if base in ("start.ps1", "start.command"):
                 data, how2 = self.tw.patch_bytes(base, data)
                 if how2.startswith("patched"):

@@ -4,6 +4,16 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.09.3
+
+**增量更新：只下载变了的文件**
+- 一次更新通常只改十几个文件，客户端却要下整个 400 MB 安装包；在办公室外经中继（约 110 KB/s）要下一个多小时，常常中途失败。
+- 服务器发布新版时（`publish-site-update.ps1`），把发布前的安装包留在 `D:\dsh\client-history`（每个平台保留最近 4 版），对每个旧版本生成只含变化文件的增量包（`client-dist\delta\`，附带已删除文件清单），列进 `version.json`，和整包一起签名（`server/pack-delta.py`、`pack-sign.js`）。增量包比整包的 60% 还大就不生成。
+- 客户端更新时（`tree-restore.ps1` / `tree-restore.sh`，补丁 `site-patches/patch_delta_update.py`）：签名里有对应本机版本的增量包，就只下它，核对签名里的 sha256，替换变化的文件、删掉新版去掉的文件，再跑产品树校验；任何一步不对（增量包被改、本机文件被动过、没有对应版本）都退回下载整包（整包仍断点续传）。Windows 上正在运行的 `TDHarness.exe` / `node.exe` 先改名再放新文件。
+- 顺带修正：Windows 整包更新原来不清理 `prefix` 下新版已删除的文件，产品树校验会一直报不一致；现在和 Mac 一样清掉。
+- 在 macOS 和 Windows PowerShell 5.1 上各验了四种情况：正常增量（Windows 上 `TDHarness.exe` 运行中）、增量包被篡改、本机产品树被改过、没有对应版本的增量包，结果都是更新完成且 `TREE_OK=1`。
+- 已经装好的客户端要先收到一次带这段逻辑的更新（仍是整包），之后的更新才走增量。
+
 ## 2026.10.09.2
 
 **Mac 客户端打不开（停在「正在打开本机 Agent…」）**
