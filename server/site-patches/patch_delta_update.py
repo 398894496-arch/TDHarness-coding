@@ -143,8 +143,37 @@ PS1_BLOCK = r'''  # Delta first: only the files that changed since this install.
 PS1_PRUNE_OLD = "  foreach ($scopeRel in @('plugins', 'home\\profiles\\web\\node_modules')) {\n"
 PS1_PRUNE_NEW = "  foreach ($scopeRel in @('plugins', 'home\\profiles\\web\\node_modules', 'prefix\\lib\\node_modules\\@deepseek-ai', 'prefix\\node_modules\\@deepseek-ai')) {\n"
 
+# The background download outlived a killed restore (2026-10-09: two orphaned curls kept pulling
+# 400 MB into deleted temp files and held the pack open on the server). Stop curl once the
+# restore script ($$, also inside the fetch_zip subshell) is gone.
+WD_MARK = "@@fetch-watchdog"
+WD_OLD = """      if curl -fsSk --noproxy '*' --connect-timeout 20 --speed-limit 1024 --speed-time 60 -C - -o "$ZIP" "$ZIPURL"; then
+        return 0
+      fi
+"""
+WD_NEW = """      curl -fsSk --noproxy '*' --connect-timeout 20 --speed-limit 1024 --speed-time 60 -C - -o "$ZIP" "$ZIPURL" &
+      local c=$!  # @@fetch-watchdog
+      while kill -0 "$c" 2>/dev/null; do
+        if ! kill -0 "$$" 2>/dev/null; then kill "$c" 2>/dev/null; return 1; fi
+        sleep 1
+      done
+      if wait "$c"; then
+        return 0
+      fi
+"""
+
+
+def watchdog(t):
+    if WD_MARK in t or t.count(WD_OLD) != 1:
+        return t, False
+    return t.replace(WD_OLD, WD_NEW, 1), True
+
 
 def patch(name, t):
+    if name == "tree-restore.sh":
+        t, wd = watchdog(t)
+        if MARK in t:
+            return t, ("patched" if wd else "already")
     if MARK in t:
         return t, "already"
     if name == "tree-restore.sh":
