@@ -1,5 +1,5 @@
 # Publish one client update on a site server: site patches -> (optional) new build mark ->
-# recompile TDHarness.exe and Setup.exe -> reseal BUILD.json -> sha256 + signature on version.json.
+# recompile TDHarness.exe and Setup.exe -> reseal BUILD.json -> delta packs -> sha256 + signature on version.json.
 # Installed desks see the new mark on next launch and offer the update; new installs get it directly.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File publish-site-update.ps1 [-BumpMark]
 # Keep this file ASCII: Windows PowerShell 5.1 reads BOM-less UTF-8 as the ANSI code page.
@@ -34,10 +34,15 @@ if (-not (Test-Path -LiteralPath (Join-Path $SignDir 'pack-sign.key'))) {
 }
 foreach ($p in $SitePy, $Pub, (Join-Path $Patches 'apply_site_patches.py')) { if (-not (Test-Path -LiteralPath $p)) { throw ('missing ' + $p) } }
 
-# 1. Backup
+$History = 'D:\dsh\client-history'
+$DeltaPy = Join-Path $Server 'pack-delta.py'
+
+# 1. Backup, and keep the packs desks have now: the deltas in step 5 are cut against them
 $bak = 'D:\dsh\client-dist-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
 Copy-Item -LiteralPath $Dist -Destination $bak -Recurse
 Write-Output ('BACKUP=' + $bak)
+& $py $DeltaPy remember --dist $Dist --history $History
+if ($LASTEXITCODE -ne 0) { throw 'delta-remember-failed' }
 
 # 2. Site patches (idempotent)
 foreach ($name in 'CompanyDesk-win.zip', 'CompanyDesk-mac.zip') {
@@ -82,6 +87,9 @@ $obj = [ordered]@{
   mac = [ordered]@{ mark = $macMark; bytes = $macBytes; file = 'CompanyDesk-mac.zip' }
 }
 [IO.File]::WriteAllText((Join-Path $Dist 'version.json'), (($obj | ConvertTo-Json -Compress) + "`n"), $Utf8NoBom)
+# Delta packs: desks on a recent version download only the changed files (signed with version.json)
+& $py $DeltaPy build --dist $Dist --history $History
+if ($LASTEXITCODE -ne 0) { throw 'delta-build-failed' }
 $ErrorActionPreference = 'Continue'
 $signOut = & $node (Join-Path $Server 'pack-sign.js') sign --dist $Dist --dir $SignDir 2>&1 | Out-String
 $signRc = $LASTEXITCODE

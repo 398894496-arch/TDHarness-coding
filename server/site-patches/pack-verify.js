@@ -4,6 +4,8 @@
 // 对 version.json 原文签名（version.sig）。这里用随包下发的 pack-sign.pub 验签，再核对 zip 的哈希。
 // 8443 或它的证书被换掉时，对方拿不到私钥，签不出能过这里的 version.json。
 // 用法：node pack-verify.js --root DIR --zip FILE --url ZIP_URL --platform win|mac
+//       增量包：再加 --delta-from <本机 mark>，核对的是签名里该增量包的 sha256。
+//       查有没有增量包：--plan（不带 --zip），有就打印 DELTA_FILE= / DELTA_BYTES= / DELTA_FROM=。
 // 退出码：0 通过或本机还没有公钥（旧装机的过渡期）；3 校验失败，调用方必须放弃安装。
 "use strict";
 
@@ -66,7 +68,8 @@ async function main() {
     out("PACK_VERIFY=skip-no-key");
     return;
   }
-  if (!a.zip || !fs.existsSync(a.zip)) fail("zip-missing");
+  const planOnly = Object.prototype.hasOwnProperty.call(a, "plan") || process.argv.includes("--plan");
+  if (!planOnly && (!a.zip || !fs.existsSync(a.zip))) fail("zip-missing");
   if (!a.url) fail("url-missing");
   const platform = a.platform === "mac" ? "mac" : "win";
 
@@ -107,6 +110,28 @@ async function main() {
     fail("version-unparseable");
   }
   const row = doc && doc[platform];
+  if (planOnly) {
+    let local = "";
+    try { local = String(JSON.parse(fs.readFileSync(path.join(root, "BUILD.json"), "utf8").replace(/^\uFEFF/, "")).mark || ""); } catch { local = ""; }
+    const d = row && row.deltas && local ? row.deltas[local] : null;
+    if (d && typeof d.file === "string" && /^[0-9a-f]{64}$/.test(String(d.sha256 || "")) && !/\.\./.test(d.file)) {
+      out("DELTA_FILE=" + d.file);
+      out("DELTA_BYTES=" + (d.bytes || 0));
+      out("DELTA_FROM=" + local);
+    } else {
+      out("DELTA_NONE=1");
+    }
+    return;
+  }
+  if (a["delta-from"]) {
+    const d = row && row.deltas ? row.deltas[a["delta-from"]] : null;
+    if (!d || !/^[0-9a-f]{64}$/.test(String(d.sha256 || ""))) fail("delta-not-listed");
+    const gotD = sha256File(a.zip);
+    if (gotD !== d.sha256) fail("delta-sha256-mismatch");
+    out("PACK_VERIFY_OK=1");
+    out("PACK_VERIFY_DELTA=" + gotD.slice(0, 16));
+    return;
+  }
   if (!row || typeof row.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(row.sha256)) fail("version-no-sha256");
   const urlFile = decodeURIComponent(new URL(a.url).pathname.split("/").pop() || "");
   if (row.file && urlFile && row.file !== urlFile) fail("file-name-mismatch");

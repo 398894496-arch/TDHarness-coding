@@ -76,6 +76,15 @@ if (a._ === "sign") {
     row.bytes = fs.statSync(zip).size;
     row.sha256 = sha256File(zip);
     out("SHA256_" + plat.toUpperCase() + "=" + row.sha256.slice(0, 16));
+    // Delta packs (pack-delta.py build) are signed with the same version.json.
+    for (const from of Object.keys(row.deltas || {})) {
+      const d = row.deltas[from];
+      const dp = d && typeof d.file === "string" && !/\.\./.test(d.file) ? path.join(dist, d.file) : "";
+      if (!dp || !fs.existsSync(dp)) { delete row.deltas[from]; continue; }
+      d.bytes = fs.statSync(dp).size;
+      d.sha256 = sha256File(dp);
+      out("DELTA_SHA256_" + plat.toUpperCase() + "_" + from.slice(0, 8) + "=" + d.sha256.slice(0, 16));
+    }
   }
   const body = Buffer.from(JSON.stringify(doc) + "\n", "utf8");
   const key = crypto.createPrivateKey(fs.readFileSync(keyPath, "utf8"));
