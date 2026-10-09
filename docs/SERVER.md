@@ -64,7 +64,7 @@ To publish a client update on a site (fixes in `server\site-patches`, new build 
 powershell -ExecutionPolicy Bypass -File server\publish-site-update.ps1 -BumpMark
 ```
 
-Desks see the new mark on their next launch and offer the update. The product tree check runs in the background on every launch and once after an update; results go to `tree-check.last.txt` in the desk's config folder.
+Desks see the new mark on their next launch and offer the update. The download resumes where it stopped and retries up to 30 times, so a desk outside the office on a slow relayed link still finishes. Before publishing a Mac pack, run `bash scripts/prove-client-boot.sh` (needs the LFS packages): it boots the patched pack under an empty home and prints `CLIENT_BOOT_OK=1`. The product tree check runs in the background on every launch and once after an update; results go to `tree-check.last.txt` in the desk's config folder.
 
 ## Accounts on first login
 
