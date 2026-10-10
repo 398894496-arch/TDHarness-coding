@@ -88,7 +88,7 @@ function proveClientPatch(py) {
     fs.writeFileSync(f, text);
     const r = spawnSync(py, ['-I', '-c', code, path.join(ROOT, 'server', 'site-patches', 'patch_gw_tls.py'), rel, f], { encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
-    return { how: r.stdout.trim(), text: fs.readFileSync(f, 'utf8') };
+    return { how: r.stdout.trim(), text: fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n') };
   };
   let r = run('home/profiles/web/overlay.yml', '- id: company-web-search\n  config:\n    baseURL: http://tdh.local:8450\n');
   assert.equal(r.how, 'patched-gw-tls already');
@@ -121,14 +121,14 @@ function proveAppHostSwitch(py) {
     const out = path.join(dir, 'Site.cs');
     const r = spawnSync(py, [path.join(ROOT, 'server', 'site-cs.py'), '--site', site, 'emit-cs', '--out', out], { encoding: 'utf8', env: Object.assign({}, process.env, { TDH_COMPANY_CA: ca }) });
     assert.equal(r.status, 0, r.stderr);
-    return fs.readFileSync(out, 'utf8');
+    return fs.readFileSync(out, 'utf8').replace(/\r\n/g, '\n');
   };
   assert.match(emit(path.join(dir, 'none.crt')), /GatewayBase = "http:\/\/tdh\.local:8450\/v1"/, 'no root yet: plain 8450');
   fs.writeFileSync(path.join(dir, 'ca.crt'), '-----BEGIN CERTIFICATE-----\n');
   assert.match(emit(path.join(dir, 'ca.crt')), /GatewayBase = "https:\/\/tdh\.local:8443\/gw\/v1"/, 'root exported: TLS through Caddy');
   const caddy = path.join(dir, 'Caddyfile');
   assert.equal(spawnSync(py, [path.join(ROOT, 'server', 'site-cs.py'), '--site', site, 'emit-caddy', '--out', caddy]).status, 0);
-  assert.match(fs.readFileSync(caddy, 'utf8'), /handle_path \/gw\/\* \{\n\t\treverse_proxy 127\.0\.0\.1:8450 \{\n\t\t\tflush_interval -1/);
+  assert.match(fs.readFileSync(caddy, 'utf8').replace(/\r\n/g, '\n'), /handle_path \/gw\/\* \{\n\t\treverse_proxy 127\.0\.0\.1:8450 \{\n\t\t\tflush_interval -1/);
   console.log('GW_TLS_APPHOST_OK=1');
 }
 
