@@ -5,7 +5,7 @@
     python apply_site_patches.py --dir <CompanyDesk 目录> --patches DIR --pub pack-sign.pub
 内容：/company/* 来源校验；生图在对话里显示；生成的图片视频在对话里显示和下载（含侧边栏下载修复）；更新验签 + tree-check；更新下载断点续传；增量更新（只下变化的文件，失败退回整包）；Mac 启动不再要求未随包发的 ego-browser；换 exe 前检查；
 团队工作区 realpath；公司模型来源与默认模型；tool-web 以模板为准；删掉 skills/skills 死副本；
-每扇网关门（模型、搜索、生图）都带个人令牌；网关走 Caddy TLS（给了 --ca 时）；人员页停用后可以删除账号，「吊销令牌」改名「强制重新登录」，账号页自己改密码；
+每扇网关门（模型、搜索、生图）都带个人令牌；网关走 Caddy TLS（给了 --ca 时）；人员页停用后可以删除账号，「吊销令牌」改名「强制重新登录」，账号页自己改密码；内核页「运行中」读本进程真在跑的内核；
 放入 pack-verify.js 和本服务器的 pack-sign.pub。zip 模式之后要用 site-cs.py reseal-zip 重新封条。
 """
 import argparse
@@ -55,6 +55,7 @@ class Patcher:
         self.prm = load(pdir / "patch_people_remove.py")
         self.pwd = load(pdir / "patch_people_wording.py")
         self.gtls = load(pdir / "patch_gw_tls.py")
+        self.kwatch = load(pdir / "patch_kernel_watch.py")
         # This server's Caddy root (export-ca.ps1). Given: desks reach the gateway over
         # TLS on the login port and trust this root. Not given: plain 8450 as before.
         self.ca = Path(ca_path).read_bytes() if ca_path else None
@@ -121,6 +122,8 @@ class Patcher:
             return data, how
         if rel.endswith("company-web-search/lib/index.js"):
             return text_patch(self.gwt.patch_js, data)
+        if rel.endswith("company-shell/lib/kernel-watch.js"):
+            return text_patch(self.kwatch.patch, data)
         mdl_fn = self.mdl.for_member(rel)
         if mdl_fn is not None:
             return text_patch(mdl_fn, data)
