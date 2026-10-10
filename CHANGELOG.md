@@ -4,6 +4,15 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.09.5
+
+**人员页：账号可以真正删除**
+- 问题：账号发放后只能「停用」或「吊销令牌」，删不掉。吊销令牌只作废当前令牌，账号和密码都还在，这个人重新登录就领到新令牌；停用的人也一直留在花名册和 `PASSWORDS.txt` 里。
+- 人员服务（`server/people-api.py`）新增 `remove`：只有管理员能做，只能删**已停用**的人（先停用、再删除，两步），种子管理员和自己不能删。删除后：从花名册消失，`PASSWORDS.txt` 里那一行去掉（其他行和注释原样保留），所有令牌作废，登录不上。个人文件夹 `emp-<登录名>` 留在公司盘上不删；这个登录名记为已退役（花名册里的 `retired`，界面不显示），不会再发给别人，免得新人打开前人的文件夹。
+- 客户端（站点补丁 `site-patches/patch_people_remove.py`）：已停用的人后面多一个「删除」按钮，点了先出确认条，写明会发生什么；补上「先停用再删除」「登录名已退役」的提示。
+- `scripts/prove-people.py` 加上删除流程：未停用不能删、员工不能删、种子管理员不能删、删除后不在名单里、密码行没了而别人的还在、登录 401、旧令牌失效、同名不能再发放、退役记录留在花名册。打印 `PEOPLE_PROVE_OK=1`。
+- 文档里「吊销令牌」「停用」「删除」三者的区别写清楚：吊销令牌只是让人重新登录一次。
+
 ## 2026.10.09.4
 
 **模型网关只认登录令牌（安全修复）**

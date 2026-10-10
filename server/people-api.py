@@ -123,6 +123,30 @@ def pass_map() -> dict[str, str]:
     return out
 
 
+def drop_password(login: str) -> int:
+    """Take one person's line out of PASSWORDS.txt; comments and everyone else stay as they are."""
+    if not PASS_FILE.is_file():
+        return 0
+    keep, dropped = [], 0
+    for raw in PASS_FILE.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
+        t = raw.strip()
+        user = ""
+        if t and not t.startswith("#"):
+            if ":" in t[:40]:
+                user = t.split(":", 1)[0].strip()
+            elif " " in t:
+                user = t.split(None, 1)[0].strip()
+        if user == login:
+            dropped += 1
+            continue
+        keep.append(raw)
+    if dropped:
+        tmp = PASS_FILE.with_suffix(".tmp")
+        tmp.write_text("".join(line + "\n" for line in keep), encoding="utf-8")
+        os.replace(tmp, PASS_FILE)
+    return dropped
+
+
 def public_people() -> list:
     rows = []
     for p in load_roster().get("people") or []:
@@ -526,6 +550,11 @@ class Handler(BaseHTTPRequestHandler):
             if login == SEED_ADMIN or row_of(login) is not None or login in pass_map():
                 fail("login-taken")
                 return
+            # A removed account's login stays retired: its folder emp-<login> is still on the
+            # company disk, and a new person with the same login would open it.
+            if any(isinstance(r, dict) and r.get("login") == login for r in data.get("retired") or []):
+                fail("login-retired")
+                return
             pw = str(payload.get("password") or "")
             if len(pw) < 8:
                 fail("password-too-short")
@@ -603,6 +632,37 @@ class Handler(BaseHTTPRequestHandler):
                 return
             revoked = revoke_tokens(str(row.get("pid") or ""))
             done({"revoked": revoked})
+            return
+
+        # Remove an account for good: off the roster, its password line gone, every token
+        # revoked. Only a person already disabled can be removed, so it is always two steps.
+        # The personal folder on the company disk is kept; the login is recorded as retired
+        # (not shown anywhere) so it cannot be handed to someone else and reopen that folder.
+        if action == "remove":
+            row = row_of(login)
+            if row is None:
+                fail("no-such-person", 404)
+                return
+            if login == SEED_ADMIN:
+                fail("protect-seed-admin")
+                return
+            if login == str(actor.get("login") or ""):
+                fail("remove-self")
+                return
+            if (row.get("status") or "active") != "disabled":
+                fail("remove-active")
+                return
+            revoked = revoke_tokens(str(row.get("pid") or ""))
+            data["people"] = [p for p in data.get("people") or [] if not (isinstance(p, dict) and p.get("login") == login)]
+            data.setdefault("retired", []).append({
+                "login": login,
+                "pid": row.get("pid"),
+                "personal": row.get("personal"),
+                "removed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "by": actor.get("login"),
+            })
+            dropped = drop_password(login)
+            done({"removed": login, "revoked": revoked, "password_dropped": dropped})
             return
 
         if action == "dept-add":
