@@ -3,9 +3,9 @@
 
 // Behavior proof for the gateway's access check. Runs gw-lite.js against a
 // local stand-in vendor with made-up tokens. No real key, no vendor call.
-// The gateway normally trusts 127.0.0.1; this proof turns that off
-// (TDH_GW_TRUST_LOOPBACK=0) so a local request stands in for a LAN desk,
-// then starts a second gateway with the default to prove the trust itself.
+// The gateway trusts no address, so a local request stands in for a desk. Jobs on
+// the server use the service token; TDH_GW_TRUST_LOOPBACK=1 (tests only) restores
+// the old trust. Once this server's CA is exported, plaintext from the LAN is refused.
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -65,7 +65,9 @@ async function startGateway(root, port, extraEnv) {
       TDH_CHANNELS: path.join(root, 'channels.json'),
       TDH_XAI_OAUTH: path.join(root, 'no-xai-login.json'),
       TDH_GROK_FAST: path.join(root, 'grok-fast.json'),
-      TDH_GW_PORT: String(port)
+      TDH_GW_PORT: String(port),
+      TDH_GW_SERVICE_TOKEN_FILE: path.join(root, 'gw-service.token'),
+      TDH_COMPANY_CA: path.join(root, 'company-ca.crt')
     }, extraEnv || {}),
     stdio: ['ignore', 'pipe', 'inherit']
   });
@@ -141,10 +143,11 @@ async function main() {
   fs.writeFileSync(envFile, baseEnv);
 
   const port = await freePort();
-  const gw = await startGateway(root, port, { TDH_GW_TRUST_LOOPBACK: '0' });
+  const gw = await startGateway(root, port, {});
   const chat = (headers) => call(port, 'POST', '/v1/chat/completions', headers, { model: 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }] });
   const bearer = (t) => ({ authorization: 'Bearer ' + t });
   let gw2 = null;
+  let gw3 = null;
 
   try {
     // 1. Model calls need a live token of an active person.
@@ -227,18 +230,67 @@ async function main() {
     console.log('GW_TOKENLESS_SWITCH_OK=1');
     fs.writeFileSync(envFile, baseEnv);
 
-    // 6. With the default, this machine itself is trusted (the nightly brain
-    //    job sends a placeholder key from 127.0.0.1).
+    // 6. No address is trusted: a placeholder key from 127.0.0.1 is refused (that is
+    //    what Caddy forwards from, and what a proxy with allow-LAN would forward from).
+    //    Jobs on the server use the service token the gateway wrote at start.
+    r = await call(port, 'POST', '/v1/chat/completions', bearer('company-gateway'), { model: 'deepseek-chat', messages: [] });
+    assert.equal(r.status, 401, 'loopback is not trusted');
+    const svc = fs.readFileSync(path.join(root, 'gw-service.token'), 'utf8').trim();
+    assert.match(svc, /^svc_[0-9a-f]{48}$/);
+    r = await call(port, 'POST', '/v1/chat/completions', bearer(svc), { model: 'deepseek-chat', messages: [] });
+    assert.equal(r.status, 200, 'the service token works');
+    r = await call(port, 'POST', '/channels', bearer(svc), addKey);
+    assert.equal(r.status, 401, 'the service token cannot change keys');
+    const ledger2 = fs.readdirSync(path.join(root, 'usage')).map((f) => fs.readFileSync(path.join(root, 'usage', f), 'utf8')).join('');
+    assert.match(ledger2, /"login":"server"/, 'service calls are booked to the server');
     const port2 = await freePort();
-    gw2 = await startGateway(root, port2, {});
-    r = await call(port2, 'POST', '/v1/chat/completions', bearer('company-gateway'), { model: 'deepseek-chat', messages: [] });
-    assert.equal(r.status, 200, 'loopback is trusted by default');
-    console.log('GW_LOOPBACK_TRUST_OK=1');
+    gw2 = await startGateway(root, port2, { TDH_GW_TRUST_LOOPBACK: '1' });
+    assert.equal(fs.readFileSync(path.join(root, 'gw-service.token'), 'utf8').trim(), svc, 'the service token survives a restart');
+    r = await call(port2, 'POST', '/v1/chat/completions', {}, { model: 'deepseek-chat', messages: [] });
+    assert.equal(r.status, 200, 'TDH_GW_TRUST_LOOPBACK=1 restores the old trust (tests only)');
+    console.log('GW_SERVICE_TOKEN_OK=1');
+
+    // 7. Once the CA is exported, desks come through Caddy (here: 127.0.0.1) and a
+    //    request straight from the LAN is plaintext: refused unless GW_PLAIN_LAN=1.
+    const lan = Object.values(os.networkInterfaces()).flat().find((n) => n && n.family === 'IPv4' && !n.internal);
+    if (!lan) {
+      console.log('GW_PLAIN_LAN_SKIPPED=no-lan-address');
+    } else {
+      fs.writeFileSync(path.join(root, 'company-ca.crt'), '-----BEGIN CERTIFICATE-----\n');
+      const amy2 = tok();
+      tokens.push({ pid: 'p1', token: amy2, revoked_at: '' });
+      fs.writeFileSync(path.join(root, 'gw-tokens.json'), JSON.stringify({ tokens }));
+      const port3 = await freePort();
+      gw3 = await startGateway(root, port3, {});
+      const viaLan = (headers) => new Promise((resolve, reject) => {
+        const raw = Buffer.from(JSON.stringify({ model: 'deepseek-chat', messages: [] }));
+        const req = http.request({ hostname: lan.address, port: port3, path: '/v1/chat/completions', method: 'POST',
+          headers: Object.assign({ 'content-type': 'application/json', 'content-length': raw.length }, headers) }, (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => { let obj = null; try { obj = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { obj = null; } resolve({ status: res.statusCode, obj }); });
+        });
+        req.on('error', reject);
+        req.end(raw);
+      });
+      r = await viaLan(bearer(amy2));
+      assert.equal(r.status, 403, 'plaintext from the LAN is refused once TLS is ready');
+      assert.equal(r.obj.error.type, 'gateway_plaintext');
+      r = await call(port3, 'POST', '/v1/chat/completions', bearer(amy2), { model: 'deepseek-chat', messages: [] });
+      assert.equal(r.status, 200, 'the same token through Caddy (loopback) works');
+      fs.writeFileSync(envFile, baseEnv + 'GW_PLAIN_LAN=1\n');
+      r = await viaLan(bearer(amy2));
+      assert.equal(r.status, 200, 'GW_PLAIN_LAN=1 lets plaintext through during the switch');
+      r = await viaLan({});
+      assert.equal(r.status, 401, 'the bridge never waives the token');
+      console.log('GW_PLAIN_LAN_OK=1');
+    }
 
     console.log('GW_AUTH_PROVE_OK=1');
   } finally {
     gw.kill();
     if (gw2) gw2.kill();
+    if (gw3) gw3.kill();
     vendor.close();
   }
 }

@@ -291,7 +291,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $signDir 'pack-sign.key'))) {
 foreach ($zn in 'CompanyDesk-win.zip', 'CompanyDesk-mac.zip') {
   $zp = Join-Path $Dist $zn
   if (-not (Test-Path -LiteralPath $zp)) { continue }
-  & $py (Join-Path $Server 'site-patches\apply_site_patches.py') --zip $zp --patches (Join-Path $Server 'site-patches') --pub (Join-Path $signDir 'pack-sign.pub')
+  $patchArgs = @((Join-Path $Server 'site-patches\apply_site_patches.py'), '--zip', $zp, '--patches', (Join-Path $Server 'site-patches'), '--pub', (Join-Path $signDir 'pack-sign.pub'))
+  # A re-run on a live server: Caddy already made its root, so desks keep the TLS gateway.
+  if (Test-Path -LiteralPath (Join-Path $Runtime 'company-ca.crt')) { $patchArgs += @('--ca', (Join-Path $Runtime 'company-ca.crt')) }
+  & $py @patchArgs
   if ($LASTEXITCODE -ne 0) { throw ('site-patch-failed-' + $zn) }
 }
 
@@ -395,6 +398,33 @@ if ($homeHttp -ne '200') { throw 'server-http-failed' }
 if ($LASTEXITCODE -ne 0) { throw 'login-prove-failed' }
 & $py (Join-Path $Server 'prove-gui.py') $SiteYml
 if ($LASTEXITCODE -ne 0) { throw 'gui-prove-failed' }
+
+# Gateway over TLS. Caddy makes its root on its first start, which is after the packs were
+# built on a fresh install; export it now and, when it is new or changed, publish the packs
+# again so desks reach the gateway through 8443/gw and trust this root. Desks installed
+# before still talk plain 8450 until they update: GW_PLAIN_LAN=1 keeps them working, and is
+# only written when this server already had clients out (a re-run, not a fresh install).
+# Desks are out when anyone other than the seed admin (setup's own login proof) holds a token.
+$hadClients = (Test-Path -LiteralPath (Join-Path $Runtime 'company-ca.crt')) -or (Test-Path -LiteralPath (Join-Path $Root 'client-history'))
+$tokFile = Join-Path $Runtime 'gw-tokens.json'
+if (-not $hadClients -and (Test-Path -LiteralPath $tokFile)) {
+  $seedPid = (@((Get-Content -LiteralPath $rosterPath -Raw -Encoding UTF8 | ConvertFrom-Json).people | Where-Object { $_.login -eq 'tdh' }) | Select-Object -First 1).pid
+  $toks = @((Get-Content -LiteralPath $tokFile -Raw -Encoding UTF8 | ConvertFrom-Json).tokens)
+  if (@($toks | Where-Object { $_.pid -and $_.pid -ne $seedPid }).Count -gt 0) { $hadClients = $true }
+}
+$caOut = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'export-ca.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'export-ca-failed' }
+$caOut | ForEach-Object { Write-Output $_ }
+if (($caOut | Out-String) -match 'CA_EXPORTED=changed') {
+  $envFile = Join-Path $Runtime 'gateway.env'
+  if ($hadClients -and -not (Select-String -LiteralPath $envFile -Pattern '^GW_PLAIN_LAN=' -Quiet -ErrorAction SilentlyContinue)) {
+    Add-Content -LiteralPath $envFile -Value "`r`n# Desks installed before the TLS gateway still use plain 8450. Remove once all have updated.`r`nGW_PLAIN_LAN=1" -Encoding ASCII
+    Write-Output 'GW_PLAIN_LAN_BRIDGE=1'
+  }
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'publish-site-update.ps1') -BumpMark
+  if ($LASTEXITCODE -ne 0) { throw 'tls-publish-failed' }
+  Write-Output 'GW_TLS_PUBLISHED=1'
+}
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'plant-client.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'plant-client-failed' }
 Write-Output ('DOWNLOAD=https://' + $lan + ':8443/')

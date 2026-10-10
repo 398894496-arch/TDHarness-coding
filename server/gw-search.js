@@ -8,6 +8,8 @@
 
 const { spawn } = require('child_process');
 const cn = require('./web-search.js');
+const dns = require('dns');
+const net = require('net');
 
 const SEARXNG = process.env.GW_SEARXNG_URL || 'http://127.0.0.1:8888';
 const EXA_MCP = 'https://mcp.exa.ai/mcp';
@@ -599,6 +601,48 @@ async function runSearch(ctx, query, maxResults, asked) {
   };
 }
 
+// /fetch reads public pages only. privateUrl() looks at the address as written; the
+// guard below looks at where the name really resolves, at connect time and on every
+// redirect hop, so a public-looking name that points inside, or a redirect to an
+// office address, is refused too. fetchGuardTest lets the proof map names and
+// mark addresses as public without real DNS.
+const fetchGuardTest = { allow: new Set(), resolve: {} };
+function privateIp(ip) {
+  if (fetchGuardTest.allow.has(ip)) return false;
+  const v = net.isIP(ip);
+  if (v === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || a >= 224
+      || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+  }
+  if (v === 6) {
+    const s = ip.toLowerCase();
+    if (s === '::' || s === '::1') return true;
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+    if (mapped) return privateIp(mapped[1]);
+    return /^f[cd]/.test(s) || /^fe[89ab]/.test(s) || /^ff/.test(s);
+  }
+  return true;
+}
+function guardedLookup(hostname, options, cb) {
+  if (typeof options === 'function') { cb = options; options = {}; }
+  const done = (err, addrs) => {
+    if (err) return cb(err);
+    if (!addrs || !addrs.length || addrs.some((a) => privateIp(a.address))) {
+      const e = new Error('fetch-blocked');
+      e.statusCode = 400;
+      return cb(e);
+    }
+    if (options && options.all) return cb(null, addrs);
+    return cb(null, addrs[0].address, addrs[0].family);
+  };
+  const fixed = fetchGuardTest.resolve[hostname];
+  if (fixed) return done(null, [{ address: fixed, family: net.isIP(fixed) }]);
+  dns.lookup(hostname, Object.assign({}, options, { all: true }), done);
+}
+const GUARD = { lookup: guardedLookup, guardIp: privateIp };
+
 function privateUrl(raw) {
   let u;
   try { u = new URL(raw); } catch { return true; }
@@ -692,23 +736,24 @@ async function runFetch(upFetch, url) {
       }
       if (hasChinese(url) || /\.cn(\/|$)|baidu\.|sohu\.|sina\.|163\.|qq\.com|zhihu\.|toutiao\.|so\.com/.test(url)) {
         // many sites inside China still send GBK; this reader knows
-        const page = await cn.fetchPage(url);
+        const page = await cn.fetchPage(url, GUARD);
         if (page.statusCode >= 200 && page.statusCode < 500 && page.body.content) {
           const txt = page.body.kind === 'html' ? cn.text(page.body.content) : page.body.content;
           return { url: page.url, statusCode: page.statusCode, body: { kind: 'text', content: txt.slice(0, MAX_FETCH) }, truncated: txt.length > MAX_FETCH };
         }
       }
-      const r = await doorFetch(upFetch, url, { headers: ua }, ENGINE_MS);
-      const got = await readFetched(r);
-      if (got.status >= 200 && got.status < 500 && got.text) {
+      const page = await cn.get(url, Object.assign({ timeout: ENGINE_MS, maxBytes: 4e6, headers: ua }, GUARD));
+      const text = cn.decode(page);
+      if (page.status >= 200 && page.status < 500 && text) {
         return {
           url,
-          statusCode: got.status,
-          body: { kind: 'text', content: got.text },
-          truncated: got.truncated
+          statusCode: page.status,
+          body: { kind: 'text', content: text.slice(0, MAX_FETCH) },
+          truncated: text.length > MAX_FETCH
         };
       }
     } catch (e) {
+      if (e && e.message === 'fetch-blocked') throw e;
       lastErr = e;
     }
   }
@@ -780,6 +825,9 @@ async function handleFetch(res, body, ctx) {
 }
 
 module.exports = {
+  fetchGuardTest,
+  fetchGuard: GUARD,
+  privateIp,
   handleSearch,
   handleFetch,
   pickChannels,

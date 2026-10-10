@@ -56,16 +56,23 @@ Every desk lists exactly the models this server can reach (fetched from `/v1/com
 
 ### Who the gateway answers
 
-The gateway listens on the LAN (setup opens 8450 in the firewall), so it checks every request itself:
+Desks reach the gateway over TLS: Caddy on the login port forwards `https://<this-pc>:8443/gw/...` to the gateway on `127.0.0.1:8450`, and desks trust this server's own Caddy root, which they carry in their signed pack (`company-ca.crt`). The gateway checks every request itself and trusts no address:
 
 | Request | Needs |
 | --- | --- |
 | Model calls, vendor files, `/search`, `/fetch`, `/images`, `/videos` | A live login token: in `runtime\gw-tokens.json`, not revoked, and its person active on the roster. Otherwise `401` |
 | `POST /channels` (add, replace or drop a key; channel settings) | The live token of an **admin**. Otherwise `401` / `403`, and `gateway.env` / `channels.json` are left alone |
 | `/health`, `GET /channels`, `/v1/company-models`, `/grok-quota`, `/grok-fast` | Nothing. They say which channels are bound and which models exist, never a key |
-| Anything from this PC itself (`127.0.0.1`) | Nothing: the nightly brain job and setup's own checks call from here. Nothing on this PC forwards LAN traffic to 8450 |
+| Jobs on this PC (nightly brain job, deep search calling the model door) | The service token in `runtime\gw-service.token`, made by the gateway at start, readable by administrators only. It spends keys like a person; it cannot change them |
+| A request straight from the LAN to 8450 (plaintext) | Refused (`403`, `gateway_plaintext`) once `runtime\company-ca.crt` exists, unless `gateway.env` has `GW_PLAIN_LAN=1` |
 
-Revoking a token or deactivating a person in 人员 takes effect on the next request; the gateway rereads both files when either changes. Every refusal prints a `GW_DENY` line in the gateway log. `node scripts/prove-gw-auth.js` proves all of the above against a stand-in vendor (`GW_AUTH_PROVE_OK=1`).
+Coming from `127.0.0.1` is worth nothing: Caddy forwards every desk from there, and a proxy on this PC (Clash with "allow LAN") would make any LAN request look local. Every request needs its token.
+
+Revoking a token or deactivating a person in 人员 takes effect on the next request; the gateway rereads both files when either changes. Every refusal prints a `GW_DENY` line in the gateway log, with the desk's own address when it came through Caddy. `node scripts/prove-gw-auth.js` proves all of the above against a stand-in vendor (`GW_AUTH_PROVE_OK=1`); `node scripts/prove-gw-tls.js` proves the TLS switch and the `/fetch` guard (`GW_TLS_PROVE_OK=1`).
+
+**The TLS switch.** `server\export-ca.ps1` copies Caddy's root (made by `tls internal` on Caddy's first start) to `runtime\company-ca.crt`. That one file decides everything: the site patches move desks to `8443/gw` and pack the root, `TDHarness.exe` is built with the https gateway, and the gateway starts refusing plaintext from the LAN. `publish-site-update.ps1` exports it every time. A fresh install builds its packs before Caddy has ever run, so setup exports the root after the services are up and publishes once more. **Upgrading a live server:** desks already installed still talk plain 8450 until they take the update, so put `GW_PLAIN_LAN=1` in `gateway.env` first (setup does this itself when it sees desks were already out), publish with `-BumpMark`, and remove the line once every desk has updated. A new Caddy root (Caddy's data wiped) means publishing again.
+
+`/fetch` reads public pages only: the address as written, where its name really resolves, and every redirect hop are checked against private, loopback, link-local, CGNAT and multicast ranges.
 
 **Desks installed before 2026.10.09.4** sent no token on web search and image/video generation (Windows) or on model calls (Mac). The fix is a site patch (`site-patches/patch_gw_token.py`), so after updating this repo on the server run `publish-site-update.ps1 -BumpMark` and have everyone accept the update on their next launch. Until a desk has it, those requests get `401`. To bridge that window, add `GW_ALLOW_TOKENLESS=1` to `gateway.env` (read on every request, no restart): a request with **no token at all** is let through again, a wrong or revoked token is still refused, and key changes stay admin-only. Remove the line once every desk is updated.
 

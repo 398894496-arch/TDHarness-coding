@@ -6,6 +6,7 @@
 const https = require('https');
 const http = require('http');
 const zlib = require('zlib');
+const net = require('net');
 const { URL } = require('url');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -15,8 +16,18 @@ function get(url, opts) {
   return new Promise((resolve, reject) => {
     let done = false;
     const u = new URL(url);
+    // Guarded reads (gw-search /fetch): a literal private address is refused here,
+    // a name is refused by opts.lookup once it resolves; both on every redirect hop.
+    const bare = u.hostname.replace(/^\[|\]$/g, '');
+    if (opts.guardIp && net.isIP(bare) && opts.guardIp(bare)) {
+      const e = new Error('fetch-blocked');
+      e.statusCode = 400;
+      reject(e);
+      return;
+    }
     const lib = u.protocol === 'http:' ? http : https;
     const req = lib.request(u, {
+      lookup: opts.lookup,
       method: opts.method || 'GET',
       headers: Object.assign({
         'user-agent': UA,
@@ -171,7 +182,10 @@ function grok(query, limit, port, ms) {
       tools: [{ type: 'web_search' }],
       stream: false
     }));
-    const req = http.request({ hostname: '127.0.0.1', port, path: '/v1/responses', method: 'POST', headers: { 'content-type': 'application/json', 'content-length': raw.length }, timeout: ms || 44000 }, (res) => {
+    // The gateway's own model door: it trusts no address, so send its service token.
+    const headers = { 'content-type': 'application/json', 'content-length': raw.length };
+    if (process.env.TDH_GW_SERVICE_TOKEN) headers.authorization = 'Bearer ' + process.env.TDH_GW_SERVICE_TOKEN;
+    const req = http.request({ hostname: '127.0.0.1', port, path: '/v1/responses', method: 'POST', headers, timeout: ms || 44000 }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
@@ -221,15 +235,15 @@ async function search(query, limit, opts) {
 
 // One page, as text the model can read. Search-engine jump links are followed
 // to the real page; a page in GBK is read as GBK.
-async function fetchPage(url) {
-  const res = await get(String(url), { timeout: 25000, maxBytes: 4e6 });
+async function fetchPage(url, guard) {
+  const res = await get(String(url), Object.assign({ timeout: 25000, maxBytes: 4e6 }, guard || {}));
   const type = String(res.headers['content-type'] || '').toLowerCase();
   if (/pdf|octet-stream|image\/|video\/|audio\//.test(type)) {
     return { url: res.url, statusCode: res.status, body: { kind: 'text', content: '[这个地址是 ' + type + '，不是网页，读不了正文]' }, truncated: false };
   }
   let html = decode(res);
   const jump = html.length < 3000 && html.match(/(?:location\.replace|window\.location(?:\.href)?\s*=)\s*\(?["']([^"']+)["']/);
-  if (jump && /^https?:/.test(jump[1])) return fetchPage(jump[1]);
+  if (jump && /^https?:/.test(jump[1])) return fetchPage(jump[1], guard);
   const cut = html.length > 400000;
   if (cut) html = html.slice(0, 400000);
   return { url: res.url, statusCode: res.status, body: { kind: /html/.test(type) || /<html/i.test(html.slice(0, 2000)) ? 'html' : 'text', content: html }, truncated: cut };

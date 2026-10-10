@@ -1,6 +1,6 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.10** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.10.2** · [更新说明 / Changelog](CHANGELOG.md)
 
 **TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share and the roster; employees run a desktop client (Windows or Mac) that talks only to that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘和花名册，员工电脑装桌面客户端，只连这台服务器。
 
@@ -69,7 +69,7 @@ Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/
 
 On Windows, `scripts/setup-all.ps1` installs this desk on the LAN: login, the seed admin, the gateway, and the desktop shortcut. The optional kernel-only `setup.sh` does not start that stack. Feature write-up: [docs/PRODUCT.md](docs/PRODUCT.md#what-the-running-desk-does). 中文：[docs/PRODUCT.zh.md](docs/PRODUCT.zh.md).
 
-**Models.** Keys and subscriptions live only on the server and never go to the desks. An admin adds them in Settings → 模型, which writes `D:\dsh\runtime\gateway.env` on the server (see [server/gateway.env.example](server/gateway.env.example)): API keys for OpenAI, Anthropic, DeepSeek, xAI, Kimi, Zhipu GLM, or any OpenAI-compatible endpoint; a Grok subscription is the OAuth file `D:\dsh\runtime\oauth\xai-account.json`. The gateway on 8450 routes each model to its vendor and answers only a live per-person login token (only an admin's token can change keys; details in [docs/SERVER.md](docs/SERVER.md#who-the-gateway-answers)), and every desk lists exactly the models the server can reach (synced at login) with the site default `DEFAULT_MODEL`. ChatGPT and Claude consumer subscriptions are personal plans and are not relayed to a team; use their API keys. Details: [docs/SERVER.md](docs/SERVER.md#models-keys-stay-on-this-machine). Do not commit keys.
+**Models.** Keys and subscriptions live only on the server and never go to the desks. An admin adds them in Settings → 模型, which writes `D:\dsh\runtime\gateway.env` on the server (see [server/gateway.env.example](server/gateway.env.example)): API keys for OpenAI, Anthropic, DeepSeek, xAI, Kimi, Zhipu GLM, or any OpenAI-compatible endpoint; a Grok subscription is the OAuth file `D:\dsh\runtime\oauth\xai-account.json`. The gateway on 8450 routes each model to its vendor; desks reach it over TLS through Caddy (`8443/gw`, trusting this server's own root) and it answers only a live per-person login token (only an admin's token can change keys; details in [docs/SERVER.md](docs/SERVER.md#who-the-gateway-answers)), and every desk lists exactly the models the server can reach (synced at login) with the site default `DEFAULT_MODEL`. ChatGPT and Claude consumer subscriptions are personal plans and are not relayed to a team; use their API keys. Details: [docs/SERVER.md](docs/SERVER.md#models-keys-stay-on-this-machine). Do not commit keys.
 
 | Session | Colleagues |
 | --- | --- |

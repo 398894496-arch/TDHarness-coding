@@ -1092,6 +1092,10 @@ internal static class AppHost
         psi.CreateNoWindow = true;
         ClearChildNodeOptions(psi);
         psi.EnvironmentVariables["DSH_HOME"] = home;
+        // The gateway is reached over this server's Caddy TLS (/gw). Node trusts the
+        // site's own root, shipped in the signed pack, on top of the system ones.
+        var companyCa = Path.Combine(root, "company-ca.crt");
+        if (File.Exists(companyCa)) psi.EnvironmentVariables["NODE_EXTRA_CA_CERTS"] = companyCa;
         var extDir = Path.Combine(root, "browser-extension");
         if (Directory.Exists(extDir))
         {

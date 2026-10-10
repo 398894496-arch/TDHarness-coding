@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -36,6 +37,20 @@ def load_site(path: Path) -> dict[str, str]:
     return data
 
 
+def company_ca() -> Path:
+    """This server's Caddy root, exported by export-ca.ps1 and packed into the clients."""
+    return Path(os.environ.get("TDH_COMPANY_CA") or r"D:\dsh\runtime\company-ca.crt")
+
+
+def gateway_base(site: dict[str, str]) -> str:
+    # Desks go through Caddy (TLS, /gw on the login port) once the root they need to
+    # trust it exists; before that, plain 8450 as before. Clients, AppHost and the
+    # gateway all decide from the same file, so they never disagree.
+    if company_ca().is_file():
+        return "https://%s:%s/gw/v1" % (site["host"], site["login_port"])
+    return "http://%s:%s/v1" % (site["host"], site["gateway_port"])
+
+
 def emit_cs(site: dict[str, str]) -> str:
     host = site["host"]
     share = site["share"]
@@ -55,7 +70,7 @@ def emit_cs(site: dict[str, str]) -> str:
         + '    internal const string ZipUrl = "https://%s:%s/client/CompanyDesk-win.zip?v=login1";\n' % (host, lp)
         + '    internal const string ShareUnc = "%s";\n' % unc_cs
         + '    internal const string ShareUncFwd = "//%s/%s";\n' % (host, share)
-        + '    internal const string GatewayBase = "http://%s:%s/v1";\n' % (host, gp)
+        + '    internal const string GatewayBase = "%s";\n' % gateway_base(site)
         + '    internal const string NoProxy = "localhost,127.0.0.1,%s";\n' % host
         + '    internal const string CompanyPath = "%s";\n' % company
         + '    internal const string SmbUserFallback = "dshshare";\n'
@@ -105,6 +120,18 @@ https://%s:%s, https://:%s {
 		root * D:/dsh/client-dist
 		uri strip_prefix /client
 		file_server
+	}
+	# The model gateway for desks, over this TLS listener. The gateway checks every
+	# request's token itself; it trusts no address, so coming from Caddy gives nothing.
+	handle_path /gw/* {
+		reverse_proxy 127.0.0.1:8450 {
+			flush_interval -1
+			transport http {
+				response_header_timeout 0
+				read_timeout 0
+				write_timeout 0
+			}
+		}
 	}
 	handle /company/login* {
 		reverse_proxy 127.0.0.1:4181 {
