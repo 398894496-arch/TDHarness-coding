@@ -4,6 +4,19 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.09.4
+
+**模型网关只认登录令牌（安全修复）**
+- 问题：网关 8450 对整个局域网开放，原来对谁都放行。局域网里任何设备不带凭证就能调公司的模型、联网搜索、生图生视频，用量记成 `unknown`；更严重的是 `POST /channels` 也不查身份，任何人都能替换或删除公司的 key，或者加一个和现有模型同名的自定义渠道（自定义渠道路由优先），把员工的对话转到别处。人员页的「吊销令牌」对模型调用其实不生效。
+- 修正（`server/gw-lite.js`）：模型调用、厂商文件、`/search`、`/fetch`、`/images`、`/videos` 只认有效登录令牌（在 `gw-tokens.json` 里、没吊销、人在花名册里且未停用），否则 401；改 key 和渠道设置（`POST /channels`）只认管理员的令牌，否则 401 / 403，`gateway.env` 不动。`/health`、`GET /channels`、`/v1/company-models`、`/grok-quota`、`/grok-fast` 仍开放：只说哪些渠道已绑定、有哪些模型，不含 key。服务器本机（`127.0.0.1`）照旧信任，每晚的知识库任务和装机自检从本机调。吊销令牌、停用人员在下一次请求就生效，不用重启。
+- 客户端（站点补丁 `site-patches/patch_gw_token.py`，一键安装和 `publish-site-update.ps1` 都会打）：Windows 端的联网搜索、生图生视频原来没带令牌（令牌在 `GROK_API_KEY`，插件只看 `DEEPSEEK_API_KEY`）；Mac 端的模型请求原来没带令牌（登录后只导出了 `DEEPSEEK_API_KEY`）。现在每扇门都带个人令牌。
+- **升级注意**：服务器更新后要跑 `publish-site-update.ps1 -BumpMark`，员工下次打开客户端时接受更新。更新之前，老客户端的这些请求会被拒（401）。过渡期可以在 `gateway.env` 里加 `GW_ALLOW_TOKENLESS=1`：完全不带令牌的请求放行，错的或已吊销的令牌仍然拒绝，改 key 仍只限管理员；客户端都更新后删掉这一行。
+- 新增 `scripts/prove-gw-auth.js`（CI 双平台）：用假厂商验证无令牌、编造令牌、已吊销、已停用、占位 key 都被拒且请求到不了厂商；有效令牌能通、用量记到人；员工改不了 key；运行中吊销立即生效；过渡开关；本机信任；客户端补丁幂等、两个平台都取到令牌。打印 `GW_AUTH_PROVE_OK=1`。同一份脚本对改之前的网关在第一条（不带令牌）就失败。
+
+**首页和产品页写清楚：交付是一键安装**
+- README、`docs/PRODUCT.md`、`docs/BRIEF.zh.md` 开头加「交付方式」：服务器克隆后一条命令装完，员工在服务器下载页装客户端（Windows `TDHarness-Setup.exe`，Mac 解压即用），更新由服务器发布。说明 Release 里为什么没有通用安装包（每家的安装包里写着自己服务器的地址和更新签名钥匙，由装机脚本现场编译），以及「补丁树」只是源码挂在上游内核上的方式，不是交付形态。
+- `docs/PRODUCT.md` 删掉过时说法（"给能 clone 的少数人用的补丁树"、"不出 Setup.exe"、"没有按人一键吊销"），对比表和安全说明按现状重写。
+
 ## 2026.10.09.3
 
 **增量更新：只下载变了的文件**

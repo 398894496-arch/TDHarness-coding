@@ -1,5 +1,6 @@
 'use strict';
-// L1 narrative via company 8450 grok-4.6. Same dummy Bearer as desk overlay.
+// L1 narrative via company 8450 grok-4.6. Runs on the server itself: the gateway
+// trusts 127.0.0.1, so the placeholder Bearer is not a login token.
 // Real xAI token stays in Win OAuth store. Do not call grok.exe CLI.
 
 const fs = require('fs');

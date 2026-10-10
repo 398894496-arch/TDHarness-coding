@@ -9,7 +9,7 @@ This file is extra. Product PRs stay in **this** repo.
 | Kind | Category | What to put |
 | --- | --- | --- |
 | Kernel bug on **stock** `@deepseek-ai/dsh` (no patch, no overlay) | General, title `[bug] …` | One bug per thread. Repro. Version. OS. |
-| This coding tree | General (not Show Your Plugins) | Link the repo. Say it is a **patch tree**, not a `dsh-plugin`. |
+| This coding tree | General (not Show Your Plugins) | Link the repo. Say it is a one-click LAN install whose source is a **patch tree** on `dsh`, not a `dsh-plugin`. |
 | Company desk / roster / Tailscale / Caddy | — | Do not post. |
 
 ## Search before opening

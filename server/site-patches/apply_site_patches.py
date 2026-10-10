@@ -5,6 +5,7 @@
     python apply_site_patches.py --dir <CompanyDesk 目录> --patches DIR --pub pack-sign.pub
 内容：/company/* 来源校验；生图在对话里显示；生成的图片视频在对话里显示和下载（含侧边栏下载修复）；更新验签 + tree-check；更新下载断点续传；增量更新（只下变化的文件，失败退回整包）；Mac 启动不再要求未随包发的 ego-browser；换 exe 前检查；
 团队工作区 realpath；公司模型来源与默认模型；tool-web 以模板为准；删掉 skills/skills 死副本；
+每扇网关门（模型、搜索、生图）都带个人令牌；
 放入 pack-verify.js 和本服务器的 pack-sign.pub。zip 模式之后要用 site-cs.py reseal-zip 重新封条。
 """
 import argparse
@@ -50,6 +51,7 @@ class Patcher:
         self.tw = load(pdir / "patch_toolweb_hint.py")
         self.pupd = load(pdir / "patch_pack_update.py")
         self.mdl = load(pdir / "patch_media_download.py")
+        self.gwt = load(pdir / "patch_gw_token.py")
         self.verify_js = (pdir / "pack-verify.js").read_bytes()
         self.pub = Path(pub_path).read_bytes()
         self.tmp = pdir / ".guard.tmp.js"
@@ -85,7 +87,12 @@ class Patcher:
             data, how2 = text_patch(self.mdl.patch_grok_media, data)
             if str(how2).startswith("patched"):
                 how = ("patched+" if str(how).startswith("patched") else "") + "media-download"
+            data, how3 = text_patch(self.gwt.patch_js, data)
+            if str(how3).startswith("patched"):
+                how = ("patched+" if str(how).startswith("patched") else "") + "gw-token"
             return data, how
+        if rel.endswith("company-web-search/lib/index.js"):
+            return text_patch(self.gwt.patch_js, data)
         mdl_fn = self.mdl.for_member(rel)
         if mdl_fn is not None:
             return text_patch(mdl_fn, data)
@@ -104,6 +111,10 @@ class Patcher:
                 data, how2 = self.tw.patch_bytes(base, data)
                 if how2.startswith("patched"):
                     how = ("patched+" if how == "patched" else "") + how2
+            if base == "start.command":
+                data, how5 = text_patch(self.gwt.patch_sh, data)
+                if str(how5).startswith("patched"):
+                    how = ("patched+" if str(how).startswith("patched") else "") + "gw-token"
             return data, how
         if top and base == "sync-desk-home.sh":
             return text_patch(self.dhsync.patch, data)

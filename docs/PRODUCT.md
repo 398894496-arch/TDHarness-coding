@@ -1,12 +1,12 @@
 # TDHarness-coding
 
-Two ways to use this repo. The product path is the Windows LAN server. The kernel-only path is optional.
+**Delivery is a one-click install.** The server: clone, then one command (`scripts/setup-all.ps1`). Employees: open the server's download page and run `TDHarness-Setup.exe` on Windows, or unzip the app on a Mac. Employees never touch a patch, Node or a command line; the server needs Git (with LFS), Node 22+ and Python 3 installed, then that one command as Administrator. 中文：交付就是一键安装——服务器一条命令装完，员工在下载页点一下装客户端。
 
-Install lives in [README](../README.md). This page answers: **is this what you want?**
+The product is the Windows LAN server and its desks. The kernel-only CLI path is optional. Install steps live in [README](../README.md#delivery-is-a-one-click-install--交付就是一键安装). This page answers: **is this what you want?**
 
 | Is | Is not |
 | --- | --- |
-| Windows: clone, then `scripts/setup-all.ps1` stands up login, a seed admin, the gateway, and the desktop client on that LAN | Hosted SaaS, or a client that phones a vendor cloud for your files |
+| Windows server: clone, then one command, `scripts/setup-all.ps1`, stands up login, a seed admin, the gateway, the knowledge base and the desktop clients on that LAN. Employees install from the server's download page | Hosted SaaS, a client that phones a vendor cloud for your files, or a generic installer on the Releases page (each site's installer is compiled by setup for that server) |
 | Model keys and subscriptions added on the server after install (Settings → 模型 writes `gateway.env`); every desk lists what the server can reach | Keys on employee machines, or subscription keys, company documents, or a live roster shipped in git |
 | Optional kernel-only: a local folder plus your own key ([MODELS.md](MODELS.md)) | The kernel-only path pretending to be the full server |
 | Issues and PRs **here** | Upstream accepting PRs (they do not, for now) |
@@ -63,17 +63,17 @@ Settings → **人员**. Accounts grouped by department. Boss and managers issue
 
 ## Who it is for
 
-People who can use git and Node, pin a `dsh` version, read a patch failure, and send a PR.
+A company on one LAN with a roster and a company share: one Windows PC that stays on as the server, employees on Windows or Mac. Running it takes the one setup command on the server and nothing on the desks beyond the installer. Sizing and what must be in place (about 20–100 people, a maintained roster, a server with 32 GB): [BRIEF.zh.md](BRIEF.zh.md).
 
-A separate **company delivery** product exists for ~20–100 person firms with a roster and a company disk. That product does not install for a handful of people with no LAN and no roster. **This repo is the opposite:** a handful of people who *can* clone. Do not mix the two.
+Changing it is a different job: that takes git and Node, reading a patch failure, and a PR here ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
-Not for: Setup.exe / DMG login, SLA, chat-only, or cloning a company share and roster.
+Not for: hosted SaaS, an SLA, chat-only use, or a team with no LAN and no roster.
 
-## What it is
+## How it is built
 
-A patch tree on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT) plus `overlays/solo.yml`.
+The **source** is a patch tree on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT): [kernel.yml](../kernel.yml) pins the upstream `@deepseek-ai/dsh` release, setup installs it from npm, then applies this repo's anchored kernel patches (`patches/`) and client site patches (`server/site-patches/`). There is no copied fork of upstream, so moving to a new upstream release is: change the pin, re-apply, and any anchor that no longer matches fails hard. That is how the code is kept, not how it is delivered. Delivery is the one-click install above.
 
-The agent runs **on your machine** and can touch files and commands you can already touch. One line: **you fork the harness; output stays on your disk; bugs are listed; PRs land here.** This is not on-site delivery of a job-shaped workbench.
+The agent runs **on the employee's machine** and can touch the files and commands that person can already touch.
 
 Upstream does not take external PRs; GitHub Issues there are closed. Product PRs stay in this repo. Kernel bugs that reproduce on stock `dsh` with no overlay can also go to [upstream Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) with a link back.
 
@@ -87,31 +87,32 @@ This is **not** “the agent is sandboxed, so you are safe.” The agent still h
 | Windows `mklink /J` with cmd cwd pinned to the system drive | Official `symlink` hits EPERM without Developer Mode; if cwd is `\\server\share`, cmd cannot use UNC and the desk dies (`win-junction-failed`) | Staff do not need Developer Mode to boot. This does **not** mean the agent cannot touch network paths |
 | Skip copying ACLs on SMB writes; publish sessions with `rename` instead of hard links | `ReplaceFileW` / `fs.link` fail on the share and the edit or new session aborts | Writes can finish. “This volume does not support that NTFS op” is not a model error |
 | Missing search roots become “no matches” instead of a hard fail | A broken junction makes `rg` kill the turn | A bad path does not kill the whole round |
-| macOS: refuse an App Translocation read-only copy | Opening a `.app` from Downloads/DMG and writing into the bundle hits `EROFS` | This edition is CLI-first and does not ship a DMG; drop the check into your own launcher if you pack an app |
+| macOS: refuse an App Translocation read-only copy | Opening a `.app` from Downloads/DMG and writing into the bundle hits `EROFS` | The Mac desk ships as a zip, not a DMG; the download page says to move it to Applications before opening |
 
 After you bump official `dsh`, re-apply patches. A missing anchor is a hard fail. That is the upgrade gate.
 
 ## Versus other options
 
-| Question | Stock dsh | Hand out a vendor key | This repo | Company delivery workbench |
-| --- | --- | --- | --- | --- |
-| Time to first run | npm | Fastest | clone + patch + your key | Network + host + roster |
-| Where data lives | Whatever folder you set | Scattered | Your local folder | The customer’s company disk |
-| Patching / PRs | No external PRs | None | This repo | Private ops, not on GitHub |
-| Per-person kill switch | No | No | No | Yes |
-| Maturity | Developer preview | — | **Called out as immature** | In use internally; onboarding still has holes |
+| Question | Stock dsh | Hand out a vendor key | This repo |
+| --- | --- | --- | --- |
+| Time to first run | npm | Fastest | One setup command on the server; one installer per desk from the download page |
+| Where data lives | Whatever folder you set | Scattered | The company share on your server |
+| Keys | On each machine | On each machine | Only on the server; desks hold a per-person login token |
+| Patching / PRs | No external PRs | None | This repo |
+| Per-person kill switch | No | No | Yes: revoke the token or deactivate the person in 人员; models, web search, image/video generation and the knowledge base stop on the next request |
+| Maturity | Developer preview | — | **Called out as immature** |
 
 If you need “everyone in chat on AI next week,” do not use this repo.
 
 ## Safety, stated plainly
 
-Done here: the tree is scanned for office IPs and keys; the patcher refuses well-known live prefixes; a network workspace is not allowed as the sandbox root.
+Done here: the tree is scanned for office IPs and keys; the patcher refuses well-known live prefixes; a network workspace is not allowed as the sandbox root; the model gateway answers only a live per-person login token, and only an admin's token can change keys ([SERVER.md](SERVER.md#who-the-gateway-answers)).
 
-You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation and no one-click revoke.
+You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation; everyone on the roster can search the whole knowledge base; the seed admin `tdh` / `12345678` must be changed by editing `PASSWORDS.txt` on the server (Settings has no password page yet).
 
 ## What it will not do
 
-No Setup.exe / DMG. No publishing the ops tree. No promise to track upstream releases. Write access to `main` is fork + PR unless you are added as a collaborator.
+No generic Setup.exe / DMG on the Releases page: setup compiles each site's installer with that server's address and update-signing key. No publishing the ops tree. No promise to track upstream releases. Write access to `main` is fork + PR unless you are added as a collaborator.
 
 ---
 

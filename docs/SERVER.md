@@ -54,6 +54,21 @@ ChatGPT Plus/Pro and Claude Pro/Max are personal plans and are not relayed to a 
 
 Every desk lists exactly the models this server can reach (fetched from `/v1/company-models` at login), so the picker never offers one the gateway would refuse. New sessions start on `DEFAULT_MODEL` / `DEFAULT_EFFORT` from `gateway.env`; without it, on the first available model (subscription first). People can still switch per session.
 
+### Who the gateway answers
+
+The gateway listens on the LAN (setup opens 8450 in the firewall), so it checks every request itself:
+
+| Request | Needs |
+| --- | --- |
+| Model calls, vendor files, `/search`, `/fetch`, `/images`, `/videos` | A live login token: in `runtime\gw-tokens.json`, not revoked, and its person active on the roster. Otherwise `401` |
+| `POST /channels` (add, replace or drop a key; channel settings) | The live token of an **admin**. Otherwise `401` / `403`, and `gateway.env` / `channels.json` are left alone |
+| `/health`, `GET /channels`, `/v1/company-models`, `/grok-quota`, `/grok-fast` | Nothing. They say which channels are bound and which models exist, never a key |
+| Anything from this PC itself (`127.0.0.1`) | Nothing: the nightly brain job and setup's own checks call from here. Nothing on this PC forwards LAN traffic to 8450 |
+
+Revoking a token or deactivating a person in 人员 takes effect on the next request; the gateway rereads both files when either changes. Every refusal prints a `GW_DENY` line in the gateway log. `node scripts/prove-gw-auth.js` proves all of the above against a stand-in vendor (`GW_AUTH_PROVE_OK=1`).
+
+**Desks installed before 2026.10.09.4** sent no token on web search and image/video generation (Windows) or on model calls (Mac). The fix is a site patch (`site-patches/patch_gw_token.py`), so after updating this repo on the server run `publish-site-update.ps1 -BumpMark` and have everyone accept the update on their next launch. Until a desk has it, those requests get `401`. To bridge that window, add `GW_ALLOW_TOKENLESS=1` to `gateway.env` (read on every request, no restart): a request with **no token at all** is let through again, a wrong or revoked token is still refused, and key changes stay admin-only. Remove the line once every desk is updated.
+
 ## Client updates are signed
 
 Setup creates an Ed25519 key in `D:\dsh\runtime\pack-sign\`. Clients ship with its public half and refuse an update whose `version.json` signature or zip sha256 does not match. **Back up `pack-sign.key`.** Losing it means every installed desk refuses the next update until it is reinstalled. Never copy it off this machine otherwise.
