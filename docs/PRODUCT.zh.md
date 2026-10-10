@@ -6,7 +6,7 @@
 
 功能长什么样（带截图）：[BRIEF.zh.md](BRIEF.zh.md)。
 
-定位：在客户自己的 Windows 上克隆本仓，跑 `scripts/setup-all.ps1`，得到局域网服务器（登录、种子管理员、网关、桌面客户端）。**默认管理员：账号 `tdh`，密码 `12345678`。** 模型接在服务器上：管理员在设置 → 模型里填各家 API key（OpenAI、Anthropic、DeepSeek、xAI、Kimi、智谱、任意 OpenAI 兼容地址）或接 Grok 订阅，保存在服务器的 `gateway.env`，员工电脑上没有钥匙；员工端登录后自动列出服务器能调的模型。ChatGPT、Claude 的个人订阅不做团队反代，请用它们的 API key。不是托管 SaaS。仓库不带公司资料和订阅钥匙。只装内核用 `setup.sh`，那一条不起服务器。官方上游暂时不收外部 PR。产品向的 PR 只在**本仓**合。功能讲解：[BRIEF.zh.md](BRIEF.zh.md)。认领缺口：[WANTED.zh.md](WANTED.zh.md)。
+定位：**交付是一键安装**。在客户自己的 Windows 上克隆本仓，跑一条命令 `scripts/setup-all.ps1`，得到局域网服务器（登录、种子管理员、网关、桌面客户端）；员工在服务器下载页装客户端（Windows 双击 `TDHarness-Setup.exe`，Mac 解压拖进「应用程序」）。「补丁树」只是源码挂在上游内核上的方式，不是交付形态，见 [交付方式](BRIEF.zh.md#交付方式一键安装)。**默认管理员：账号 `tdh`，密码 `12345678`。** 模型接在服务器上：管理员在设置 → 模型里填各家 API key（OpenAI、Anthropic、DeepSeek、xAI、Kimi、智谱、任意 OpenAI 兼容地址）或接 Grok 订阅，保存在服务器的 `gateway.env`，员工电脑上没有钥匙；员工端登录后自动列出服务器能调的模型。ChatGPT、Claude 的个人订阅不做团队反代，请用它们的 API key。不是托管 SaaS。仓库不带公司资料和订阅钥匙。只装内核用 `setup.sh`，那一条不起服务器。官方上游暂时不收外部 PR。产品向的 PR 只在**本仓**合。功能讲解：[BRIEF.zh.md](BRIEF.zh.md)。认领缺口：[WANTED.zh.md](WANTED.zh.md)。
 
 ## 参与门槛
 

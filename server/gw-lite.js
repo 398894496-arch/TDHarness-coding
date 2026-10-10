@@ -456,27 +456,80 @@ function send(res, code, obj) {
 const keepHttps = new https.Agent({ keepAlive: true, maxSockets: 16 });
 const keepHttp = new http.Agent({ keepAlive: true, maxSockets: 16 });
 
-// Who is calling: the desk sends its person's gateway token (dsh_...). The
-// token and roster files are read again when a token is not known yet, so a
-// person added or a token minted after start is still recognised.
-let whoCache = { at: 0, map: {} };
+// Who is calling: the desk sends its person's gateway token (dsh_...), the same
+// one the knowledge search checks. A token counts only while it is live in
+// gw-tokens.json and its person is active on the roster. Both files are read
+// again whenever either changes on disk, so a revoke or a 停用 cuts the next
+// request, and a token minted after start is known at once.
+let whoCache = { stamp: '', map: {} };
 function readJsonFile(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '')); } catch (e) { return null; }
 }
-function callerOf(req) {
-  const h = String(req.headers.authorization || req.headers['x-company-gw-token'] || '');
-  const tok = h.replace(/^Bearer\s+/i, '').trim();
-  if (!/^dsh_/.test(tok)) return '';
-  if (!whoCache.map[tok] && Date.now() - whoCache.at > 5000) {
+function fileStamp(p) {
+  try { const s = fs.statSync(p); return s.mtimeMs + ':' + s.size; } catch (e) { return '-'; }
+}
+function tokenOf(req) {
+  const h = String(req.headers.authorization || '').trim();
+  if (/^bearer\s+/i.test(h)) return h.replace(/^bearer\s+/i, '').trim();
+  return String(req.headers['x-company-gw-token'] || '').trim();
+}
+function personOf(req) {
+  const tok = tokenOf(req);
+  if (!/^dsh_/.test(tok)) return null;
+  const stamp = fileStamp(TOKENS_PATH) + '|' + fileStamp(ROSTER_PATH);
+  if (stamp !== whoCache.stamp) {
     const tokens = (readJsonFile(TOKENS_PATH) || {}).tokens || [];
     const people = (readJsonFile(ROSTER_PATH) || {}).people || [];
     const byPid = {};
-    for (const p of people) if (p && p.pid) byPid[p.pid] = p.login;
+    for (const p of people) {
+      if (p && p.pid && p.login && (p.status || 'active') === 'active') byPid[p.pid] = { login: String(p.login), role: String(p.role || '') };
+    }
     const map = {};
     for (const t of tokens) if (t && t.token && !t.revoked_at && byPid[t.pid]) map[t.token] = byPid[t.pid];
-    whoCache = { at: Date.now(), map };
+    whoCache = { stamp, map };
   }
-  return whoCache.map[tok] || '';
+  return whoCache.map[tok] || null;
+}
+function callerOf(req) {
+  const who = personOf(req);
+  return who ? who.login : '';
+}
+
+// The gateway listens on the LAN (desks reach it directly, not through Caddy),
+// so it checks every request that spends a key or changes a setting:
+//   - model calls, files, /search, /fetch, /images, /videos: a live token;
+//   - POST /channels (keys and channel settings): a live token of an admin;
+//   - /health, GET /channels, /v1/company-models, /grok-quota, /grok-fast:
+//     open. They say which channels are bound and which models exist, never a key.
+// This machine itself is trusted: the nightly brain job and the setup proofs
+// call 127.0.0.1. Nothing on this machine forwards LAN traffic to 8450.
+// GW_ALLOW_TOKENLESS=1 in gateway.env lets a request with no token at all
+// through the first group, for desks not yet updated to send one on every
+// door. A wrong or revoked token is refused either way. Read per request.
+const TRUST_LOOPBACK = process.env.TDH_GW_TRUST_LOOPBACK !== '0';
+function fromThisMachine(req) {
+  const a = String((req.socket && req.socket.remoteAddress) || '');
+  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+}
+const DENY = {
+  login: '没有有效的登录令牌。请退出客户端重新登录；客户端提示有更新时先更新。',
+  admin: '只有管理员能改模型和钥匙设置。'
+};
+function gate(req, url, env) {
+  if (TRUST_LOOPBACK && fromThisMachine(req)) return null;
+  const method = String(req.method || 'GET').toUpperCase();
+  if (url === '/health') return null;
+  if (url === '/channels' || url === '/channels/') {
+    if (method !== 'POST') return null;
+    const who = personOf(req);
+    if (!who) return { status: 401, obj: { ok: false, error: 'login', hint: DENY.login } };
+    if (who.role !== 'admin') return { status: 403, obj: { ok: false, error: 'admin-only', hint: DENY.admin } };
+    return null;
+  }
+  if (url === '/v1/company-models' || url === '/company-models' || url === '/grok-quota' || url === '/grok-fast') return null;
+  if (personOf(req)) return null;
+  if (!tokenOf(req) && String(env.GW_ALLOW_TOKENLESS || '').trim() === '1') return null;
+  return { status: 401, obj: { error: { message: DENY.login, type: 'gateway_unauthorized' } } };
 }
 
 // Read the token counts out of a vendor answer as it passes. Chat completions
@@ -821,6 +874,14 @@ async function handleChannels(req, body, env) {
 const server = http.createServer(async (req, res) => {
   const env = loadEnv(ENV_PATH);
   const url = String(req.url || '').split('?')[0];
+  const deny = gate(req, url, env);
+  if (deny) {
+    // Drain the body so the desk gets the answer instead of a reset socket.
+    req.resume();
+    try { console.log('GW_DENY ' + deny.status + ' ' + String(req.method) + ' ' + url + ' from ' + String((req.socket && req.socket.remoteAddress) || '')); } catch (e) { /* log only */ }
+    send(res, deny.status, deny.obj);
+    return;
+  }
   if (req.method === 'GET' && url === '/health') {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('ok\n');

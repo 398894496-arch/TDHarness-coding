@@ -1,10 +1,25 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.09.3** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.09.4** · [更新说明 / Changelog](CHANGELOG.md)
 
 **TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share and the roster; employees run a desktop client (Windows or Mac) that talks only to that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘和花名册，员工电脑装桌面客户端，只连这台服务器。
 
-**A Windows machine can clone this repo and stand up a full TDH server.** That is the product path. Kernel-only coding setup is still below for people who only want the patched `dsh` CLI.
+## Delivery is a one-click install / 交付就是一键安装
+
+| Who | What they do | What they get |
+| --- | --- | --- |
+| **The server** (one Windows PC, once) | `git clone`, then **one command**: `scripts\setup-all.ps1` | Login, seed admin, roster, model gateway, knowledge base and its nightly job, the download page, and both desktop clients compiled for this LAN. Green: `SITE_INSTALL_OK=1` |
+| **Employees on Windows** | Open `https://<computername>.local:8443/`, click 下载 Windows 版, run `TDHarness-Setup.exe` | Installs into the user's TDH folder with a desktop shortcut, then sign in with a roster account |
+| **Employees on Mac** | Same page, 下载 macOS 版, unzip, drag TDHarness to Applications | Same desk (Apple silicon and Intel) |
+| **Updates** | Admin runs `server\publish-site-update.ps1` | Desks offer the update on their next launch; signed, delta when possible, resumable |
+
+中文：服务器端克隆后**一条命令**装完整套服务；员工打开服务器的下载页，Windows 点一下下载 `TDHarness-Setup.exe` 双击安装，Mac 下载解压拖进「应用程序」。之后的更新由服务器发布，客户端下次打开时提示更新。员工不碰补丁、Node 或命令行；服务器只需事先装好 Git（含 LFS）、Node 22+、Python 3，再以管理员身份跑那一条命令。
+
+**Why there is no Setup.exe on the Releases page.** Each site's installer carries that server's address and that server's own update-signing key, so setup compiles it on the server. A generic download would not know where to sign in or whose updates to trust. 中文：安装包里写着这台服务器的地址和它自己的更新签名钥匙，所以由装机脚本在服务器上现场编译，不放通用下载。
+
+**What "patch tree" means here.** It describes the *source*, not the delivery: the upstream kernel `@deepseek-ai/dsh` is pinned in [kernel.yml](kernel.yml) and installed from npm, and this repo's patches are applied on top during setup, instead of keeping a vendored fork of upstream. 中文：「补丁树」只说明源码怎么挂在上游内核上（锁版本、装机时打补丁、不复制上游代码），不是交付形态。
+
+The optional kernel-only path further down is for people who only want the patched `dsh` CLI; it does not start any of the above.
 
 Whether the coding edition is what you want: **[docs/PRODUCT.md](docs/PRODUCT.md)**. Server install: **[docs/SERVER.md](docs/SERVER.md)**. Bugs: [BUGS.md](BUGS.md).
 
@@ -54,7 +69,7 @@ Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/
 
 On Windows, `scripts/setup-all.ps1` installs this desk on the LAN: login, the seed admin, the gateway, and the desktop shortcut. The optional kernel-only `setup.sh` does not start that stack. Feature write-up: [docs/PRODUCT.md](docs/PRODUCT.md#what-the-running-desk-does). 中文：[docs/PRODUCT.zh.md](docs/PRODUCT.zh.md).
 
-**Models.** Keys and subscriptions live only on the server and never go to the desks. An admin adds them in Settings → 模型, which writes `D:\dsh\runtime\gateway.env` on the server (see [server/gateway.env.example](server/gateway.env.example)): API keys for OpenAI, Anthropic, DeepSeek, xAI, Kimi, Zhipu GLM, or any OpenAI-compatible endpoint; a Grok subscription is the OAuth file `D:\dsh\runtime\oauth\xai-account.json`. The gateway on 8450 routes each model to its vendor, and every desk lists exactly the models the server can reach (synced at login) with the site default `DEFAULT_MODEL`. ChatGPT and Claude consumer subscriptions are personal plans and are not relayed to a team; use their API keys. Details: [docs/SERVER.md](docs/SERVER.md#models-keys-stay-on-this-machine). Do not commit keys.
+**Models.** Keys and subscriptions live only on the server and never go to the desks. An admin adds them in Settings → 模型, which writes `D:\dsh\runtime\gateway.env` on the server (see [server/gateway.env.example](server/gateway.env.example)): API keys for OpenAI, Anthropic, DeepSeek, xAI, Kimi, Zhipu GLM, or any OpenAI-compatible endpoint; a Grok subscription is the OAuth file `D:\dsh\runtime\oauth\xai-account.json`. The gateway on 8450 routes each model to its vendor and answers only a live per-person login token (only an admin's token can change keys; details in [docs/SERVER.md](docs/SERVER.md#who-the-gateway-answers)), and every desk lists exactly the models the server can reach (synced at login) with the site default `DEFAULT_MODEL`. ChatGPT and Claude consumer subscriptions are personal plans and are not relayed to a team; use their API keys. Details: [docs/SERVER.md](docs/SERVER.md#models-keys-stay-on-this-machine). Do not commit keys.
 
 | Session | Colleagues |
 | --- | --- |
@@ -64,7 +79,7 @@ On Windows, `scripts/setup-all.ps1` installs this desk on the LAN: login, the se
 
 - **Session:** 会话 / 任务, 个人 and 团队 workspaces, model picker, Full access, files.
 - **Colleagues:** who is online, role, last login, 7-day local cost estimate (not the vendor bill).
-- **Personnel:** department, promote/demote, deactivate, revoke gateway token. Seed admin cannot be deactivated.
+- **Personnel:** department, promote/demote, deactivate, revoke gateway token. Revoking a token or deactivating a person cuts that person off from models, web search, image/video generation and the knowledge base on the next request. Seed admin cannot be deactivated.
 - **Tasks:** cards with state and owner (待审批 / 进行中); opening one starts a conversation pinned to that card. Deliverables go on the company disk, and only **提交验收** counts as done, not saying so in chat.
 
 The screenshots use made-up people and tasks.

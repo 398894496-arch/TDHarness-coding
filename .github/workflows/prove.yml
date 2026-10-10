@@ -53,6 +53,8 @@ jobs:
         run: node scripts/prove-models.js
       - name: Prove knowledge search answers only a live login token
         run: node scripts/prove-knowledge.js
+      - name: Prove the model gateway answers only a live login token
+        run: node scripts/prove-gw-auth.js
   release-notes:
     runs-on: ubuntu-latest
     steps:
