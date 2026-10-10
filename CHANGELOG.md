@@ -4,6 +4,13 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.10.3
+
+**内核页「运行中」显示的是真在跑的内核**
+- 问题：设置 → 内核 的「运行中」在 Mac 上写死读 `~/dsh-kernel/0-1-7-rc-2`，不管桌子实际跑什么都显示 0.1.7-rc.2。实测这几天所有安装包（公开站点和办公室）自带的内核都是 0.2.1-alpha.1，桌子跑的也是它；页面把它说成 0.1.7-rc.2，「升到 0.2.0-rc.2」看起来是升级，其实是降级。
+- 修正（站点补丁 `site-patches/patch_kernel_watch.py`）：先读本进程正在跑的内核（`process.argv[1]` 是内核的 `lib/bin.js`，往上找它自己的 `package.json`），找不到才退回原来的固定路径。
+- 证明：`node scripts/prove-kernel-live.js`（要安装包，`git lfs pull` 之后跑；或 `KERNEL_WATCH=<路径>`）：用一个假内核目录加载打过补丁的 `kernel-watch.js`，读回的就是那个内核的版本。
+
 ## 2026.10.10.2
 
 **网关走加密通道，不再信任任何地址**（第三方复评提出的三处残余风险）
