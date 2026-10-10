@@ -1,4 +1,6 @@
 # Pin only. Overlay lives in overlays/. Never npm-update a live prefix.
-id: 0.2.0-rc.2
+# Same kernel the client packs ship (client/CompanyDesk-*.zip carry 0.2.1-alpha.1), so the
+# CI patch proof tests what desks run. Change it together with the packs, never alone.
+id: 0.2.1-alpha.1
 package: "@deepseek-ai/dsh"
-candidate: 0.2.0-rc.2
+candidate: 0.2.1-alpha.1

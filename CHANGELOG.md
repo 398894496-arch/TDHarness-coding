@@ -4,6 +4,13 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.10.4
+
+**内核钉子对齐到安装包实际带的 0.2.1-alpha.1**
+- `kernel.yml` 原来钉 0.2.0-rc.2，而客户端安装包（`client/CompanyDesk-*.zip`）里一直是 0.2.1-alpha.1，员工跑的也是它。CI 的补丁证明（`patches`）和只装内核的 `setup.sh` / `setup.ps1` 都按钉子装内核，测的是一个没发出去的版本。现在钉子和安装包一致。
+- 本地先在 0.2.1-alpha.1 的干净前缀上跑过 `node scripts/prove-patches.js` → `PATCH_PROVE_OK=1`（所有内核补丁锚点都在）。
+- 以后换内核：钉子和安装包一起换，单改一边会再次对不上。
+
 ## 2026.10.10.3
 
 **内核页「运行中」显示的是真在跑的内核**
