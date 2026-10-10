@@ -43,7 +43,7 @@ Settings → **同事**. Weekly model quota, a **7-day company ledger** using a 
 
 ![Personnel: departments, role and department dropdowns, deactivate, revoke token](screenshots/03-personnel.jpg)
 
-Settings → **人员**. Accounts grouped by department. Boss and managers issue accounts. You can change role and department, **停用**, and **吊销令牌**. The seed administrator cannot be deactivated.
+Settings → **人员**. Accounts grouped by department. Boss and managers issue accounts. You can change role and department, **吊销令牌** (forces a fresh sign-in), **停用** (no sign-in, every gateway door closed on the next request), and, once deactivated, **删除** (off the roster, password gone, login retired; the personal folder stays on the company share). The seed administrator cannot be deactivated or removed.
 
 ### Tasks
 
@@ -99,7 +99,7 @@ After you bump official `dsh`, re-apply patches. A missing anchor is a hard fail
 | Where data lives | Whatever folder you set | Scattered | The company share on your server |
 | Keys | On each machine | On each machine | Only on the server; desks hold a per-person login token |
 | Patching / PRs | No external PRs | None | This repo |
-| Per-person kill switch | No | No | Yes: revoke the token or deactivate the person in 人员; models, web search, image/video generation and the knowledge base stop on the next request |
+| Per-person kill switch | No | No | Yes: deactivate the person in 人员 and models, web search, image/video generation and the knowledge base stop on the next request; remove the account afterwards to take it off the roster for good |
 | Maturity | Developer preview | — | **Called out as immature** |
 
 If you need “everyone in chat on AI next week,” do not use this repo.

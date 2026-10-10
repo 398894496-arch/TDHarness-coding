@@ -1,6 +1,6 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.09.4** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.09.5** · [更新说明 / Changelog](CHANGELOG.md)
 
 **TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share and the roster; employees run a desktop client (Windows or Mac) that talks only to that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘和花名册，员工电脑装桌面客户端，只连这台服务器。
 
@@ -79,7 +79,7 @@ On Windows, `scripts/setup-all.ps1` installs this desk on the LAN: login, the se
 
 - **Session:** 会话 / 任务, 个人 and 团队 workspaces, model picker, Full access, files.
 - **Colleagues:** who is online, role, last login, 7-day local cost estimate (not the vendor bill).
-- **Personnel:** department, promote/demote, deactivate, revoke gateway token. Revoking a token or deactivating a person cuts that person off from models, web search, image/video generation and the knowledge base on the next request. Seed admin cannot be deactivated.
+- **Personnel:** department, promote/demote, revoke gateway token, deactivate, remove. Revoking a token forces a fresh sign-in. Deactivating cuts the person off from sign-in, models, web search, image/video generation and the knowledge base on the next request. A deactivated account can then be removed for good: off the roster, its password gone, its login never handed out again; the personal folder stays on the company share. Seed admin cannot be deactivated or removed.
 - **Tasks:** cards with state and owner (待审批 / 进行中); opening one starts a conversation pinned to that card. Deliverables go on the company disk, and only **提交验收** counts as done, not saying so in chat.
 
 The screenshots use made-up people and tasks.
