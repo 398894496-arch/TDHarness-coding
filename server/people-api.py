@@ -57,7 +57,8 @@ def save_roster(data: dict) -> None:
 # A login is used as a file name (emp-<login>), as the user half of a
 # "login:password" line, and in tokens and headers, so it stays plain ASCII.
 # What people see is the display name, which can be anything readable.
-LOGIN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,31}$")
+# 16 at most: the per-person share account is smb-<login>, and Windows user names stop at 20.
+LOGIN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,15}$")
 NAME_MAX = 20
 # A small picture the desk has already shrunk, kept inline in the roster.
 AVATAR_RE = re.compile(r"^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$")
@@ -121,6 +122,14 @@ def pass_map() -> dict[str, str]:
         if user and pw:
             out[user] = pw
     return out
+
+
+def set_password(login: str, pw: str) -> None:
+    """Replace one person's line in PASSWORDS.txt (or add it); everything else stays."""
+    drop_password(login)
+    PASS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with PASS_FILE.open("a", encoding="utf-8") as fh:
+        fh.write("%s:%s\n" % (login, pw))
 
 
 def drop_password(login: str) -> int:
@@ -306,6 +315,100 @@ def ensure_personal_dir(row: dict) -> None:
         sys.stdout.flush()
 
 
+# Per-person share accounts. Everyone used to mount the company share as dshshare, whose
+# password sits on every desk, so disabling a person could not take the share away. Each
+# person now gets smb-<login> at sign-in; disable switches it off, remove deletes it.
+# The share and folder grants are unchanged (Everyone), so nothing else moves.
+SMB_USER_DIR = ROOT / "runtime" / "smb-users"
+SMB_PREFIX = "smb-"
+# Tests and non-Windows runs record what would be done here instead of touching Windows.
+SMB_LEDGER = os.environ.get("TDH_SMB_LEDGER") or ""
+_SMB_OK: dict[str, float] = {}
+_SMB_PS = r"""
+$ErrorActionPreference = 'Stop'
+$act = $env:TDH_SMB_ACT
+$u = $env:TDH_SMB_USER
+$who = $env:COMPUTERNAME + '\' + $u
+function Close-Sessions { Get-SmbSession -ErrorAction SilentlyContinue | Where-Object { $_.ClientUserName -eq $who } | ForEach-Object { Close-SmbSession -SessionId $_.SessionId -Force -ErrorAction SilentlyContinue } }
+$x = Get-LocalUser -Name $u -ErrorAction SilentlyContinue
+if ($act -eq 'ensure') {
+  $pw = ([IO.File]::ReadAllText($env:TDH_SMB_PASS_FILE).Trim().Split("`n")[0]).Trim()
+  $sec = ConvertTo-SecureString $pw -AsPlainText -Force
+  if (-not $x) {
+    New-LocalUser -Name $u -Password $sec -PasswordNeverExpires -UserMayNotChangePassword -AccountNeverExpires -Description 'TDH company share, one person (SMB only)' | Out-Null
+    Add-LocalGroupMember -Group 'Users' -Member $u -ErrorAction SilentlyContinue
+    $hide = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList'
+    New-Item -Path $hide -Force | Out-Null
+    New-ItemProperty -Path $hide -Name $u -PropertyType DWord -Value 0 -Force | Out-Null
+    'SMB=created'
+  } else {
+    Set-LocalUser -Name $u -Password $sec
+    if (-not $x.Enabled) { Enable-LocalUser -Name $u }
+    'SMB=ok'
+  }
+} elseif ($act -eq 'disable') {
+  if ($x) { Disable-LocalUser -Name $u; Close-Sessions; 'SMB=disabled' } else { 'SMB=none' }
+} elseif ($act -eq 'enable') {
+  if ($x) { Enable-LocalUser -Name $u; 'SMB=enabled' } else { 'SMB=none' }
+} elseif ($act -eq 'remove') {
+  if ($x) { Disable-LocalUser -Name $u; Close-Sessions; Remove-LocalUser -Name $u; 'SMB=removed' } else { 'SMB=none' }
+} else { throw ('smb-action-' + $act) }
+"""
+
+
+def smb_account(action: str, login: str, pass_file: Path | None = None) -> bool:
+    """ensure / disable / enable / remove the person's share account. False when it could not."""
+    user = SMB_PREFIX + login
+    if len(user) > 20 or not LOGIN_RE.match(login):
+        return False
+    if SMB_LEDGER:
+        with open(SMB_LEDGER, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"action": action, "user": user}) + "\n")
+        return True
+    if os.name != "nt":
+        return False
+    import subprocess
+
+    env = dict(os.environ, TDH_SMB_ACT=action, TDH_SMB_USER=user, TDH_SMB_PASS_FILE=str(pass_file or ""))
+    try:
+        r = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", _SMB_PS],
+            capture_output=True, text=True, timeout=45, env=env,
+        )
+    except Exception as e:  # noqa: BLE001  a share account must never block sign-in
+        sys.stdout.write("SMB_ACCOUNT %s %s error %s\n" % (action, user, str(e)[:200]))
+        sys.stdout.flush()
+        return False
+    tail = ((r.stdout or "").strip().splitlines() or [""])[-1]
+    err = ((r.stderr or "").strip().splitlines() or [""])[-1]
+    sys.stdout.write("SMB_ACCOUNT %s %s rc=%s %s\n" % (action, user, r.returncode, tail or err[:200]))
+    sys.stdout.flush()
+    return r.returncode == 0
+
+
+def person_smb(login: str) -> tuple[str, str]:
+    """This person's own share account, made on first sign-in; ("", "") when it cannot be."""
+    if len(SMB_PREFIX + login) > 20 or not LOGIN_RE.match(login):
+        return "", ""
+    pf = SMB_USER_DIR / (login + ".pass")
+    try:
+        pw = pf.read_text(encoding="ascii").strip().splitlines()[0].strip() if pf.is_file() else ""
+    except (OSError, IndexError):
+        pw = ""
+    if not pw:
+        # Letters, digits and a fixed tail so any Windows complexity policy accepts it.
+        pw = "".join(ch for ch in secrets.token_urlsafe(24) if ch.isalnum())[:24] + "Aa1!"
+        SMB_USER_DIR.mkdir(parents=True, exist_ok=True)
+        pf.write_text(pw + "\n", encoding="ascii")
+    # Checked once in ten minutes per person: it makes the account if missing,
+    # re-enables it, and keeps its password equal to the file.
+    if time.time() - _SMB_OK.get(login, 0) > 600:
+        if not smb_account("ensure", login, pf):
+            return "", ""
+        _SMB_OK[login] = time.time()
+    return SMB_PREFIX + login, pw
+
+
 def smb_pair() -> tuple[str, str]:
     path = ROOT / "runtime" / "dshshare.pass"
     if not path.is_file():
@@ -430,7 +533,10 @@ def check_login(username: str, password: str) -> dict | None:
         return None
     pid = str(row.get("pid") or ("p-" + login))
     ensure_personal_dir(row)
-    smb_user, smb_pass = smb_pair()
+    # Own account first; the shared one only while the own one cannot be made.
+    smb_user, smb_pass = person_smb(login)
+    if not smb_user:
+        smb_user, smb_pass = smb_pair()
     return {
         "ok": True,
         "login": login,
@@ -537,6 +643,23 @@ class Handler(BaseHTTPRequestHandler):
                     fail("avatar-bad")
                     return
                 row["avatar"] = pic
+            if "password_new" in payload:
+                me = str(actor.get("login") or "")
+                old = str(payload.get("password_old") or "")
+                new = str(payload.get("password_new") or "")
+                if pass_map().get(me) != old:
+                    fail("password-wrong")
+                    return
+                if len(new) < 8:
+                    fail("password-too-short")
+                    return
+                if any(ch in new for ch in "\r\n"):
+                    fail("password-bad")
+                    return
+                if new == old:
+                    fail("password-same")
+                    return
+                set_password(me, new)
             done()
             return
         if actor.get("role") != "admin":
@@ -620,10 +743,13 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 row["status"] = "disabled"
                 revoked = revoke_tokens(str(row.get("pid") or ""))
+                _SMB_OK.pop(login, None)
+                smb_account("disable", login)
                 done({"revoked": revoked})
                 return
             if action == "enable":
                 row["status"] = "active"
+                smb_account("enable", login)
                 done()
                 return
             # The seed admin's token is the one that keeps this server managed.
@@ -662,6 +788,12 @@ class Handler(BaseHTTPRequestHandler):
                 "by": actor.get("login"),
             })
             dropped = drop_password(login)
+            _SMB_OK.pop(login, None)
+            smb_account("remove", login)
+            try:
+                (SMB_USER_DIR / (login + ".pass")).unlink()
+            except OSError:
+                pass
             done({"removed": login, "revoked": revoked, "password_dropped": dropped})
             return
 

@@ -1,6 +1,6 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.09.5** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.10** · [更新说明 / Changelog](CHANGELOG.md)
 
 **TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share and the roster; employees run a desktop client (Windows or Mac) that talks only to that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘和花名册，员工电脑装桌面客户端，只连这台服务器。
 
@@ -36,7 +36,7 @@ git lfs pull
 powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1
 ```
 
-**默认管理员：账号 `tdh`，密码 `12345678`。** 安装会用这个账号登录。打开桌面快捷方式后也用它。这是装机种子账号，不是仓库里的密钥。**装完请改掉**：在服务器上编辑 `D:\dsh\runtime\caddy\PASSWORDS.txt`（每行 `账号:密码`，保存即生效；设置页暂时没有改密码的入口）。重跑安装不会覆盖已有的账号和密码。
+**默认管理员：账号 `tdh`，密码 `12345678`。** 安装会用这个账号登录。打开桌面快捷方式后也用它。这是装机种子账号，不是仓库里的密钥。**装完请马上改掉**：设置 → 账号 → 修改密码。重跑安装不会覆盖已有的账号和密码。
 
 **Employees** download the client from `https://<computername>.local:8443/` (Windows or Mac; the browser warns about the self-signed certificate once) and sign in with the account an admin created in Settings → 人员.
 
@@ -79,7 +79,7 @@ On Windows, `scripts/setup-all.ps1` installs this desk on the LAN: login, the se
 
 - **Session:** 会话 / 任务, 个人 and 团队 workspaces, model picker, Full access, files.
 - **Colleagues:** who is online, role, last login, 7-day local cost estimate (not the vendor bill).
-- **Personnel:** department, promote/demote, revoke gateway token, deactivate, remove. Revoking a token forces a fresh sign-in. Deactivating cuts the person off from sign-in, models, web search, image/video generation and the knowledge base on the next request. A deactivated account can then be removed for good: off the roster, its password gone, its login never handed out again; the personal folder stays on the company share. Seed admin cannot be deactivated or removed.
+- **Personnel:** department, promote/demote, force a fresh sign-in, deactivate, remove. 强制重新登录 only makes the person sign in again. Deactivating cuts the person off from sign-in, models, web search, image/video generation, the knowledge base and the company share (their own share account is switched off) on the next request. A deactivated account can then be removed for good: off the roster, its password gone, its login never handed out again; the personal folder stays on the company share. Seed admin cannot be deactivated or removed.
 - **Tasks:** cards with state and owner (待审批 / 进行中); opening one starts a conversation pinned to that card. Deliverables go on the company disk, and only **提交验收** counts as done, not saying so in chat.
 
 The screenshots use made-up people and tasks.

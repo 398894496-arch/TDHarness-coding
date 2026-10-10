@@ -5,7 +5,7 @@
     python apply_site_patches.py --dir <CompanyDesk 目录> --patches DIR --pub pack-sign.pub
 内容：/company/* 来源校验；生图在对话里显示；生成的图片视频在对话里显示和下载（含侧边栏下载修复）；更新验签 + tree-check；更新下载断点续传；增量更新（只下变化的文件，失败退回整包）；Mac 启动不再要求未随包发的 ego-browser；换 exe 前检查；
 团队工作区 realpath；公司模型来源与默认模型；tool-web 以模板为准；删掉 skills/skills 死副本；
-每扇网关门（模型、搜索、生图）都带个人令牌；人员页停用后可以删除账号；
+每扇网关门（模型、搜索、生图）都带个人令牌；人员页停用后可以删除账号，「吊销令牌」改名「强制重新登录」，账号页自己改密码；
 放入 pack-verify.js 和本服务器的 pack-sign.pub。zip 模式之后要用 site-cs.py reseal-zip 重新封条。
 """
 import argparse
@@ -53,6 +53,7 @@ class Patcher:
         self.mdl = load(pdir / "patch_media_download.py")
         self.gwt = load(pdir / "patch_gw_token.py")
         self.prm = load(pdir / "patch_people_remove.py")
+        self.pwd = load(pdir / "patch_people_wording.py")
         self.verify_js = (pdir / "pack-verify.js").read_bytes()
         self.pub = Path(pub_path).read_bytes()
         self.tmp = pdir / ".guard.tmp.js"
@@ -84,7 +85,11 @@ class Patcher:
                 how = ("patched+" if str(how).startswith("patched") else "") + "model-sync"
             return data, how
         if rel.endswith("company-shell/lib/client.js"):
-            return text_patch(self.prm.patch, data)
+            data, how = text_patch(self.prm.patch, data)
+            data, how2 = text_patch(self.pwd.patch, data)
+            if str(how2).startswith("patched"):
+                how = ("patched+" if str(how).startswith("patched") else "") + "people-wording"
+            return data, how
         if rel.endswith("company-grok-media/lib/index.js"):
             data, how = text_patch(self.media.patch, data)
             data, how2 = text_patch(self.mdl.patch_grok_media, data)

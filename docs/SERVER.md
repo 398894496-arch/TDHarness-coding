@@ -83,7 +83,21 @@ Desks see the new mark on their next launch and offer the update. Each publish k
 
 ## Accounts on first login
 
-The login API heals the two things a remote desk needs before it can open: the `dshshare` Windows account that every desk mounts the company share with, and the person's `emp-<login>` folder. Login names are matched case-insensitively. Passwords are in `D:\dsh\runtime\caddy\PASSWORDS.txt`, one `login:password` per line, read on every login: change the seed admin's `12345678` there after install (Settings has no password page yet).
+The login API heals the two things a remote desk needs before it can open: the person's own share account and the person's `emp-<login>` folder. Login names are matched case-insensitively and are 2 to 16 characters. Passwords are in `D:\dsh\runtime\caddy\PASSWORDS.txt`, one `login:password` per line, read on every login. Everyone can change their own password in Settings → 账号 → 修改密码 (the old one is required); **the seed admin should change `12345678` there right after install.**
+
+### Company share accounts
+
+Each person mounts the company share with their own Windows account, `smb-<login>`, made at their first sign-in (password in `D:\dsh\runtime\smb-users\<login>.pass`, handed to the desk at login). 停用 switches that account off and closes its open connections, 恢复 turns it back on, 删除 deletes it. Share and folder rights are unchanged: every account that can sign in sees the whole share, as before.
+
+Until this version every desk mounted as one shared account, `dshshare`, whose password is on every desk that ever signed in, so 停用 could not take the share away. Desks move to their own account at their next sign-in (no client update needed). Then retire the shared password:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File server\smb-accounts.ps1 -Report        # who still has no own account, who is connected as what
+powershell -ExecutionPolicy Bypass -File server\smb-accounts.ps1 -Reconcile     # switch off accounts of people who are not active
+powershell -ExecutionPolicy Bypass -File server\smb-accounts.ps1 -RotateShared  # new dshshare password; refused while an active person has no own account
+```
+
+`dshshare` itself stays as the fallback for a login the server cannot make an account for.
 
 Optional, not run by setup: `powershell -ExecutionPolicy Bypass -File server\koubo\install.ps1` for the talking-head editing tool (needs Python 3.10–3.12 and Jianying on the machine that opens the drafts).
 
