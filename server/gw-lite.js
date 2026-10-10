@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const gwSearch = require('./gw-search.js');
@@ -492,33 +493,81 @@ function personOf(req) {
 }
 function callerOf(req) {
   const who = personOf(req);
-  return who ? who.login : '';
+  if (who) return who.login;
+  return isService(req) ? 'server' : '';
 }
 
-// The gateway listens on the LAN (desks reach it directly, not through Caddy),
-// so it checks every request that spends a key or changes a setting:
+// The gateway checks every request that spends a key or changes a setting:
 //   - model calls, files, /search, /fetch, /images, /videos: a live token;
 //   - POST /channels (keys and channel settings): a live token of an admin;
 //   - /health, GET /channels, /v1/company-models, /grok-quota, /grok-fast:
 //     open. They say which channels are bound and which models exist, never a key.
-// This machine itself is trusted: the nightly brain job and the setup proofs
-// call 127.0.0.1. Nothing on this machine forwards LAN traffic to 8450.
+// Jobs on this machine (the nightly brain job, deep search calling the model
+// door) use the service token in runtime/gw-service.token, made at start and
+// readable only by administrators. A request is no longer trusted for coming
+// from 127.0.0.1: Caddy forwards the desks' TLS traffic from there, and a proxy
+// on this machine (Clash with allow-LAN) would make any LAN request look local.
+// TDH_GW_TRUST_LOOPBACK=1 restores the old trust, for tests only.
 // GW_ALLOW_TOKENLESS=1 in gateway.env lets a request with no token at all
 // through the first group, for desks not yet updated to send one on every
 // door. A wrong or revoked token is refused either way. Read per request.
-const TRUST_LOOPBACK = process.env.TDH_GW_TRUST_LOOPBACK !== '0';
+const TRUST_LOOPBACK = process.env.TDH_GW_TRUST_LOOPBACK === '1';
+const SERVICE_TOKEN_PATH = process.env.TDH_GW_SERVICE_TOKEN_FILE || path.join(ROOT, 'runtime', 'gw-service.token');
+function loadServiceToken() {
+  try {
+    const t = fs.readFileSync(SERVICE_TOKEN_PATH, 'utf8').trim();
+    if (/^svc_[0-9a-f]{48}$/.test(t)) return t;
+  } catch (e) { /* made below */ }
+  const t = 'svc_' + crypto.randomBytes(24).toString('hex');
+  fs.mkdirSync(path.dirname(SERVICE_TOKEN_PATH), { recursive: true });
+  fs.writeFileSync(SERVICE_TOKEN_PATH, t + '\n', { mode: 0o600 });
+  if (process.platform === 'win32') {
+    // mode is ignored on Windows: the file would inherit the folder's read rights.
+    try {
+      require('child_process').execFileSync('icacls.exe', [SERVICE_TOKEN_PATH, '/inheritance:r', '/grant:r', '*S-1-5-32-544:F', '*S-1-5-18:F'], { stdio: 'ignore' });
+    } catch (e) { console.log('GW_SERVICE_TOKEN_ACL failed ' + String((e && e.message) || e).slice(0, 120)); }
+  }
+  return t;
+}
+const SERVICE_TOKEN = loadServiceToken();
+// Same process: deep search (web-search.js) sends it when it calls the model door.
+process.env.TDH_GW_SERVICE_TOKEN = SERVICE_TOKEN;
+function isService(req) {
+  const tok = tokenOf(req);
+  return tok.length === SERVICE_TOKEN.length && crypto.timingSafeEqual(Buffer.from(tok), Buffer.from(SERVICE_TOKEN));
+}
 function fromThisMachine(req) {
   const a = String((req.socket && req.socket.remoteAddress) || '');
   return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 }
+// Desks reach the gateway through Caddy on 8443 (/gw, TLS) once this server has
+// exported its Caddy root for them (runtime/company-ca.crt, written by
+// export-ca.ps1 and packed into the clients). From then on a request that comes
+// straight from the LAN is plaintext, so it is refused unless gateway.env says
+// GW_PLAIN_LAN=1 (the bridge while installed desks take the update).
+const CA_PATH = process.env.TDH_COMPANY_CA || path.join(ROOT, 'runtime', 'company-ca.crt');
+let caSeen = { at: 0, ready: false };
+function tlsReady() {
+  if (Date.now() - caSeen.at > 10000) caSeen = { at: Date.now(), ready: fs.existsSync(CA_PATH) };
+  return caSeen.ready;
+}
+function clientOf(req) {
+  const a = String((req.socket && req.socket.remoteAddress) || '');
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fromThisMachine(req) && fwd ? fwd + ' via caddy' : a;
+}
 const DENY = {
   login: '没有有效的登录令牌。请退出客户端重新登录；客户端提示有更新时先更新。',
+  plain: '这台服务器的网关已改走加密通道。请退出客户端再打开，接受更新。',
   admin: '只有管理员能改模型和钥匙设置。'
 };
 function gate(req, url, env) {
   if (TRUST_LOOPBACK && fromThisMachine(req)) return null;
   const method = String(req.method || 'GET').toUpperCase();
   if (url === '/health') return null;
+  if (!fromThisMachine(req) && tlsReady() && String(env.GW_PLAIN_LAN || '').trim() !== '1') {
+    return { status: 403, obj: { error: { message: DENY.plain, type: 'gateway_plaintext' } } };
+  }
   if (url === '/channels' || url === '/channels/') {
     if (method !== 'POST') return null;
     const who = personOf(req);
@@ -527,7 +576,7 @@ function gate(req, url, env) {
     return null;
   }
   if (url === '/v1/company-models' || url === '/company-models' || url === '/grok-quota' || url === '/grok-fast') return null;
-  if (personOf(req)) return null;
+  if (personOf(req) || isService(req)) return null;
   if (!tokenOf(req) && String(env.GW_ALLOW_TOKENLESS || '').trim() === '1') return null;
   return { status: 401, obj: { error: { message: DENY.login, type: 'gateway_unauthorized' } } };
 }
@@ -878,7 +927,7 @@ const server = http.createServer(async (req, res) => {
   if (deny) {
     // Drain the body so the desk gets the answer instead of a reset socket.
     req.resume();
-    try { console.log('GW_DENY ' + deny.status + ' ' + String(req.method) + ' ' + url + ' from ' + String((req.socket && req.socket.remoteAddress) || '')); } catch (e) { /* log only */ }
+    try { console.log('GW_DENY ' + deny.status + ' ' + String(req.method) + ' ' + url + ' from ' + clientOf(req)); } catch (e) { /* log only */ }
     send(res, deny.status, deny.obj);
     return;
   }

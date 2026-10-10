@@ -166,7 +166,10 @@ async function main() {
       TDH_GROK_FAST: path.join(root, 'grok-fast.json'),
       TDH_XAI_TOKEN_URL: 'http://127.0.0.1:' + upPort + '/oauth2/token',
       TDH_XAI_BASE: 'http://127.0.0.1:' + upPort,
-      TDH_GW_PORT: String(gwPort)
+      TDH_GW_PORT: String(gwPort),
+      // This proof calls the gateway from 127.0.0.1 without a login, as the old desks did.
+      TDH_GW_TRUST_LOOPBACK: '1',
+      TDH_GW_SERVICE_TOKEN_FILE: path.join(root, 'gw-service.token')
     }),
     stdio: ['ignore', 'pipe', 'inherit']
   });

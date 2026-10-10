@@ -106,7 +106,7 @@ If you need “everyone in chat on AI next week,” do not use this repo.
 
 ## Safety, stated plainly
 
-Done here: the tree is scanned for office IPs and keys; the patcher refuses well-known live prefixes; a network workspace is not allowed as the sandbox root; the model gateway answers only a live per-person login token, and only an admin's token can change keys ([SERVER.md](SERVER.md#who-the-gateway-answers)).
+Done here: the tree is scanned for office IPs and keys; the patcher refuses well-known live prefixes; a network workspace is not allowed as the sandbox root; desks reach the model gateway over TLS (8443/gw, pinned to this server's own root), it answers only a live per-person login token and trusts no address, only an admin's token can change keys, and its page reader refuses private addresses ([SERVER.md](SERVER.md#who-the-gateway-answers)).
 
 You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation; everyone on the roster can search the whole knowledge base; the seed admin `tdh` / `12345678` must be changed right after install (Settings → 账号 → 修改密码).
 

@@ -5,7 +5,7 @@
     python apply_site_patches.py --dir <CompanyDesk 目录> --patches DIR --pub pack-sign.pub
 内容：/company/* 来源校验；生图在对话里显示；生成的图片视频在对话里显示和下载（含侧边栏下载修复）；更新验签 + tree-check；更新下载断点续传；增量更新（只下变化的文件，失败退回整包）；Mac 启动不再要求未随包发的 ego-browser；换 exe 前检查；
 团队工作区 realpath；公司模型来源与默认模型；tool-web 以模板为准；删掉 skills/skills 死副本；
-每扇网关门（模型、搜索、生图）都带个人令牌；人员页停用后可以删除账号，「吊销令牌」改名「强制重新登录」，账号页自己改密码；
+每扇网关门（模型、搜索、生图）都带个人令牌；网关走 Caddy TLS（给了 --ca 时）；人员页停用后可以删除账号，「吊销令牌」改名「强制重新登录」，账号页自己改密码；
 放入 pack-verify.js 和本服务器的 pack-sign.pub。zip 模式之后要用 site-cs.py reseal-zip 重新封条。
 """
 import argparse
@@ -36,7 +36,7 @@ def text_patch(fn, data):
 
 
 class Patcher:
-    def __init__(self, pdir, pub_path, default_model=None, default_effort=None):
+    def __init__(self, pdir, pub_path, default_model=None, default_effort=None, ca_path=None, login_port="8443"):
         self.default_model = default_model
         self.default_effort = default_effort
         self.msync = load(pdir / "patch_model_sync.py")
@@ -54,6 +54,11 @@ class Patcher:
         self.gwt = load(pdir / "patch_gw_token.py")
         self.prm = load(pdir / "patch_people_remove.py")
         self.pwd = load(pdir / "patch_people_wording.py")
+        self.gtls = load(pdir / "patch_gw_tls.py")
+        # This server's Caddy root (export-ca.ps1). Given: desks reach the gateway over
+        # TLS on the login port and trust this root. Not given: plain 8450 as before.
+        self.ca = Path(ca_path).read_bytes() if ca_path else None
+        self.login_port = str(login_port)
         self.verify_js = (pdir / "pack-verify.js").read_bytes()
         self.pub = Path(pub_path).read_bytes()
         self.tmp = pdir / ".guard.tmp.js"
@@ -76,6 +81,21 @@ class Patcher:
 
     def member(self, rel, data):
         """rel 是相对 CompanyDesk/ 的路径。返回 (新内容, 说明 或 None)。"""
+        data, how = self._member(rel, data)
+        if self.ca is not None and self.gtls.is_target(rel):
+            data, how2 = text_patch(lambda t: self.gtls.patch(rel, t, self.login_port), data)
+            if str(how2).startswith("patched"):
+                how = ("patched+" if str(how).startswith("patched") else "") + "gw-tls"
+        return data, how
+
+    def extras(self):
+        """Files every pack carries at its root: (name, bytes)."""
+        out = [("pack-verify.js", self.verify_js), ("pack-sign.pub", self.pub)]
+        if self.ca is not None:
+            out.append(("company-ca.crt", self.ca))
+        return out
+
+    def _member(self, rel, data):
         base = rel.rsplit("/", 1)[-1]
         top = "/" not in rel
         if rel.endswith("company-shell/lib/index.js"):
@@ -134,6 +154,8 @@ class Patcher:
             return self.verify_js, "replaced"
         if top and base == "pack-sign.pub":
             return self.pub, "replaced"
+        if top and base == "company-ca.crt" and self.ca is not None:
+            return self.ca, "replaced"
         return data, None
 
 
@@ -175,7 +197,8 @@ def run_zip(a, pt):
                 stats[name] = how
             zout.writestr(item, data)
         prefix = prefix or ""
-        for extra, blob in ((prefix + "pack-verify.js", pt.verify_js), (prefix + "pack-sign.pub", pt.pub)):
+        for name, blob in pt.extras():
+            extra = prefix + name
             if extra not in names:
                 zi = zipfile.ZipInfo(extra, date_time=(2026, 10, 8, 0, 0, 0))
                 zi.compress_type = zipfile.ZIP_DEFLATED
@@ -208,7 +231,7 @@ def run_dir(a, pt):
                 full.write_bytes(new)
             if how:
                 stats[rel] = how
-    for extra, blob in (("pack-verify.js", pt.verify_js), ("pack-sign.pub", pt.pub)):
+    for extra, blob in pt.extras():
         if not (root / extra).is_file():
             (root / extra).write_bytes(blob)
             stats[extra] = "added"
@@ -225,8 +248,10 @@ def main():
     ap.add_argument("--bump-mark", action="store_true", help="zip 模式：换新的版本标记，已装客户端才会收到更新")
     ap.add_argument("--default-model", default=None, help="站点强制的默认模型（网关没有 /v1/company-models 时用，如办公室 gw-mux）")
     ap.add_argument("--default-effort", default=None)
+    ap.add_argument("--ca", default=None, help="这台服务器的 Caddy 根证书：给了就让客户端经 8443/gw 走 TLS 连网关")
+    ap.add_argument("--login-port", default="8443")
     a = ap.parse_args()
-    pt = Patcher(Path(a.patches), a.pub, a.default_model, a.default_effort)
+    pt = Patcher(Path(a.patches), a.pub, a.default_model, a.default_effort, a.ca, a.login_port)
     stats = run_zip(a, pt) if a.zip else run_dir(a, pt)
     for k in sorted(stats):
         print("PATCH %s %s" % (stats[k], k))

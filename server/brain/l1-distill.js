@@ -1,6 +1,6 @@
 'use strict';
-// L1 narrative via company 8450 grok-4.6. Runs on the server itself: the gateway
-// trusts 127.0.0.1, so the placeholder Bearer is not a login token.
+// L1 narrative via company 8450 grok-4.6. Runs on the server itself with the
+// gateway's service token.
 // Real xAI token stays in Win OAuth store. Do not call grok.exe CLI.
 
 const fs = require('fs');
@@ -11,6 +11,12 @@ const { spawnSync } = require('child_process');
 const MODEL = 'grok-4.6';
 const DEFAULT_URL = 'http://127.0.0.1:8450/v1';
 const DEFAULT_KEY = 'company-gateway';
+// The gateway trusts no address, not even this machine: jobs here send the service
+// token it writes at start (runtime/gw-service.token, administrators only).
+function serviceKey() {
+  const p = process.env.TDH_GW_SERVICE_TOKEN_FILE || path.join(process.env.TDH_ROOT || 'D:\\dsh', 'runtime', 'gw-service.token');
+  try { return fs.readFileSync(p, 'utf8').trim(); } catch (e) { return ''; }
+}
 const SYSTEM = [
   'You write the company org-memory daily narrative.',
   'Reply in Simplified Chinese only.',
@@ -82,7 +88,7 @@ function completeSync(prompt, opts) {
     return text;
   }
   const base = ((opts && opts.baseURL) || process.env.L1_DISTILL_URL || DEFAULT_URL).replace(/\/$/, '');
-  const key = (opts && opts.key) || process.env.L1_DISTILL_KEY || DEFAULT_KEY;
+  const key = (opts && opts.key) || process.env.L1_DISTILL_KEY || serviceKey() || DEFAULT_KEY;
   const body = {
     model: MODEL,
     messages: [

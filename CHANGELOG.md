@@ -4,6 +4,17 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.10.2
+
+**网关走加密通道，不再信任任何地址**（第三方复评提出的三处残余风险）
+- 令牌明文：客户端原来用 `http://<服务器>:8450` 连网关，每次请求的个人令牌都以明文在局域网里传，共用 Wi-Fi 时能被截获。现在走登录用的 Caddy TLS 端口：`https://<服务器>:8443/gw`，Caddy 转给本机的网关。客户端只信任这台服务器自己的 Caddy 根证书（打进签名的安装包，`company-ca.crt`），Windows 的 `TDHarness.exe` 和 Mac 启动脚本把它交给 Node（`NODE_EXTRA_CA_CERTS`）。站点补丁 `site-patches/patch_gw_tls.py`。
+- 「本机来的都放行」：网关原来对 127.0.0.1 不查令牌。服务器上开着允许局域网连接的代理（比如 Clash 的 allow-LAN）时，局域网请求经代理进来就成了本机来源，鉴权被整个绕过；现在 Caddy 也从本机转发。改为不信任任何地址：服务器上的任务（每晚知识库、深搜调模型）用网关启动时写的服务令牌 `runtime\gw-service.token`（只有管理员能读），它能调模型、不能改 key，用量记在 `server` 名下。
+- `/fetch` 的内网拦截原来只看网址字符串：域名解析到内网、或者先跳到公网再重定向回内网，都拦不住。现在在连接那一刻按解析出的真实地址检查，每一跳重定向都查，IPv6、映射地址、组播一并算进去。
+- 开关只有一个文件：`server\export-ca.ps1` 把 Caddy 的根证书导出到 `runtime\company-ca.crt`。有了它，安装包改走 `8443/gw`，`TDHarness.exe` 编进 https 网关，网关开始拒绝来自局域网的明文请求（`gateway.env` 写 `GW_PLAIN_LAN=1` 可在客户端更新期间临时放行，令牌照查）。`publish-site-update.ps1` 每次都导出；全新安装时 Caddy 第一次启动才生成根证书，安装脚本在服务都起来以后再导出、再发布一次；重跑安装时发现已经有员工在用，会自动写上 `GW_PLAIN_LAN=1`。
+- 证明：`scripts/prove-gw-tls.js`（新，进 CI）：内网地址分类、重定向到内网字面地址、重定向到解析为内网的域名、直接访问解析为内网的域名都拒绝，重定向后的公网页面照常读；补丁把每个网关地址换成 `8443/gw`、幂等、Mac 启动脚本在 `set -e` 下缺证书也能跑；`TDHarness.exe` 的网关地址跟着同一个文件切换；Caddyfile 有 `/gw`。`scripts/prove-gw-auth.js` 加上：本机来的占位 key 被拒、服务令牌能用但改不了 key、重启后令牌不变、证书就绪后局域网明文 403、`GW_PLAIN_LAN=1` 放行但仍要令牌。
+
+**升级已在用的服务器**：先在 `gateway.env` 里加 `GW_PLAIN_LAN=1`，再更新仓库、导出证书、`publish-site-update.ps1 -BumpMark`、重启网关和 Caddy；所有人更新过客户端以后删掉这一行。
+
 ## 2026.10.10
 
 **停用会收回公司共享盘：每人一个共享盘账号**

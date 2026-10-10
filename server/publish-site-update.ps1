@@ -44,11 +44,16 @@ Write-Output ('BACKUP=' + $bak)
 & $py $DeltaPy remember --dist $Dist --history $History
 if ($LASTEXITCODE -ne 0) { throw 'delta-remember-failed' }
 
-# 2. Site patches (idempotent)
+# 2. Site patches (idempotent). With this server's Caddy root exported, desks reach the
+#    gateway over TLS (8443/gw) and carry the root; TDHarness.exe in step 3 follows the same file.
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'export-ca.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'export-ca-failed' }
+$Ca = 'D:\dsh\runtime\company-ca.crt'
 foreach ($name in 'CompanyDesk-win.zip', 'CompanyDesk-mac.zip') {
   $zip = Join-Path $Dist $name
   if (-not (Test-Path -LiteralPath $zip)) { continue }
   $a = @((Join-Path $Patches 'apply_site_patches.py'), '--zip', $zip, '--patches', $Patches, '--pub', $Pub)
+  if (Test-Path -LiteralPath $Ca) { $a += @('--ca', $Ca) }
   if ($BumpMark) { $a += '--bump-mark' }
   & $py @a
   if ($LASTEXITCODE -ne 0) { throw ('patch-failed-' + $name) }
