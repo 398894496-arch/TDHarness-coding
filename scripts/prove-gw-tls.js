@@ -80,7 +80,7 @@ function proveClientPatch(py) {
     'rel, src = sys.argv[2], open(sys.argv[3], encoding="utf-8").read()',
     't, how = m.patch(rel, src, "8443")',
     't2, how2 = m.patch(rel, t, "8443")',
-    'open(sys.argv[3], "w", encoding="utf-8").write(t)',
+    'open(sys.argv[3], "w", encoding="utf-8", newline="").write(t)',
     'print(how, how2)'
   ].join('\n');
   const run = (rel, text) => {
