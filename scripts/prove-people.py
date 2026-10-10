@@ -71,7 +71,9 @@ def main() -> None:
     ]
     (usage / time.strftime("usage-%Y-%m.jsonl")).write_text("".join(json.dumps(r) + "\n" for r in ledger), encoding="utf-8")
     port = free_port()
-    env = dict(os.environ, TDH_ROOT=str(root), TDH_PEOPLE_PORT=str(port), DSH_LEASE_DIR=str(runtime / "lease"))
+    smb_ledger = root / "smb-ledger.jsonl"
+    env = dict(os.environ, TDH_ROOT=str(root), TDH_PEOPLE_PORT=str(port), DSH_LEASE_DIR=str(runtime / "lease"),
+               TDH_SMB_LEDGER=str(smb_ledger))
     proc = subprocess.Popen([sys.executable, str(API)], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         for _ in range(50):
@@ -115,7 +117,7 @@ def main() -> None:
         check(any(d["name"] == "直播运营" for d in got["depts"]), "dept-rename")
 
         # Login rules.
-        for bad in ("张三", "../evil", "a:b", "UPPER", "x"):
+        for bad in ("张三", "../evil", "a:b", "UPPER", "x", "seventeen-chars-x"):
             code, got = call(port, "POST", {"action": "add", "login": bad, "password": "longenough1", "dept": ops}, admin)
             check(got.get("error") == "login-bad", "login %r refused, got %r" % (bad, got.get("error")))
         code, got = call(port, "POST", {"action": "add", "login": "tdh", "password": "longenough1"}, admin)
@@ -148,6 +150,27 @@ def main() -> None:
         code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "longenough1"})
         check(code == 200, "new person logs in")
         mine = hit["gw_token"]
+        # The share account is this person's own, not the shared dshshare.
+        check(hit.get("smb_user") == "smb-zhangsan" and len(hit.get("smb_pass") or "") >= 12, "own share account %r" % hit.get("smb_user"))
+        smb_pass_file = runtime / "smb-users" / "zhangsan.pass"
+        check(smb_pass_file.is_file() and smb_pass_file.read_text(encoding="ascii").strip() == hit["smb_pass"], "share password kept on the server")
+
+        # Everyone changes their own password, with the old one.
+        code, got = call(port, "POST", {"action": "self", "password_old": "wrong-one-1", "password_new": "brand-new-pass"}, mine)
+        check(got.get("error") == "password-wrong", "wrong old password refused")
+        code, got = call(port, "POST", {"action": "self", "password_old": "longenough1", "password_new": "short"}, mine)
+        check(got.get("error") == "password-too-short", "short new password refused")
+        code, got = call(port, "POST", {"action": "self", "password_old": "longenough1", "password_new": "longenough1"}, mine)
+        check(got.get("error") == "password-same", "same password refused")
+        code, got = call(port, "POST", {"action": "self", "password_old": "longenough1", "password_new": "brand-new-pass"}, mine)
+        check(code == 200, "password changed")
+        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "longenough1"})
+        check(code == 401, "old password no longer works")
+        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"})
+        check(code == 200, "new password works")
+        passwords = (runtime / "caddy" / "PASSWORDS.txt").read_text(encoding="utf-8")
+        check(passwords.count("zhangsan:") == 1 and "tdh:seed-pass-123" in passwords, "one line per person, others kept")
+        mine = hit["gw_token"]
         code, got = call(port, "POST", {"action": "self", "name": "小张", "avatar": PIXEL}, mine)
         row = next(p for p in got["people"] if p["login"] == "zhangsan")
         check(row["name"] == "小张" and row["avatar"] == PIXEL, "self edit")
@@ -163,10 +186,10 @@ def main() -> None:
         check(code == 403, "a revoked token no longer works")
         code, got = call(port, "POST", {"action": "disable", "login": "zhangsan"}, admin)
         check(next(p for p in got["people"] if p["login"] == "zhangsan")["status"] == "disabled", "disable")
-        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "longenough1"})
+        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"})
         check(code == 401, "a disabled person cannot log in")
         code, got = call(port, "POST", {"action": "enable", "login": "zhangsan"}, admin)
-        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "longenough1"})
+        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"})
         check(code == 200, "an enabled person logs in again")
         code, got = call(port, "POST", {"action": "disable", "login": "tdh"}, admin)
         check(got.get("error") == "protect-seed-admin", "seed admin cannot be disabled")
@@ -188,8 +211,14 @@ def main() -> None:
         check(not any(p["login"] == "zhangsan" for p in got["people"]), "removed person is off the roster")
         passwords = (runtime / "caddy" / "PASSWORDS.txt").read_text(encoding="utf-8")
         check("zhangsan" not in passwords and "tdh:seed-pass-123" in passwords, "password line gone, others kept")
-        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "longenough1"})
+        code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"})
         check(code == 401, "a removed person cannot log in")
+        check(not smb_pass_file.exists(), "share password file removed")
+        steps = [json.loads(line) for line in smb_ledger.read_text(encoding="utf-8").splitlines()]
+        mine_steps = [s["action"] for s in steps if s["user"] == "smb-zhangsan"]
+        check(mine_steps[0] == "ensure" and "disable" in mine_steps and "enable" in mine_steps and mine_steps[-1] == "remove",
+              "share account ensure/disable/enable/remove %r" % mine_steps)
+        check(mine_steps.index("disable") < mine_steps.index("enable"), "disable before enable")
         code, got = call(port, "POST", {"action": "self", "name": "z"}, live)
         check(code == 403, "a removed person's token is dead")
         tokens = json.loads((runtime / "gw-tokens.json").read_text(encoding="utf-8"))["tokens"]

@@ -43,7 +43,7 @@ Settings → **同事**. Weekly model quota, a **7-day company ledger** using a 
 
 ![Personnel: departments, role and department dropdowns, deactivate, revoke token](screenshots/03-personnel.jpg)
 
-Settings → **人员**. Accounts grouped by department. Boss and managers issue accounts. You can change role and department, **吊销令牌** (forces a fresh sign-in), **停用** (no sign-in, every gateway door closed on the next request), and, once deactivated, **删除** (off the roster, password gone, login retired; the personal folder stays on the company share). The seed administrator cannot be deactivated or removed.
+Settings → **人员**. Accounts grouped by department. Boss and managers issue accounts. You can change role and department, **强制重新登录** (forces a fresh sign-in), **停用** (no sign-in, every gateway door and the person's own share account closed on the next request), and, once deactivated, **删除** (off the roster, password gone, login retired; the personal folder stays on the company share). The seed administrator cannot be deactivated or removed.
 
 ### Tasks
 
@@ -108,7 +108,7 @@ If you need “everyone in chat on AI next week,” do not use this repo.
 
 Done here: the tree is scanned for office IPs and keys; the patcher refuses well-known live prefixes; a network workspace is not allowed as the sandbox root; the model gateway answers only a live per-person login token, and only an admin's token can change keys ([SERVER.md](SERVER.md#who-the-gateway-answers)).
 
-You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation; everyone on the roster can search the whole knowledge base; the seed admin `tdh` / `12345678` must be changed by editing `PASSWORDS.txt` on the server (Settings has no password page yet).
+You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation; everyone on the roster can search the whole knowledge base; the seed admin `tdh` / `12345678` must be changed right after install (Settings → 账号 → 修改密码).
 
 ## What it will not do
 

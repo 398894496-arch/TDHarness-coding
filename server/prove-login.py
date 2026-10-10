@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -70,7 +71,15 @@ def main() -> None:
     host = site["host"]
     port = site["login_port"]
     base = "https://%s:%s" % (host, port)
-    code, hit, raw = post(base + "/company/login", {"username": "tdh", "password": "12345678"})
+    # The seed admin's current password: changed in Settings after install, so read it from
+    # PASSWORDS.txt on this machine instead of assuming the seed value.
+    pass_file = Path(os.environ.get("TDH_PASSWORDS") or r"D:\dsh\runtime\caddy\PASSWORDS.txt")
+    seed_pw = "12345678"
+    if pass_file.is_file():
+        for line in pass_file.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
+            if line.strip().startswith("tdh:"):
+                seed_pw = line.strip().split(":", 1)[1].strip()
+    code, hit, raw = post(base + "/company/login", {"username": "tdh", "password": seed_pw})
     print("LOGIN_HTTP=%s" % code)
     if code != 200 or hit.get("ok") is not True:
         raise SystemExit("login-failed")
@@ -85,7 +94,8 @@ def main() -> None:
         raise SystemExit("login-missing-personal")
     if not str(hit.get("org") or ""):
         raise SystemExit("login-missing-org")
-    if str(hit.get("smb_user") or "") != "dshshare" or not str(hit.get("smb_pass") or ""):
+    # Own share account smb-tdh; dshshare only while the server cannot make one.
+    if str(hit.get("smb_user") or "") not in ("smb-tdh", "dshshare") or not str(hit.get("smb_pass") or ""):
         raise SystemExit("login-missing-smb")
     print("LOGIN_ROLE=admin")
     headers = {"Authorization": "Bearer " + token, "X-Company-Gw-Token": token}

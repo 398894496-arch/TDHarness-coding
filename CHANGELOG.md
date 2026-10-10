@@ -4,6 +4,23 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.10
+
+**停用会收回公司共享盘：每人一个共享盘账号**
+- 问题：所有员工都用同一个 `dshshare` 账号挂公司盘，它的密码存在每台登录过的电脑上。停用一个人只挡得住登录和模型，挡不住他接着用公司盘。（办公室那套也查出同样的事：停用从来没关个人共享盘账号，9 个已停用的人照样能挂盘，已修。）
+- 现在：每个人第一次登录时，服务器给他建自己的 Windows 账号 `smb-<登录名>`（密码在 `D:\dsh\runtime\smb-users\`，登录时发给客户端）。停用会关掉这个账号并断开它的连接，恢复会重新打开，删除会删掉它。共享盘和文件夹权限不变。客户端不用更新：下次登录就换成自己的账号（Windows 端会先断开旧连接再挂；Mac 端发现挂载用户变了会重挂）。
+- 收尾：`server\smb-accounts.ps1 -Report` 看谁还没有自己的账号、谁在用什么账号连着；都有了以后 `-RotateShared` 换掉 `dshshare` 的密码，旧密码作废（还有人没换时会拒绝，除非加 `-Force`）。`-Reconcile` 关掉所有不在职的人的账号。
+- 登录名上限从 32 位改为 16 位：Windows 用户名最长 20，`smb-` 占 4 位。现有站点的登录名最长 11 位，不受影响。
+
+**自己改密码**
+- 设置 → 账号 → 修改密码：填原密码和两遍新密码（至少 8 位），保存后下次登录用新密码，这台电脑不用重新登录。默认管理员 `tdh / 12345678` 装完就可以在这里改，不用再去服务器上编辑 `PASSWORDS.txt`。
+- 装机自检（`server/prove-login.py`）改为从 `PASSWORDS.txt` 读种子管理员的当前密码，改过密码以后重跑安装不会再卡在 `login-failed`；它也接受登录返回自己的共享盘账号 `smb-tdh`。
+
+**「吊销令牌」改名「强制重新登录」**
+- 老板实测把它当成了删除。它只让这个人重新输一次账号密码，账号和密码都不变；要让人彻底用不了是「停用」，从名单里去掉是停用后的「删除」。确认条里写清楚了。
+
+站点补丁 `site-patches/patch_people_wording.py`（改名、账号页改密码、16 位提示）；`scripts/prove-people.py` 加上：登录拿到自己的共享盘账号、改密码（原密码错、太短、和原来一样都拒绝；改完旧密码登不上、新密码能登）、共享盘账号的建/关/开/删顺序、17 位登录名被拒。
+
 ## 2026.10.09.5
 
 **人员页：账号可以真正删除**
