@@ -247,7 +247,9 @@ if ($lan -notmatch '^\d+\.\d+\.\d+\.\d+$') {
 }
 try { Grant-SmbShareAccess -Name 'dsh-company' -AccountName 'dshshare' -AccessRight Full -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
 try { Grant-SmbShareAccess -Name 'dsh-company' -AccountName 'Everyone' -AccessRight Change -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
-try { icacls.exe $Company /grant '*S-1-1-0:(OI)(CI)M' /T /C | Out-Null } catch {}
+# The share lets everyone in; who opens which folder is NTFS, from the roster and each
+# person's own account (server\secure-folders.ps1, run below once the roster is in place).
+# Never grant Everyone on the folder tree again: an older setup did, file by file.
 try { Enable-NetFirewallRule -DisplayGroup 'File and Printer Sharing' -ErrorAction SilentlyContinue | Out-Null } catch {}
 Write-Output 'SMB_SHARE_AUTH=1'
 
@@ -395,6 +397,20 @@ if (Test-Path -LiteralPath $brainJob) {
   Register-ScheduledTask -TaskName 'TDH-Brain-Daily' -Action $brainAction -Trigger $brainTrigger -Principal $brainPrincipal -Settings $brainSettings -Force | Out-Null
   Write-Output 'TASK_BRAIN_DAILY=00:15'
 }
+
+# Folder grants on the company share and the server's own folders (runtime, brain): now,
+# and every night in case an account was made or switched off outside people-api.
+$secure = Join-Path $Server 'secure-folders.ps1'
+$prevSec = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $secure -Root $Root -Apply 2>&1 |
+  Where-Object { "$_" -match '^(PEOPLE=|CHANGES=|SECURE_FOLDERS_OK|ACL_BACKUP=)' } | ForEach-Object { Write-Output "$_" }
+$ErrorActionPreference = $prevSec
+$secAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $secure + '" -Root "' + $Root + '" -Apply')
+$secTrigger = New-ScheduledTaskTrigger -Daily -At '00:05'
+$secPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+Register-ScheduledTask -TaskName 'TDH-Secure-Folders' -Action $secAction -Trigger $secTrigger -Principal $secPrincipal -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1)) -Force | Out-Null
+Write-Output 'TASK_SECURE_FOLDERS=00:05'
 
 try {
   New-NetFirewallRule -DisplayName 'tdh-lan-8443' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8443 -Profile Any -ErrorAction SilentlyContinue | Out-Null

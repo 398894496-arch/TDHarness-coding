@@ -4,6 +4,17 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.5
+
+**公司盘的文件权限和知识库对齐**（第三方第五次复评）
+- 评审属实：知识库检索按人和部门分了范围，但文件本身在公司盘上对所有人开放。装机脚本给整个 `D:\dsh\company` 加了 `Everyone` 可修改，而且是逐个文件加的（`icacls /T`）。所以同事可以绕过检索直接读别人的原始对话和个人记忆；任何人（包括被网页诱导的 AI）都能往公司手册里写东西，再被别人的 AI 当成公司规定执行。另外 `D:\dsh\runtime`（厂商 key、所有人的登录令牌、共享盘密码）从 D 盘根目录继承了 `Authenticated Users` 可修改，每人一个的 `smb-*` 账号拿到密码就能在服务器上本地读到。
+- 新增 `server\secure-folders.ps1`：按花名册和每人自己的共享盘账号设置 NTFS 权限。公共目录全员只读、只有管理员能改；部门手册只有本部门能读、本部门主管和管理员能改；公司共享记忆只有管理员和主管能改；个人目录（原始对话、个人记忆、任务交付物）只有本人、本部门主管和管理员能打开；`runtime` 和 `brain` 只留 SYSTEM、管理员组和每个本地管理员（非提权程序用不上管理员组）。共享盘不显示打不开的文件夹（ABE）。
+- 审核不受影响：派活和审核的只有管理员、本部门主管或派给自己的本人，审核通过服务端读文件。
+- 过渡期：工作台还在用共用账号 `dshshare` 的人，由它代替本人（自己的文件夹和全员可读的部分），但不代替管理员或主管的角色权限。所以每个人重新登录一次，他的文件夹就对 `dshshare` 关上；所有人都登录过以后，`dshshare` 不再有任何权限，再用 `smb-accounts.ps1 -RotateShared` 换掉共用密码。
+- 什么时候执行：people-api 每次改花名册、每次登录建了账号以后在后台跑一次；装机时跑一次；计划任务 `TDH-Secure-Folders` 每晚 00:05 跑一次。每次第一处改动前，先把原有权限存到 `runtime\acl-backup-<时间>.txt`。装机脚本不再逐个文件给 `Everyone` 加权限。
+- `server\prove-secure-folders.ps1`：用 Windows 的 AuthzAccessCheck，按账号逐个问实际能读、能写什么（不登录任何人），期望值按角色写死，不从规则反推。TDH 服务器上 127 项全部通过；收紧前同一脚本报出 8 处与评审一致的问题，包括 `smb-tdh` 能读写 `runtime\gateway.env`。
+- 账号页的告知改为 v2（`@@kb-notice-v2`），按文件层的实际情况写：个人文件夹谁能打开，手册谁能改，服务器管理员能看到所有文件。已装 v1 的客户端会原地换成 v2。
+
 ## 2026.10.11.4
 
 **老格式 Office 和 WPS 文件也能搜**
