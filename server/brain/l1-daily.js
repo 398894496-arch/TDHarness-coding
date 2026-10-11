@@ -119,7 +119,7 @@ function skeletonBody(dept, account, ymd, info) {
     owner: account,
     dept,
     account,
-    visibility: 'company',
+    visibility: 'self',
     layer: 'l1',
     summary: lib.ZH.pending,
     sessions: n,

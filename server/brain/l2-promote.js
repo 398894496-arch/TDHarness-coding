@@ -62,7 +62,7 @@ function renderL2(rec) {
   const fm = {
     owner: rec.adopted_by || rec.accepted_by || rec.dept,
     dept: rec.dept,
-    visibility: 'company',
+    visibility: 'dept',
     layer: 'l2',
     status: rec.status,
     fingerprint: rec.fingerprint,

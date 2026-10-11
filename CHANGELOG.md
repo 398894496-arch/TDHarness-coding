@@ -4,6 +4,26 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11
+
+**知识库检索重做**（第三方对「企业知识库」的评审）
+- 之前的检索是整串 `indexOf`、取前 20 个文件、摘要是文件开头 240 字，返回的还是服务器上的绝对路径和 `snippet` 字段。工作台的 `company_knowledge` 工具只显示 `path:line text`，所以 AI 实际只看到一串 `D:\dsh\brain\…` 路径、看不到任何正文；`route=status`、按路径取原文也都没接。
+- 现在（`server/kb-index.js`）：文件切成段落，按 BM25 排序；英文和数字按词，中文按相邻两字切（不用词典，「退货运费谁承担」能找到「运费由公司承担」）；问句里的「怎么」「是谁」之类不算；覆盖率按词的稀有程度算，库里根本没有的两字组不拖分。摘要是命中位置附近的原文，带行号。按文件修改时间缓存，新增或改过的文件下一次检索就进来，不用重建索引。不加向量库、不加服务。
+- 公司资料能进库了：放进公司盘 `_handbook\_company`（全员）或 `_handbook\<部门>`（本部门），`.md .txt .csv .docx .xlsx .pptx` 直接读（Office 文件用 Node 自带 zlib 解开，不加依赖）；`.pdf` 暂不读，`route=status` 会报跳过了几个。
+- 之前漏搜的补上：公司共享记忆 `company\_shared\_memory`（管理员和主管用 `company_memory_write` 写的公司级事实），个人记忆 `content\emp-<登录名>\_memory`（管理员是 `_office\_memory`）。
+- 返回格式对上工作台：`{layer, path, line, text}`，路径是相对路径（`company/…` 或 `11-l1/…`），不再带服务器目录。
+
+**按人和部门分权限**（之前全员看全库）
+- 全员：公司手册、公司共享记忆、纠错；本部门：部门手册、被采纳的经验（`20-l2/<部门>`）；本人：个人记忆、自己的每日摘要；主管：加上本部门的每日摘要和主管收件箱；管理员：全部。
+- 原始对话（`10-l0`）不进任何搜索结果，只能按路径逐份调阅，且只有本人、本部门主管、管理员能调；`90-system` 永不返回。
+- frontmatter 的 `visibility` 只能收窄、不能放宽：`self`＝本人、本部门主管、管理员；`dept`＝本部门；`boss`＝管理员。写入端改为原始对话和每日摘要写 `self`、被采纳的经验写 `dept`（之前一律 `company`）。旧文件不用迁移，按目录判断已经收住。
+
+**员工知情**：工作台「账号」页新增一行「知识库会记下什么」，写明对话每晚进知识库、谁能看到哪一层（站点补丁 `site-patches/patch_kb_notice.py`，`@@kb-notice-v1`，下次发布带上）。
+
+**定位说明**：这是给工作台 AI 用的工作记忆加公司手册检索，不是文档问答产品。要对几千份 PDF、扫描件做问答，旁边放一套专门的 RAG（Dify、RAGFlow、MaxKB）更合适。
+
+证明：`scripts/prove-knowledge.js` 改成五种身份（员工、同部门员工、主管、其他部门员工、管理员）逐条核对能查到和查不到的文件，按路径调原始对话的权限，现场生成的 docx / xlsx / pptx 能搜到，摘要是命中处、行号对得上，整句提问能找到答案，`.pdf` 报跳过，返回里没有服务器目录。
+
 ## 2026.10.10.6
 
 **过渡期收尾不会过早给出「可以结束」**

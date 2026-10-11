@@ -72,7 +72,7 @@ function ensureDayFile(filePath, dept, account, ymd) {
     owner: account,
     dept,
     account,
-    visibility: 'company',
+    visibility: 'self',
     layer: 'l0',
     evidence_level: 'observed'
   };

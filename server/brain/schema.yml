@@ -39,6 +39,12 @@ l2_required_frontmatter:
   - backlink_l1
   - backlink_l0
 
+# Who reads a note (server/knowledge-search.js). The folder decides first; this can only narrow it.
+#   self     the owner, the director of the owner's department, admins
+#            (raw conversations 10-l0, daily pages 11-l1 / 10-logs)
+#   dept     the note's department and admins (adopted lessons 20-l2)
+#   company  everyone the folder already allows
+#   boss     admins only
 visibility_values:
   - self
   - dept

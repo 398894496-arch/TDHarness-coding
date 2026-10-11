@@ -17,7 +17,7 @@ function factsFrontmatter(row, ymd, prev) {
   fm.owner = String(fm.owner || row.account || '').trim() || row.account;
   fm.dept = row.dept;
   fm.account = row.account;
-  fm.visibility = String(fm.visibility || 'company').trim() || 'company';
+  fm.visibility = String(fm.visibility || 'self').trim() || 'self';
   fm.layer = 'facts';
   fm.evidence_level = String(fm.evidence_level || 'observed').trim() || 'observed';
   schemaWrite.assertNote(fm, 'l1');
