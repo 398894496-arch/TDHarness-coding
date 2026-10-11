@@ -105,6 +105,23 @@ foreach ($p in $withOwn) {
     Expect $who $sid (Join-Path $Company ('_handbook\' + $d)) 'read' ($admin -or $p.dept -eq $d)
   }
 }
+# Each local administrator by name on runtime and brain: their unelevated programs (the
+# desk on this PC) do not carry the Administrators group, so Authz above cannot see this.
+try {
+  $users = @{}; foreach ($u in @(Get-LocalUser)) { $users[$u.SID.Value] = $u.Name }
+  $gname = (New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-544').Translate([Security.Principal.NTAccount]).Value.Split('\')[-1]
+  $group = [ADSI]('WinNT://' + $env:COMPUTERNAME + '/' + $gname + ',group')
+  $adminSids = @(@($group.psbase.Invoke('Members')) | ForEach-Object { (New-Object Security.Principal.SecurityIdentifier($_.GetType().InvokeMember('objectSid', 'GetProperty', $null, $_, $null), 0)).Value } | Where-Object { $users.ContainsKey($_) })
+  foreach ($d in @((Join-Path $Root 'runtime'), (Join-Path $Root 'brain'))) {
+    if (-not (Test-Path -LiteralPath $d)) { continue }
+    $named = @((Get-Acl -LiteralPath $d).Access | Where-Object { -not $_.IsInherited } | ForEach-Object { try { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { '' } })
+    foreach ($s in $adminSids) {
+      $checks++
+      if ($named -notcontains $s) { $fails++; Write-Output ('FAIL local administrator ' + $users[$s] + ' is not named on ' + $d.Replace($Root, '<root>')) }
+    }
+  }
+} catch { Write-Output ('NOTE local administrators not checked: ' + $_.Exception.Message) }
+
 $ds = Sid-Of 'dshshare'
 if ($ds) {
   foreach ($p in $withOwn) {
