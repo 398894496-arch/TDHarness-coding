@@ -4,6 +4,13 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.10.6
+
+**过渡期收尾不会过早给出「可以结束」**
+- 上一版的 `server\gw-transition.ps1 -Status` 在网关刚升级、记录才开始时就会说 `READY_TO_FINISH=1`：「72 小时内没人用过渡开关」只是因为还没记录。按它去 `-Finish` 会断掉还没更新的客户端。
+- 现在记录（`runtime\gw-legacy.json`）写明从什么时候开始（`since`）；记录不满 72 小时，`-Status` 回 `READY_TO_FINISH=0` 并显示已记录多久，`-Finish` 拒绝（`-Force` 除外）。
+- 证明：`scripts/prove-gw-auth.js` 检查记录带 `since`。
+
 ## 2026.10.10.5
 
 **登录与密码**（第三方第三次复评）

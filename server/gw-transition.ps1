@@ -24,8 +24,10 @@ $rule = Get-NetFirewallRule -DisplayName 'tdh-lan-8450' -ErrorAction SilentlyCon
 $tls = Test-Path -LiteralPath (Join-Path $Runtime 'company-ca.crt')
 
 $recent = @()
+$since = $null
 if (Test-Path -LiteralPath $ledger) {
   $j = Get-Content -LiteralPath $ledger -Raw | ConvertFrom-Json
+  if ($j.since) { $since = [DateTime]::Parse($j.since).ToUniversalTime() }
   foreach ($kind in 'plain', 'tokenless') {
     $bag = $j.$kind
     if (-not $bag) { continue }
@@ -44,11 +46,18 @@ if ($Status -or -not $Finish) {
   Write-Output ('GW_PLAIN_LAN=' + [int]$on['GW_PLAIN_LAN'])
   Write-Output ('FIREWALL_8450_LAN=' + [int][bool]$rule)
   Write-Output ('USED_LAST_' + $QuietHours + 'H=' + $recent.Count)
-  if ($recent.Count -eq 0 -and ($on['GW_ALLOW_TOKENLESS'] -or $on['GW_PLAIN_LAN'] -or $rule)) { Write-Output 'READY_TO_FINISH=1' }
+  $watched = if ($since) { ((Get-Date).ToUniversalTime() - $since).TotalHours } else { 0 }
+  Write-Output ('RECORDING_SINCE=' + $(if ($since) { $since.ToString('s') + 'Z' } else { 'not-started' }) + ' HOURS=' + [math]::Floor($watched))
+  if ($recent.Count -eq 0 -and $watched -ge $QuietHours -and ($on['GW_ALLOW_TOKENLESS'] -or $on['GW_PLAIN_LAN'] -or $rule)) { Write-Output 'READY_TO_FINISH=1' }
+  elseif ($watched -lt $QuietHours) { Write-Output ('READY_TO_FINISH=0 (the record is younger than ' + $QuietHours + 'h)') }
 }
 
 if ($Finish) {
   if (-not $tls) { throw 'tls-not-ready: export-ca.ps1 and a publish first, or desks lose the gateway' }
+  $watched = if ($since) { ((Get-Date).ToUniversalTime() - $since).TotalHours } else { 0 }
+  if ($watched -lt $QuietHours -and -not $Force) {
+    throw ('too-early: the record of bridge use is ' + [math]::Floor($watched) + 'h old; wait until it covers ' + $QuietHours + 'h, or pass -Force')
+  }
   if ($recent.Count -gt 0 -and -not $Force) {
     $who = ($recent | ForEach-Object { $_.kind + ':' + $_.desk + $(if ($_.login) { '(' + $_.login + ')' } else { '' }) }) -join ', '
     throw ('bridges-still-used: ' + $who + ' (have them reopen TDHarness and take the update, or pass -Force)')
