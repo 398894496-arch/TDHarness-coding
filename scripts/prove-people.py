@@ -235,7 +235,11 @@ def main() -> None:
         check(code == 401, "a removed person cannot log in")
         check(not smb_pass_file.exists(), "share password file removed")
         steps = [json.loads(line) for line in smb_ledger.read_text(encoding="utf-8").splitlines()]
-        mine_steps = [s["action"] for s in steps if s["user"] == "smb-zhangsan"]
+        mine_steps = [s["action"] for s in steps if s.get("user") == "smb-zhangsan"]
+        # Folder grants follow: secure-folders.ps1 is asked to run after the account and roster changes.
+        secure = [i for i, s in enumerate(steps) if s["action"] == "secure-folders"]
+        first = next(i for i, s in enumerate(steps) if s.get("user") == "smb-zhangsan")
+        check(any(i > first for i in secure), "folder grants refreshed after the share account was made %r" % steps[-6:])
         check(mine_steps[0] == "ensure" and "disable" in mine_steps and "enable" in mine_steps and mine_steps[-1] == "remove",
               "share account ensure/disable/enable/remove %r" % mine_steps)
         check(mine_steps.index("disable") < mine_steps.index("enable"), "disable before enable")

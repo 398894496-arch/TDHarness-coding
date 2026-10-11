@@ -95,9 +95,26 @@ Desks see the new mark on their next launch and offer the update. Each publish k
 
 The login API heals the two things a remote desk needs before it can open: the person's own share account and the person's `emp-<login>` folder. Login names are matched case-insensitively and are 2 to 16 characters. Passwords are in `D:\dsh\runtime\caddy\PASSWORDS.txt`, one `login:pbkdf2_sha256$...` salted hash per line (a plain `login:password` line still works and becomes a hash at that person's next sign-in), compared in constant time. Sign-in is throttled: 5 failures for one login from one address, 20 from one address, or 30 for one login within 15 minutes refuse further tries from there (`429 too-many-attempts`) until the oldest ages out; a correct sign-in clears that person's count. Everyone can change their own password in Settings → 账号 → 修改密码 (the old one is required); **the seed admin should change the install-time password there right after install.**
 
+### Who opens which folder
+
+`server\secure-folders.ps1` sets NTFS rights on the company share from the roster and each person's own account, so the files agree with what the knowledge search already enforces, and nobody can write into the handbook that every agent trusts:
+
+| Folder | Read | Change |
+|---|---|---|
+| share root, `_skills`, `_control`, `content`, `_handbook`, `_handbook\_company` | everyone | admins |
+| `_handbook\<dept>` | that department | its director, admins |
+| `_shared` (company memory) | everyone | admins, directors |
+| `_office` | admins | admins |
+| each person's folder (raw conversations `.dsh-desk`, task deliverables `tasks\`) and `content\emp-<login>` (personal memory) | the person, their department's director, admins | the person, admins |
+| `D:\dsh\runtime` (keys, tokens, passwords), `D:\dsh\brain` (raw conversations) | SYSTEM, Administrators, each local administrator by name | same |
+
+Reviews are not affected: a card is reviewed by an admin, the department's director or whoever issued it to themselves, and reviews read files through the server. The share hides folders a person cannot open (access-based enumeration). people-api runs it after every roster change and every sign-in that makes an account; setup runs it; the task `TDH-Secure-Folders` runs it at 00:05. The first change of each run saves the previous rights to `runtime\acl-backup-<time>.txt` (`icacls D:\dsh\company /restore <file>` undoes it). `server\prove-secure-folders.ps1` asks Windows, account by account, what each person can actually open and change, and fails on any difference from the table.
+
+While someone's desk still mounts as `dshshare` (they have not signed in since their own account existed), `dshshare` stands in for them as themselves only: their own folder and what everyone reads, never an admin's or director's reach. Each person who signs in once is shut off from `dshshare` at once; when everyone has, `dshshare` has no rights left and `smb-accounts.ps1 -RotateShared` retires its password.
+
 ### Company share accounts
 
-Each person mounts the company share with their own Windows account, `smb-<login>`, made at their first sign-in (password in `D:\dsh\runtime\smb-users\<login>.pass`, handed to the desk at login). 停用 switches that account off and closes its open connections, 恢复 turns it back on, 删除 deletes it. Share and folder rights are unchanged: every account that can sign in sees the whole share, as before.
+Each person mounts the company share with their own Windows account, `smb-<login>`, made at their first sign-in (password in `D:\dsh\runtime\smb-users\<login>.pass`, handed to the desk at login). 停用 switches that account off and closes its open connections, 恢复 turns it back on, 删除 deletes it. Folder rights follow these accounts and the roster (`server\secure-folders.ps1`, below).
 
 Until this version every desk mounted as one shared account, `dshshare`, whose password is on every desk that ever signed in, so 停用 could not take the share away. Desks move to their own account at their next sign-in (no client update needed). Then retire the shared password:
 

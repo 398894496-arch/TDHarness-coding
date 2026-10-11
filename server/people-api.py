@@ -56,6 +56,52 @@ def load_roster() -> dict:
 def save_roster(data: dict) -> None:
     ROSTER.parent.mkdir(parents=True, exist_ok=True)
     ROSTER.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    secure_folders_soon()
+
+
+# Who can open what on the company share follows the roster and the share accounts
+# (server/secure-folders.ps1). Run in the background after every roster change and every
+# sign-in that may have made an account; runs that come in while one is going become one.
+_SECURE_MU = threading.Lock()
+_SECURE_STATE = {"running": False, "again": False}
+
+
+def secure_folders_soon() -> None:
+    if SMB_LEDGER:
+        with open(SMB_LEDGER, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"action": "secure-folders"}) + "\n")
+        return
+    if os.name != "nt":
+        return
+    with _SECURE_MU:
+        if _SECURE_STATE["running"]:
+            _SECURE_STATE["again"] = True
+            return
+        _SECURE_STATE["running"] = True
+    threading.Thread(target=_secure_folders_loop, daemon=True).start()
+
+
+def _secure_folders_loop() -> None:
+    import subprocess
+
+    script = Path(__file__).resolve().parent / "secure-folders.ps1"
+    while True:
+        try:
+            r = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script),
+                 "-Root", str(ROOT), "-Apply"],
+                capture_output=True, text=True, timeout=1800,
+            )
+            tail = [ln for ln in (r.stdout or "").splitlines() if ln.startswith(("CHANGES=", "SECURE_FOLDERS_OK", "PEOPLE="))]
+            sys.stdout.write("SECURE_FOLDERS rc=%s %s %s\n" % (r.returncode, " ".join(tail), ((r.stderr or "").strip().splitlines() or [""])[-1][:200]))
+        except Exception as e:  # noqa: BLE001  never in the way of people management
+            sys.stdout.write("SECURE_FOLDERS error %s\n" % str(e)[:200])
+        sys.stdout.flush()
+        with _SECURE_MU:
+            if not _SECURE_STATE["again"]:
+                _SECURE_STATE["running"] = False
+                return
+            _SECURE_STATE["again"] = False
 
 
 # A login is used as a file name (emp-<login>), as the user half of a
@@ -408,7 +454,7 @@ def ensure_personal_dir(row: dict) -> None:
 # Per-person share accounts. Everyone used to mount the company share as dshshare, whose
 # password sits on every desk, so disabling a person could not take the share away. Each
 # person now gets smb-<login> at sign-in; disable switches it off, remove deletes it.
-# The share and folder grants are unchanged (Everyone), so nothing else moves.
+# Folder grants follow the accounts: secure-folders.ps1 after each change.
 SMB_USER_DIR = ROOT / "runtime" / "smb-users"
 SMB_PREFIX = "smb-"
 # Tests and non-Windows runs record what would be done here instead of touching Windows.
@@ -496,6 +542,8 @@ def person_smb(login: str) -> tuple[str, str]:
         if not smb_account("ensure", login, pf):
             return "", ""
         _SMB_OK[login] = time.time()
+        # A new account (or one switched back on) changes who stands in for whom on the share.
+        secure_folders_soon()
     return SMB_PREFIX + login, pw
 
 
