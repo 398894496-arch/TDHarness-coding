@@ -143,6 +143,17 @@ async function main() {
   put(company, '_handbook/_company/contract.pdf', pdf([['合同封面'], []]));
   put(company, '_handbook/_company/key.png', crypto.randomBytes(30 << 10));
   put(company, '_handbook/_company/fail-scan.pdf', pdf([[]]));
+  // Old Office files as Word, Excel, PowerPoint and WPS wrote them (scripts/fixtures/legacy-office):
+  // binary .doc .xls .ppt .dps, and .wps / .et that WPS saved as zip. Each says refund-doc.
+  for (const f of fs.readdirSync(path.join(__dirname, 'fixtures', 'legacy-office'))) {
+    put(company, '_handbook/_company/' + f, fs.readFileSync(path.join(__dirname, 'fixtures', 'legacy-office', f)));
+  }
+  // A .docx renamed .doc is still read as a .docx.
+  fs.copyFileSync(path.join(company, '_handbook/_company/after-sales.docx'), path.join(company, '_handbook/_company/renamed.doc'));
+  // legacy-office.py needs olefile and xlrd (CI installs them; locally PROVE_PY can point at a venv).
+  const py = process.env.PROVE_PY || (process.platform === 'win32' ? 'python' : 'python3');
+  const probe = require('child_process').spawnSync(py, ['-c', 'import olefile, xlrd'], { encoding: 'utf8' });
+  assert.strictEqual(probe.status, 0, py + ' has no olefile / xlrd: pip install olefile==0.47 xlrd==2.0.1 ' + (probe.stderr || ''));
   // Stands in for ocr.py: slow on purpose, writes what a real run would, fails on fail-*.
   const stub = path.join(dir, 'ocr-stub.js');
   fs.writeFileSync(stub, [
@@ -151,7 +162,7 @@ async function main() {
     "setTimeout(() => {",
     "  const out = {}; const r = { pages: out };",
     "  if (/fail-/.test(file)) { fs.writeFileSync(at('--out'), JSON.stringify({ error: 'stub-failed' })); process.exit(2); }",
-    "  if (/key\\.png$/.test(file)) out['1'] = '仓库钥匙放在前台抽屉';",
+    "  if (/key\\.png$/.test(file)) out['1'] = '保险柜钥匙放在财务抽屉';",
     "  else if (/contract/.test(file)) for (const p of pages) out[p] = '违约金按合同总额百分之五 pages=' + pages.join(',');",
     "  else for (const p of pages) out[p] = '考勤每月五号前提交';",
     "  fs.writeFileSync(at('--out'), JSON.stringify(r));",
@@ -200,7 +211,8 @@ async function main() {
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'knowledge-search.js')], {
     env: { ...process.env, TDH_BRAIN: brain, TDH_COMPANY: company, TDH_KNOW_PORT: String(port), TDH_ROSTER: path.join(dir, 'roster.json'),
       TDH_GW_TOKENS: path.join(dir, 'gw-tokens.json'), TDH_KNOW_LOG: log, TDH_KB_CACHE: path.join(dir, 'kb-cache'),
-      TDH_OCR_EXE: process.execPath, TDH_OCR_ARGS: JSON.stringify([stub]) },
+      TDH_OCR_EXE: process.execPath, TDH_OCR_ARGS: JSON.stringify([stub]),
+      TDH_LEGACY_EXE: py, TDH_LEGACY_ARGS: JSON.stringify([path.join(__dirname, '..', 'server', 'legacy-office.py')]) },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   try {
@@ -275,12 +287,12 @@ async function main() {
     assert.ok(deep.hits[0].text.includes('单价 12 元'), 'snippet is the hit, not the top of the file: ' + deep.hits[0].text);
     const lines = fs.readFileSync(path.join(company, '_shared/_memory/01-projects/pricing.md'), 'utf8').split('\n');
     assert.ok(lines[deep.hits[0].line - 1].includes('大客户报价'), 'line number points at the hit');
-    // Words apart in the text, no dictionary: 运费 … 公司承担.
-    const apart = await as('eve', { route: 'search', query: '运费谁承担' });
+    // Words apart in the text, no dictionary: 寄回 … 运费 … 公司承担.
+    const apart = await as('eve', { route: 'search', query: '寄回运费谁承担' });
     assert.strictEqual(apart.hits[0].path, 'company/_handbook/_company/after-sales.docx');
     assert.ok(apart.hits[0].text.includes('运费由公司承担'), apart.hits[0].text);
     // A whole question: words that occur nowhere (是谁, 谁来) do not sink the answer.
-    const question = await as('eve', { route: 'search', query: '客户退货的运费是谁来承担的？' });
+    const question = await as('eve', { route: 'search', query: '客户申请退货寄回的运费是谁来承担的？' });
     assert.strictEqual(question.hits[0].path, 'company/_handbook/_company/after-sales.docx', JSON.stringify(question.hits[0]));
     const ppt = await as('eve', { route: 'search', query: '发票抬头' });
     assert.strictEqual(ppt.hits[0].path, 'company/_handbook/_company/onboarding.pptx');
@@ -299,8 +311,9 @@ async function main() {
     assert.ok(Date.now() - t0 < 1200, 'search waited for OCR: ' + (Date.now() - t0) + 'ms');
     const waitOcr = async () => {
       for (let i = 0; i < 100; i++) {
-        const s = (await as('adm', { route: 'status' })).index.ocr;
-        if (s.queued === 0 && s.running === 0 && s.done + s.failed >= 4) return s;
+        const i = (await as('adm', { route: 'status' })).index;
+        const s = i.ocr;
+        if (s.queued === 0 && s.running === 0 && s.done + s.failed >= 4 && i.legacy.done + i.legacy.failed >= 4) return s;
         await new Promise((r) => setTimeout(r, 200));
       }
       throw new Error('ocr never finished');
@@ -316,9 +329,23 @@ async function main() {
     assert.strictEqual(mixed.hits[0].path, 'company/_handbook/_company/contract.pdf');
     assert.ok(mixed.hits[0].text.includes('pages=2') && !mixed.hits[0].text.includes('pages=1'), 'only the scanned page: ' + mixed.hits[0].text);
     assert.ok((await as('eve', { route: 'search', query: '合同封面' })).hits.length > 0, 'the typed page stays');
-    const pic = await as('eve', { route: 'search', query: '钥匙在哪' });
+    const pic = await as('eve', { route: 'search', query: '保险柜钥匙在哪' });
     assert.strictEqual(pic.hits[0].path, 'company/_handbook/_company/key.png');
     assert.ok(pic.hits[0].text.startsWith('〔图片〕'), pic.hits[0].text);
+    // Old Office files, binary or zip whatever the name says, all found; slides keep their number.
+    const legacy = (await as('eve', { route: 'search', query: 'refund-doc' })).hits.map((h) => h.path);
+    for (const f of ['word97.doc', 'excel97.xls', 'ppt97.ppt', 'kingsoft.dps', 'kingsoft.wps', 'kingsoft.et']) {
+      assert.ok(legacy.includes('company/_handbook/_company/' + f), f + ' not found: ' + legacy);
+    }
+    const lst = (await as('adm', { route: 'status' })).index.legacy;
+    assert.deepStrictEqual([lst.done, lst.failed], [4, 0], 'four binary files, no failures: ' + JSON.stringify(lst));
+    const slide = (await as('eve', { route: 'search', query: '仓库钥匙在前台' })).hits.find((h) => h.path.endsWith('ppt97.ppt'));
+    assert.ok(slide && slide.text.startsWith('〔第 3 页〕'), JSON.stringify(slide));
+    const cell = (await as('eve', { route: 'search', query: '差旅住宿' })).hits.find((h) => h.path.endsWith('excel97.xls'));
+    assert.ok(cell && cell.text.includes('1001 | 差旅住宿每晚上限四百元'), JSON.stringify(cell));
+    const box = (await as('eve', { route: 'search', query: '差旅住宿' })).hits.find((h) => h.path.endsWith('ppt97.ppt'));
+    assert.ok(box && box.text.startsWith('〔第 2 页〕'), 'a text box, not a placeholder: ' + JSON.stringify(box));
+    assert.ok((await as('eve', { route: 'search', query: '运费由公司承担' })).hits.some((h) => h.path.endsWith('renamed.doc')), 'renamed docx');
     // A failed job is recorded and not run again on every search.
     await as('adm', { route: 'search', query: '考勤' });
     const again = (await as('adm', { route: 'status' })).index;
@@ -333,6 +360,8 @@ async function main() {
       const s = plain.stats();
       assert.ok(s.skipped['pdf-no-text'] >= 2, JSON.stringify(s));
       assert.ok(!s.skipped['.png'] && !s.skipped['ocr-pending'], JSON.stringify(s));
+      assert.ok(s.skipped['.doc'] >= 1 && s.skipped['.ppt'] >= 1, 'binary Office files without the venv: ' + JSON.stringify(s));
+      assert.ok(!s.skipped['.wps'], 'a zip .wps needs no venv: ' + JSON.stringify(s));
       assert.strictEqual(s.ocr.on, false);
     }
     // One character still finds something.

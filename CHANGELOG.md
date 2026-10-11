@@ -4,6 +4,17 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.4
+
+**老格式 Office 和 WPS 文件也能搜**
+- `.doc .xls .ppt`，以及 WPS 的 `.wps .et .dps`，和其它文件一起排序检索；幻灯片命中标〔第 N 页〕，表格标〔工作表名〕。
+- 是什么格式看文件开头的字节，不看扩展名：WPS 默认把 `.wps .et` 存成 zip（和 docx / xlsx 一样），这类直接读；真正的老二进制（OLE 复合文档）交给 `server/legacy-office.py`；改了扩展名的 docx 也照样读。
+- `legacy-office.py`：Excel 用 xlrd（成熟的 BIFF8 读取库，数字、日期、布尔都转成文字）；Word 和 PowerPoint 用 olefile 打开容器，再按微软公开的格式规范取字：Word 读片段表（piece table），8 位和 UTF-16 两种文字都认，域代码只留结果；PowerPoint 读文字记录，占位符里的字和自己画的文本框都读，母版里的「单击此处编辑标题」不读，演讲者备注单列。金山的二进制 `.wps .et .dps` 版式与 Word / Excel / PowerPoint 97 相同，用同一套读取。
+- 和 OCR 用同一个 venv、同一个后台队列（一次一个，不拖慢检索，结果缓存，失败记一次不重试）；加密的文件记 `encrypted`。`ocr-requirements.txt` 加了 `olefile==0.47`、`xlrd==2.0.1`，已装 OCR 的服务器再跑一次 `server\install-ocr.ps1 -Restart` 补装。没装这个 venv 时老二进制文件照旧跳过（`route=status` 记扩展名），zip 版的 `.wps .et` 不受影响。
+- 没选 LibreOffice（每台服务器要装约 350MB）；没用服务器上 Office / WPS 的 COM 接口（微软不支持在服务里以 SYSTEM 身份自动化 Office，容易卡死）。
+
+证明：`scripts/fixtures/legacy-office/` 是在装有 Office 和 WPS 的服务器上用它们自己存出来的 6 个文件（Word 97 `.doc`、Excel 97 `.xls`、PowerPoint 97 `.ppt`，WPS 的 `.wps .et .dps`）；`scripts/prove-knowledge.js` 检查 6 个都搜得到，幻灯片第 3 页、第 2 页的文本框、表格里的数字和改名的 docx 都对。CI 装上 olefile / xlrd 后在 Linux 和 Windows 上跑。
+
 ## 2026.10.11.3
 
 **扫描件和照片也能搜：OCR**
