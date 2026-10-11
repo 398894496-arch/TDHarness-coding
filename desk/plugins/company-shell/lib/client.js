@@ -79,9 +79,14 @@ window.__ModuleLoader__.load({
 		// override the frame's first grid track when the sidebar is collapsed
 		// (see [data-sidebar-collapsed] below). Keep the two numbers in lockstep.
 		const RAIL_W = 48;
-		const DIVA_WORDMARK = "data:image/png;base64,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";
-		const DIVA_MARK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFsAAABbCAYAAAAcNvmZAAACWUlEQVR42u3dMavaQADA8Yu9lvSh2BbBJaUWWshwg26Ob8hghzeUrg76TbIUhDpIP0M/QEeHjB0jODgVB3nt4CA0guUJpVyngrTv6alJPB///yaoSX7mLonLCWGY3qherz8WJIQQolKpFFqtViXVL9VbWiwWX6Mo+tDv96/uO+5gMHh7m4Hv+492fdYx2UCSJNflcvk55/HdNRqNi/F4fLPtPQWTLwJ6d1LKnZYFmPIL7JRar9e/j8YOw/ASSqPr2q+jL5Baa226weVy+S2Koo9xHH+ZTqffZ7PZjziOfx57F2T6Xsdxth6P67qi2Ww+8TzvqZTywXw+T1zXfej7/osgCN4ppVrValUdsp+lUqmwWq20yOKWbzgcvs/jjNF7lOV+hGF4uW3bUsr0DzZJkus8h6ct2H8rFovOodh7TyO7hmoW2GlNI1nul8m2t14ge73em1NC2/4Qs/na5AnSeAh3Op1Xpzgo26aRu/bNaOSZDpVTndW2TiOH+Bg91HS73ddMHP83Go0+pT5MTnlANk8j7Xb7ZWrTiA3ZPI1s7p/JtiWTwXHt8wPzR5TgXz+wCWywCWywwSawwSawwQabwAabwAabwAYbbAIbbAIbbLAJbLAJbLAJbLDBJrDBJrDBBpvABpvABpvABhtsAhtsAhtssAlssAlssMEmsMEmsMEmsMEGm8AGO/1qtZoEO6c8z7sAO6eUUh6Tj7BvvQOttf53XR3bcu7LegfnsHARdyNgCzGZTD4f8rkgCJ7xs2Y8X2+mlHIRzBj5tmy6V3fO8SKY9/oyXCDPsD83b69X8YDnWgAAAABJRU5ErkJggg==";
-		const DIVA_RATIO = 625 / 93;
+		// The site's brand on the three brand seats (sidebar mark, sidebar name, hero mark).
+		// A site fills these with a site patch: images as data URLs (painted as a mask in the
+		// chrome's label colour), the wordmark's width / height, and the name screen readers
+		// say. Without them the desk shows the product name as text. @@SITE_BRAND
+		const SITE_BRAND_WORDMARK = "";
+		const SITE_BRAND_MARK = "";
+		const SITE_BRAND_RATIO = 0;
+		const SITE_BRAND_LABEL = "TDHarness";
 
 		// company-settings-look-v2. Every page this shell adds to settings, and
 		// the sidebar's new-session / panel rows, share this one look: a page
@@ -558,16 +563,16 @@ window.__ModuleLoader__.load({
 			"}",
 			".cs-side .qDHVXG_sectionHeader { height: 36px; margin: 0 0 8px 0; padding-right: 40px; }",
 			".cs-side .qDHVXG_iconButton { width: 28px; height: 28px; }",
-			// Hero fish sits in a 34px grid track. The DIVA wordmark is ~6.7:1, so
+			// Hero fish sits in a 34px grid track. A wordmark is wider (often ~6:1), so
 			// widen that first column when our mark is the occupant.
-			".pXSMma_headline:has([data-company-shell=\"diva-wordmark\"]) {",
+			".pXSMma_headline:has([data-company-shell=\"brand-wordmark\"]) {",
 			"  grid-template-columns: auto !important;",
 			"}",
-			".pXSMma_headline:has([data-company-shell=\"diva-wordmark\"]) .pXSMma_headlineText,",
-			".pXSMma_headline:has([data-company-shell=\"diva-wordmark\"]) .pXSMma_previewBadge {",
+			".pXSMma_headline:has([data-company-shell=\"brand-wordmark\"]) .pXSMma_headlineText,",
+			".pXSMma_headline:has([data-company-shell=\"brand-wordmark\"]) .pXSMma_previewBadge {",
 			"  display: none !important;",
 			"}",
-			"[data-company-shell=\"diva-wordmark\"], [data-company-shell=\"diva-mark\"] {",
+			"[data-company-shell=\"brand-wordmark\"], [data-company-shell=\"brand-mark\"] {",
 			"  display: inline-block; flex: none; vertical-align: middle;",
 			"  background: var(--dsw-alias-label-primary);",
 			"}",
@@ -2434,56 +2439,8 @@ window.__ModuleLoader__.load({
 		// is the owner; this array is a live cache and is not written back.
 		// Passwords never appear here. Regenerated by people-apply.py.
 		// @@PEOPLE_ROSTER_BEGIN
-		const PEOPLE = [
-		  {
-		    "login": "boss",
-		    "role": "admin",
-		    "desk": "win-boss",
-		    "port": 7801,
-		    "emp_id": "boss",
-		    "dept": "company",
-		    "status": "active",
-		    "workspace": "D:/dsh/company",
-		    "org": "D:/dsh/company",
-		    "personal": "D:/dsh/company/_office"
-		  },
-		  {
-		    "login": "director",
-		    "role": "director",
-		    "desk": "win-director",
-		    "port": 7802,
-		    "emp_id": "director",
-		    "dept": "content",
-		    "status": "active",
-		    "workspace": "D:/dsh/company/content",
-		    "org": "D:/dsh/company/content",
-		    "personal": "D:/dsh/company/content/director"
-		  },
-		  {
-		    "login": "emp-a",
-		    "role": "employee",
-		    "desk": "win-emp",
-		    "port": 7803,
-		    "emp_id": "emp-a",
-		    "dept": "content",
-		    "status": "active",
-		    "workspace": "D:/dsh/company/content/emp-emp-a",
-		    "org": "D:/dsh/company/content",
-		    "personal": "D:/dsh/company/content/emp-emp-a"
-		  },
-		  {
-		    "login": "xiaoman",
-		    "role": "employee",
-		    "desk": "win-emp",
-		    "port": 7803,
-		    "emp_id": "xiaoman",
-		    "dept": "ops",
-		    "status": "active",
-		    "workspace": "D:/dsh/company/ops/emp-xiaoman",
-		    "org": "D:/dsh/company/ops",
-		    "personal": "D:/dsh/company/ops/emp-xiaoman"
-		  }
-		];
+		// Filled from the server at sign-in (/company/people); empty until then.
+		const PEOPLE = [];
 		// @@PEOPLE_ROSTER_END
 
 		(function seedSessionPointers() {
@@ -4408,20 +4365,38 @@ window.__ModuleLoader__.load({
 			);
 		}
 
-		// THE DIVA artwork occupies the three official brand seats (sidebar mark,
-		// sidebar name, hero mark). Painted as a CSS mask so the ink follows
-		// --dsw-alias-label-primary (the same dark gray the rest of the chrome
-		// uses) instead of the white-on-black of the source file.
-		function DivaMark(props) {
+		// The site's brand occupies the three official brand seats (sidebar mark, sidebar
+		// name, hero mark). An image is painted as a CSS mask so the ink follows
+		// --dsw-alias-label-primary (the same dark gray the rest of the chrome uses); with no
+		// image the name is set in that colour instead.
+		function BrandMark(props) {
 			const compact = props.wide === false;
-			const src = compact ? DIVA_MARK : DIVA_WORDMARK;
+			const src = compact ? SITE_BRAND_MARK : SITE_BRAND_WORDMARK;
 			const h = compact ? (props.size || 24) : (props.size >= 30 ? 36 : (props.size || 20));
-			const w = compact ? h : Math.round(h * DIVA_RATIO);
+			if (!src) {
+				return React.createElement("span", {
+					className: props.className,
+					"data-company-shell": compact ? "brand-mark" : "brand-wordmark",
+					role: "img",
+					"aria-label": SITE_BRAND_LABEL,
+					style: {
+						display: "inline-flex",
+						alignItems: "center",
+						height: h + "px",
+						fontSize: Math.round(h * (compact ? 0.42 : 0.62)) + "px",
+						fontWeight: 700,
+						letterSpacing: compact ? "0" : "0.02em",
+						color: "var(--dsw-alias-label-primary)",
+						whiteSpace: "nowrap"
+					}
+				}, compact ? "TDH" : SITE_BRAND_LABEL);
+			}
+			const w = compact ? h : Math.round(h * (SITE_BRAND_RATIO || 1));
 			return React.createElement("span", {
 				className: props.className,
-				"data-company-shell": compact ? "diva-mark" : "diva-wordmark",
+				"data-company-shell": compact ? "brand-mark" : "brand-wordmark",
 				role: "img",
-				"aria-label": "THE DIVA",
+				"aria-label": SITE_BRAND_LABEL,
 				style: {
 					width: w + "px",
 					height: h + "px",
@@ -6074,7 +6049,7 @@ window.__ModuleLoader__.load({
 			);
 		}
 
-		function DivaName() {
+		function BrandName() {
 			return null;
 		}
 
@@ -6693,19 +6668,19 @@ window.__ModuleLoader__.load({
 				return ctx.slots.register({
 					name: "sidebar.brand.mark",
 					id: "company-brand-mark"
-				}, DivaMark);
+				}, BrandMark);
 			});
 			ctx.slots.inject("sidebar.brand.name", function () {
 				return ctx.slots.register({
 					name: "sidebar.brand.name",
 					id: "company-brand-name"
-				}, DivaName);
+				}, BrandName);
 			});
 			ctx.slots.inject("conversation.hero.brand.mark", function () {
 				return ctx.slots.register({
 					name: "conversation.hero.brand.mark",
 					id: "company-hero-mark"
-				}, DivaMark);
+				}, BrandMark);
 			});
 			ctx.slots.inject("conversation.input.left", function () {
 				return ctx.slots.register({

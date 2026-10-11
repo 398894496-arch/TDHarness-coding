@@ -333,6 +333,13 @@ function runDetachedPs(script, args, log) {
 	return { ok: true, pid: child.pid };
 }
 
+// On a Mac the kernel and the office packages are built from the maintainer's own checkout
+// (its scripts/p-product-base and scripts/p-client-app), named by TDH_MAINTAINER_REPO. Without
+// it those three buttons answer "script missing"; a Windows server uses D:\\dsh\\runtime.
+function maintainerRepo() {
+	return String(process.env.TDH_MAINTAINER_REPO || "").trim() || path.join(os.tmpdir(), "tdh-no-maintainer-repo");
+}
+
 export function kernelWatchPlug(version) {
 	const want = String(version || "").trim();
 	if (!VER.test(want)) return { ok: false, error: "bad-version" };
@@ -351,7 +358,7 @@ export function kernelWatchPlug(version) {
 	const logFd = openSync(log, "w");
 	let child;
 	{
-		const root = path.join(os.homedir(), "Cursor/dsh-saas");
+		const root = maintainerRepo();
 		const script = path.join(root, "scripts/p-product-base/kernel-plug.sh");
 		if (!existsSync(script)) return { ok: false, error: "plug-script-missing" };
 		child = spawn("bash", [script, want], {
@@ -444,7 +451,7 @@ export function kernelWatchCutover(version) {
 		saveState({ ...loadState(), cutover: { version: want, from: pin.pin || "", log, startedAt: Date.now() } });
 		return { ok: true, phase: "switching", version: want, next: "正在换成 " + want + "：TDHarness 会自动关闭，换好并试启动通过后再打开就是新版；没通过会自动换回 " + (pin.pin || "原版本") + "。" };
 	}
-	const root = path.join(os.homedir(), "Cursor/dsh-saas");
+	const root = maintainerRepo();
 	const script = path.join(root, "scripts/p-product-base/plant-mac-kernel.sh");
 	const planted = spawnSync("bash", [script], { cwd: root, encoding: "utf8", timeout: 180000 });
 	const out = String(planted.stdout || "") + String(planted.stderr || "");
@@ -484,7 +491,7 @@ export async function kernelWatchUpgrade(version) {
 export function kernelWatchPublish() {
 	const st = loadState();
 	if (st.publish && st.publish.running) return { ok: false, error: "publish-busy", publish: st.publish };
-	const root = path.join(os.homedir(), "Cursor/dsh-saas");
+	const root = maintainerRepo();
 	const script = path.join(root, "scripts/p-client-app/publish-from-desk.sh");
 	if (!existsSync(script)) return { ok: false, error: "publish-script-missing" };
 	const log = path.join(rcDir(), "kernel-publish.log");

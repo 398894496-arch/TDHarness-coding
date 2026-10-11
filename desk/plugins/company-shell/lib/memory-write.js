@@ -45,7 +45,7 @@ export function findCompanyRoot(cwd, extra) {
 
 export function personalRel(role, loginName) {
 	const name = String(loginName || "").trim();
-	if (role === "admin" || name === "boss" || name === "bosshome") return "_office";
+	if (role === "admin" || name === "boss") return "_office";
 	if (name) return path.join("content", "emp-" + name.replace(/[^A-Za-z0-9._-]/g, ""));
 	return "_office";
 }

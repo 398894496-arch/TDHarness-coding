@@ -492,8 +492,7 @@ export const WEB_SEARCH_MAX_QUERIES = 8;
 export function queryStem(q) {
 	return String(q || "")
 		.toLowerCase()
-		.replace(/orangecity|orange[\s-]*city|橙池/g, "oc")
-		.replace(/有限公司|网络科技|珠海/g, "")
+		.replace(/有限公司|网络科技|科技|公司/g, "")
 		.replace(/[\s,，、._-]+/g, "")
 		.slice(0, 16);
 }
@@ -510,17 +509,16 @@ export function isSerpFetchUrl(q) {
 
 export function isPublicTechQuery(q) {
 	const s = String(q || "").toLowerCase();
-	if (/橙池|orangecity|thediva/.test(s)) return false;
 	return /github|gitlab|npmjs|pypi\.org|crates\.io|stackoverflow|hyperframes|remotion\b|revideo|editly|moviepy/.test(s);
 }
 
-// Same job as local krouter canonical_sources.psv: map first, miss = do not search the store.
+// Same job as DSH-KRouter's canonical_sources.psv: map first, miss = do not search the store.
+// Product rows only; a company's own nouns (its name, its brands) belong in its handbook and
+// synonym list (company\\_handbook\\_company\\同义词.txt), not here.
 const COMPANY_MAP_ROWS = [
-	{ aliases: ["橙池", "orangecity", "orangecitypictures", "珠海橙池", "橙池影业", "珠海橙池网络科技"], path: "_handbook/_company/work-boundary.md", how: "公司：珠海橙池网络科技有限公司。不要天眼查。这一条就是答案，停。办事用工具表，不要 ls handbook / _memory。" },
-	{ aliases: ["thediva"], path: "_handbook/_company/work-boundary.md", how: "当前项目：TheDiva。任务在侧栏。这一条就是答案，停。不要倒库。" },
 	{ aliases: ["工单", "任务卡", "验收", "下达", "提交验收"], path: "_handbook/_company/desk.md", how: "工单在侧栏任务：下达、提交验收。对话完成不等于格子完成。这一条就是答案，停。不要再 company_knowledge。" },
 	{ aliases: ["手册", "检索", "工作边界", "本岗"], path: "_handbook/_company", how: "岗位手册打开即用。地图 how 已是结论。没有的正文说还不存在。不要 glob _handbook。" },
-	{ aliases: ["_office", "_shared", "_memory", "花名册", "bosshome", "椅子"], path: "_handbook/_company/work-boundary.md", how: "老板椅是 _office，团队盘根 $HOME/company。不要猜 _boss。共享区只读。记忆写入走 company_memory_write。不要 ls _memory。" },
+	{ aliases: ["_office", "_shared", "_memory", "花名册", "椅子"], path: "_handbook/_company/work-boundary.md", how: "老板椅是 _office，团队盘根 $HOME/company。不要猜 _boss。共享区只读。记忆写入走 company_memory_write。不要 ls _memory。" },
 	{ aliases: ["公司桌", "tdharness", "companydesk", "agent工作台", "ai工作台", "核心功能", "能做什么", "完整agent"], path: "_handbook/_company/desk.md", how: "装在公司里的完整 Agent 工作台，本机真干活，不是聊天窗。一人一座：登录即用，换电脑对话和文件跟人走。能力全开：读改跑、搜网、点选走 OpenCLI 一只手。Full Access 只覆盖这台电脑和自己的椅子读写；共享区全员只读。公开网走公司出口。点选第一下 bash：opencli <site> whoami --window foreground，或 opencli browser work open <url>。HOST action=run。不要调 ego_* / browser_*。出图出短视频落格子。任务到四格验收在侧栏。手册打开即用。没有先例就说没有。资料在公司盘。飞书钉钉有接口，还没接通。HTML 用 artifact。这一条就是答案，停。" },
 ];
 
@@ -1720,7 +1718,7 @@ function addMemoryRecallSection(ctx) {
 	const systemPrompt = ctx.systemPrompt;
 	if (systemPrompt == null || typeof systemPrompt.section !== "function") return;
 	const text =
-		"过往事实在公司盘个人 _memory 与 _shared/_memory。新对话没有自动上下文。用户问之前/上次/已定/纠错：先 company_knowledge route=search 窄词，按 hits 答。地图只覆盖橙池/TheDiva/工单/手册；地图没有不等于没有记忆。search 0 hits 才能说没有先例。用户说记住就 company_memory_write。不要 ls/glob _memory。公开政策/GitHub 走 web_search。";
+		"过往事实在公司盘个人 _memory 与 _shared/_memory。新对话没有自动上下文。用户问之前/上次/已定/纠错：先 company_knowledge route=search 窄词，按 hits 答。地图只覆盖工单/手册/工作台这些产品词；地图没有不等于没有记忆。search 0 hits 才能说没有先例。用户说记住就 company_memory_write。不要 ls/glob _memory。公开政策/GitHub 走 web_search。";
 	if (typeof ctx.effect === "function") {
 		ctx.effect(
 			() =>

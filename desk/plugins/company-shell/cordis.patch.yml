@@ -10,7 +10,7 @@
 # supplies the shipped WorkspaceBrowser that we render inside our first tab.
 #
 # `ui-brand-official` is dropped so the whale / "deepseek HARNESS" wordmark are
-# not fighting our THE DIVA occupants on the three brand seats.
+# not fighting the site brand we put on the three brand seats.
 - id: ui-sidebar
   disabled: true
 - id: ui-brand-official
