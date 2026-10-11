@@ -42,9 +42,19 @@ const LIMIT = 24;
 // Text already pulled out of PDFs, so a restart does not read them again. Safe to delete.
 const CACHE = process.env.TDH_KB_CACHE || path.join(ROOT, 'runtime', 'kb-cache');
 
+// OCR for scanned PDFs and pictures: on once server\install-ocr.ps1 has installed it and
+// written runtime\ocr.json (it does so only after reading a test image correctly).
+function ocrConfig() {
+  if (process.env.TDH_OCR_EXE) return { exe: process.env.TDH_OCR_EXE, args: JSON.parse(process.env.TDH_OCR_ARGS || '[]') };
+  const j = readJson(path.join(ROOT, 'runtime', 'ocr.json'));
+  if (j && j.python && fs.existsSync(j.python)) return { exe: j.python, args: ['-I', path.join(__dirname, 'ocr.py')] };
+  return null;
+}
+
 const index = createIndex({
   skipDir: (name) => name.charAt(0) === '.' || name === 'node_modules' || name === '90-system',
   cacheDir: CACHE,
+  ocr: ocrConfig(),
 });
 
 function readBody(req) {
@@ -176,8 +186,15 @@ function layerOf(full) {
 // A hit in a PDF, deck or workbook says which page or sheet: line numbers of extracted text
 // mean nothing to the person who opens the file.
 function hit(h) {
-  const where = h.section && !/\.(md|txt)$/i.test(h.full) ? '〔' + h.section + '〕 ' : '';
-  return { layer: layerOf(h.full), path: relName(h.full), line: h.line, text: where + h.text, title: h.title };
+  const doc = h.section && !/\.(md|txt)$/i.test(h.full);
+  // The page heading is in the passage too; once it is in front, drop the copy.
+  let text = h.text;
+  if (doc) {
+    const head = text.match(/^#{1,6} /);
+    if (head && text.slice(head[0].length).startsWith(h.section)) text = text.slice(head[0].length + h.section.length).trim();
+    text = '〔' + h.section + '〕 ' + text;
+  }
+  return { layer: layerOf(h.full), path: relName(h.full), line: h.line, text, title: h.title };
 }
 
 function resolveNamed(named) {

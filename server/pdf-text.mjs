@@ -2,7 +2,8 @@
 // so a broken or huge file cannot take the search down with it).
 //   node pdf-text.mjs <file.pdf>
 // stdout: the text, one "## 第 N 页" heading per page, a line break where pdf.js ends a line
-// or the baseline moves. Exit 0 with empty output: the PDF has no text layer (a scan).
+// or the baseline moves. A page with no text layer (scanned) is "## 第 N 页" followed by the
+// line "@@ocr-needed", so kb-index.js can hand just those pages to OCR.
 // Exit 2: unreadable (damaged, password-protected). Uses the vendored pdf.js in ./vendor/pdfjs.
 import fs from "node:fs";
 import path from "node:path";
@@ -59,8 +60,7 @@ for (let n = 1; n <= Math.min(doc.numPages, MAX_PAGES); n++) {
 	const text = lines.map((l) => l.replace(/\s+$/, "").replace(/[\u2e80-\u2fdf]/g, (c) => c.normalize("NFKC")))
 		.filter((l) => l.trim()).join("\n");
 	page.cleanup();
-	if (!text) continue;
-	out.push("## 第 " + n + " 页\n" + text);
+	out.push("## 第 " + n + " 页\n" + (text || "@@ocr-needed"));
 	chars += text.length;
 	if (chars > (2 << 20)) break;
 }

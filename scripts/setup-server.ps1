@@ -359,6 +359,18 @@ $ErrorActionPreference = $prevErr
 foreach ($p in @(8443, 4181, 4182, 8450)) { Stop-ListenPort $p }
 Start-Sleep -Seconds 1
 
+# OCR for scanned PDFs and pictures in the knowledge base (server\install-ocr.ps1): its own
+# venv, pinned packages, a self-test. Best effort: without it (no internet for pip, no
+# Python 3.9-3.12) the search still runs and reports scans as pdf-no-text.
+$prevOcr = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'install-ocr.ps1') -Root $Root -Python $py 2>&1 |
+    Where-Object { "$_" -match '^(OCR_|PYTHON=)' } | ForEach-Object { Write-Output "$_" }
+  if ($LASTEXITCODE) { Write-Output 'OCR_SKIPPED=install-failed (run server\install-ocr.ps1 to see why)' }
+} catch { Write-Output ('OCR_SKIPPED=' + $_.Exception.Message) }
+$ErrorActionPreference = $prevOcr
+
 $env:TDH_ROSTER = $rosterPath
 $env:TDH_PASSWORDS = $passPath
 $env:TDH_GW_TOKENS = Join-Path $Runtime 'gw-tokens.json'

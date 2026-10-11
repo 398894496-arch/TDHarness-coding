@@ -53,7 +53,7 @@ Settings → **人员**. Accounts grouped by department. Boss and managers issue
 
 ### Also running
 
-- **Knowledge base:** a nightly job distils each person's conversations of the day into a page the desk can search; company documents (`.md .txt .csv .docx .xlsx .pptx .pdf`) dropped in `company\_handbook` are searched with them, ranked, by department. It is a work memory for the agents, not a document Q&A product: for scanned files (no OCR here) or document Q&A at scale, put a dedicated RAG system (Dify, RAGFlow, MaxKB) next to it.
+- **Knowledge base:** a nightly job distils each person's conversations of the day into a page the desk can search; company documents (`.md .txt .csv .docx .xlsx .pptx .pdf`, scans and photos of documents through OCR) dropped in `company\_handbook` are searched with them, ranked, by department. It is a work memory for the agents, not a document Q&A product: for document Q&A at scale (thousands of files, answers written from them), put a dedicated RAG system (Dify, RAGFlow, MaxKB) next to it.
 - **Web search:** domestic engines first for Chinese, Exa, GitHub, Bilibili; `深搜 ` for Grok's sourced web search.
 - **Browser:** OpenCLI ships with the Windows client; the agent guides each person through loading its extension once.
 - **Long work:** automatic context compaction at 80% of the model's window, and on a too-long prompt.

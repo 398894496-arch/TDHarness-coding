@@ -18,6 +18,10 @@ The Windows client zip ships `ffmpeg.exe`, `ffprobe.exe` and their libraries und
 
 The knowledge search reads PDF text with Mozilla pdf.js (`pdfjs-dist` 4.10.38, legacy build, Apache License 2.0, Copyright Mozilla Foundation, https://github.com/mozilla/pdf.js). `server/vendor/pdfjs/` holds `pdf.mjs`, `pdf.worker.mjs` and the packed CMaps, unmodified, with the license text.
 
+## OCR
+
+`server/install-ocr.ps1` installs, with pip into its own venv on the server (not shipped in this repository), RapidOCR `rapidocr-onnxruntime` 1.4.4 (Apache License 2.0, PaddleOCR models, https://github.com/RapidAI/RapidOCR), ONNX Runtime (MIT), pypdfium2 (Apache-2.0 / BSD-3-Clause, PDFium) and their dependencies, at the versions pinned in `server/ocr-requirements.txt`.
+
 ## Vendor marks
 
 The Grok, OpenAI and Claude marks on the desk's model settings page are taken
