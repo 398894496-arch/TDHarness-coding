@@ -139,6 +139,24 @@ async function main() {
   }));
   put(company, '_handbook/_company/expenses.pdf', pdf([['报销制度', '先在飞书提交申请'], ['差旅住宿每晚上限四百元', '超出部分自理']]));
   put(company, '_handbook/_company/scan.pdf', pdf([[]]));
+  // Typed first page, scanned second page: only page 2 goes to OCR.
+  put(company, '_handbook/_company/contract.pdf', pdf([['合同封面'], []]));
+  put(company, '_handbook/_company/key.png', crypto.randomBytes(30 << 10));
+  put(company, '_handbook/_company/fail-scan.pdf', pdf([[]]));
+  // Stands in for ocr.py: slow on purpose, writes what a real run would, fails on fail-*.
+  const stub = path.join(dir, 'ocr-stub.js');
+  fs.writeFileSync(stub, [
+    "const fs = require('fs'); const a = process.argv.slice(2); const at = (k) => a[a.indexOf(k) + 1];",
+    "const file = at('--file'); const pages = at('--pages').split(',');",
+    "setTimeout(() => {",
+    "  const out = {}; const r = { pages: out };",
+    "  if (/fail-/.test(file)) { fs.writeFileSync(at('--out'), JSON.stringify({ error: 'stub-failed' })); process.exit(2); }",
+    "  if (/key\\.png$/.test(file)) out['1'] = '仓库钥匙放在前台抽屉';",
+    "  else if (/contract/.test(file)) for (const p of pages) out[p] = '违约金按合同总额百分之五 pages=' + pages.join(',');",
+    "  else for (const p of pages) out[p] = '考勤每月五号前提交';",
+    "  fs.writeFileSync(at('--out'), JSON.stringify(r));",
+    "}, 1500);",
+  ].join('\n'));
   put(company, '_handbook/_company/broken.pdf', '%PDF-1.4 退货');
   put(company, '_shared/_memory/01-projects/pricing.md', '---\nowner: adm\nvisibility: company\n---\n# 报价\n\n' + filler + '\n大客户报价单价 12 元，满一千件九折。\n');
   put(company, '_shared/_memory/01-projects/salary.md', '---\nowner: adm\nvisibility: boss\n---\n# 薪资\n\n退货组的薪资方案只给管理员看。\n');
@@ -181,7 +199,8 @@ async function main() {
   const log = path.join(dir, 'know.log');
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'knowledge-search.js')], {
     env: { ...process.env, TDH_BRAIN: brain, TDH_COMPANY: company, TDH_KNOW_PORT: String(port), TDH_ROSTER: path.join(dir, 'roster.json'),
-      TDH_GW_TOKENS: path.join(dir, 'gw-tokens.json'), TDH_KNOW_LOG: log, TDH_KB_CACHE: path.join(dir, 'kb-cache') },
+      TDH_GW_TOKENS: path.join(dir, 'gw-tokens.json'), TDH_KNOW_LOG: log, TDH_KB_CACHE: path.join(dir, 'kb-cache'),
+      TDH_OCR_EXE: process.execPath, TDH_OCR_ARGS: JSON.stringify([stub]) },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   try {
@@ -273,6 +292,49 @@ async function main() {
     assert.strictEqual(stay.hits[0].path, 'company/_handbook/_company/expenses.pdf', JSON.stringify(stay.hits));
     assert.ok(stay.hits[0].text.startsWith('〔第 2 页〕') && stay.hits[0].text.includes('每晚上限四百元'), stay.hits[0].text);
     assert.ok(fs.readdirSync(path.join(dir, 'kb-cache')).some((f) => f.endsWith('.txt')), 'pdf text cached on disk');
+    // OCR runs in the background: a search while it works answers at once.
+    let t0 = Date.now();
+    await as('amy', { route: 'search', query: '考勤' });
+    await as('amy', { route: 'search', query: '考勤' });
+    assert.ok(Date.now() - t0 < 1200, 'search waited for OCR: ' + (Date.now() - t0) + 'ms');
+    const waitOcr = async () => {
+      for (let i = 0; i < 100; i++) {
+        const s = (await as('adm', { route: 'status' })).index.ocr;
+        if (s.queued === 0 && s.running === 0 && s.done + s.failed >= 4) return s;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      throw new Error('ocr never finished');
+    };
+    const ocr = await waitOcr();
+    assert.deepStrictEqual([ocr.done, ocr.failed], [3, 1], JSON.stringify(ocr));
+    // Status is current as soon as a job ends, not after the next search.
+    assert.ok(!(await as('adm', { route: 'status' })).index.skipped['ocr-pending'], 'nothing left pending');
+    const scan = await as('eve', { route: 'search', query: '考勤几号提交' });
+    assert.strictEqual(scan.hits[0].path, 'company/_handbook/_company/scan.pdf', JSON.stringify(scan.hits));
+    assert.ok(scan.hits[0].text.startsWith('〔第 1 页〕 考勤'), 'page named once, then the text: ' + scan.hits[0].text);
+    const mixed = await as('eve', { route: 'search', query: '违约金' });
+    assert.strictEqual(mixed.hits[0].path, 'company/_handbook/_company/contract.pdf');
+    assert.ok(mixed.hits[0].text.includes('pages=2') && !mixed.hits[0].text.includes('pages=1'), 'only the scanned page: ' + mixed.hits[0].text);
+    assert.ok((await as('eve', { route: 'search', query: '合同封面' })).hits.length > 0, 'the typed page stays');
+    const pic = await as('eve', { route: 'search', query: '钥匙在哪' });
+    assert.strictEqual(pic.hits[0].path, 'company/_handbook/_company/key.png');
+    assert.ok(pic.hits[0].text.startsWith('〔图片〕'), pic.hits[0].text);
+    // A failed job is recorded and not run again on every search.
+    await as('adm', { route: 'search', query: '考勤' });
+    const again = (await as('adm', { route: 'status' })).index;
+    assert.strictEqual(again.ocr.failed, 1);
+    assert.strictEqual(again.ocr.queued + again.ocr.running, 0);
+    assert.ok(again.skipped['ocr-failed'] >= 1, JSON.stringify(again));
+    // Without OCR a scan is reported, and pictures are not looked at.
+    {
+      const { createIndex } = require('../server/kb-index');
+      const plain = createIndex({ cacheDir: path.join(dir, 'kb-cache-plain') });
+      plain.docs([path.join(company, '_handbook')]);
+      const s = plain.stats();
+      assert.ok(s.skipped['pdf-no-text'] >= 2, JSON.stringify(s));
+      assert.ok(!s.skipped['.png'] && !s.skipped['ocr-pending'], JSON.stringify(s));
+      assert.strictEqual(s.ocr.on, false);
+    }
     // One character still finds something.
     assert.ok((await as('amy', { route: 'search', query: '税' })).status === 'not-found');
     assert.ok((await as('amy', { route: 'search', query: '运' })).hits.length > 0);
@@ -283,7 +345,6 @@ async function main() {
     const st = await as('amy', { route: 'status' });
     assert.strictEqual(st.account, 'amy');
     assert.strictEqual(st.dept, 'ops');
-    assert.ok(st.index.skipped['pdf-no-text'] >= 1, 'a scan is reported: ' + JSON.stringify(st.index));
     assert.ok(st.index.skipped['pdf-unreadable'] >= 1, 'a broken pdf is reported: ' + JSON.stringify(st.index));
 
     const logged = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));

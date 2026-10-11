@@ -12,9 +12,14 @@
 //
 // Office files (.docx .xlsx .pptx) are opened with zlib, no extra packages. PDFs are read by
 // pdf-text.mjs (vendored pdf.js) in a child process, one file at a time, and the text is
-// kept in cacheDir so a restart does not read them again. A PDF without a text layer (a
-// scan) and the old binary formats (.doc .xls .ppt) are counted as skipped, with the reason,
-// so the status route can say so.
+// kept in cacheDir so a restart does not read them again.
+//
+// OCR (when createIndex gets `ocr`, see ocr.py / install-ocr.ps1): scanned PDF pages and
+// pictures of documents (.png .jpg …) go to a background queue, one job at a time, never in
+// the way of a search. The result lands in cacheDir; that file is then read again and the
+// next search finds its text. Until then it is counted as `ocr-pending`. Without OCR a scan
+// is `pdf-no-text` and pictures are not looked at. Old binary formats (.doc .xls .ppt) are
+// counted as skipped. The status route reports all of it.
 //
 // Shared verbatim by the public server (server/kb-index.js) and the office
 // (scripts/p-org-memory/kb-index.js). Keep the two copies identical.
@@ -23,13 +28,19 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const TEXT_EXT = new Set(['.md', '.txt', '.csv', '.tsv']);
 const ZIP_EXT = new Set(['.docx', '.xlsx', '.pptx']);
 const SKIP_EXT = new Set(['.doc', '.xls', '.ppt', '.wps', '.et', '.dps']);
 const PDF_SCRIPT = path.join(__dirname, 'pdf-text.mjs');
 const MAX_PDF_BYTES = 60 << 20;
+const IMG_EXT = new Set(['.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp']);
+const MIN_IMG_BYTES = 20 << 10;
+const MAX_IMG_BYTES = 25 << 20;
+const OCR_TIMEOUT_MS = 30 * 60 * 1000;
+// Bump when what is cached changes shape (v2: scanned pages are marked for OCR).
+const CACHE_VERSION = 'v2';
 const MAX_TEXT_BYTES = 4 << 20;
 const MAX_ZIP_BYTES = 40 << 20;
 const MAX_EXTRACT_CHARS = 2 << 20;
@@ -211,14 +222,38 @@ function skip(reason) {
   return e;
 }
 
+function cacheKey(full, st) {
+  return crypto.createHash('sha1').update(CACHE_VERSION + '|' + full + '|' + st.mtimeMs + '|' + st.size).digest('hex');
+}
+
+// The OCR result for a file, if a job has finished: { pages: { '1': text } } or { error }.
+function ocrResult(ctx, key) {
+  if (!ctx.cacheDir) return null;
+  try { return JSON.parse(fs.readFileSync(path.join(ctx.cacheDir, key + '.ocr.json'), 'utf8')); } catch (e) { return null; }
+}
+
+// Put OCR text into the pages pdf-text.mjs marked; list the pages still without any.
+function applyOcr(text, pages) {
+  const need = [];
+  const blocks = text.split(/\n*(?=^## 第 \d+ 页$)/m);
+  const out = [];
+  for (const b of blocks) {
+    const m = b.match(/^## 第 (\d+) 页\n@@ocr-needed\s*$/);
+    if (!m) { out.push(b); continue; }
+    const got = pages && pages[m[1]];
+    if (got && got.trim()) out.push('## 第 ' + m[1] + ' 页\n' + got.trim());
+    else if (!pages) need.push(Number(m[1]));
+  }
+  return { text: out.join('\n\n'), need };
+}
+
 // PDF text through pdf-text.mjs, cached on disk by path, mtime and size.
 function pdfText(full, st, cacheDir) {
   if (st.size > MAX_PDF_BYTES) throw skip('too-large');
   if (!fs.existsSync(PDF_SCRIPT)) throw skip('.pdf');
   let cached = '';
   if (cacheDir) {
-    const key = crypto.createHash('sha1').update(full + '|' + st.mtimeMs + '|' + st.size).digest('hex');
-    cached = path.join(cacheDir, key + '.txt');
+    cached = path.join(cacheDir, cacheKey(full, st) + '.txt');
     try { return fs.readFileSync(cached, 'utf8'); } catch (e) { /* not read yet */ }
   }
   const r = spawnSync(process.execPath, [PDF_SCRIPT, full], { encoding: 'utf8', timeout: 120000, maxBuffer: 64 << 20, windowsHide: true });
@@ -230,18 +265,36 @@ function pdfText(full, st, cacheDir) {
   return text;
 }
 
-// The text of a file. Throws (with .reason) when it cannot be read.
-function fileText(full, st, cacheDir) {
+// The text of a file. Throws (with .reason) when it cannot be read (yet).
+// ctx: { cacheDir, ocr } where ocr.enqueue(full, pages, key) asks for a background job.
+function fileText(full, st, ctx) {
   const size = st.size;
+  const cacheDir = ctx.cacheDir;
   const ext = path.extname(full).toLowerCase();
   if (TEXT_EXT.has(ext)) {
     if (size > MAX_TEXT_BYTES) throw skip('too-large');
     return fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, '');
   }
   if (ext === '.pdf') {
-    const text = pdfText(full, st, cacheDir);
-    if (!text.trim()) throw skip('pdf-no-text');
-    return text;
+    const key = cacheKey(full, st);
+    const res = ctx.ocr ? ocrResult(ctx, key) : null;
+    const got = applyOcr(pdfText(full, st, cacheDir), res && !res.error ? res.pages : (res ? {} : null));
+    if (got.need.length && ctx.ocr) ctx.ocr.enqueue(full, got.need, key);
+    if (!got.text.replace(/^## 第 \d+ 页$/gm, '').trim()) {
+      throw skip(res && res.error ? 'ocr-failed' : got.need.length ? (ctx.ocr ? 'ocr-pending' : 'pdf-no-text') : 'pdf-no-text');
+    }
+    return got.text;
+  }
+  if (IMG_EXT.has(ext)) {
+    if (!ctx.ocr) throw skip(ext);
+    if (size > MAX_IMG_BYTES) throw skip('too-large');
+    const key = cacheKey(full, st);
+    const res = ocrResult(ctx, key);
+    if (!res) { ctx.ocr.enqueue(full, [1], key); throw skip('ocr-pending'); }
+    if (res.error) throw skip('ocr-failed');
+    const text = String((res.pages || {})['1'] || '').trim();
+    if (!text) throw skip('ocr-no-text');
+    return '## 图片\n' + text;
   }
   if (ZIP_EXT.has(ext)) {
     if (size > MAX_ZIP_BYTES) throw skip('too-large');
@@ -316,6 +369,12 @@ function createIndex(opts) {
   const o = opts || {};
   const skipDir = o.skipDir || ((name) => name.charAt(0) === '.' || name === 'node_modules');
   const cacheDir = o.cacheDir || '';
+  // OCR needs somewhere to put results: { exe, args } runs `exe ...args --file --pages --out`.
+  const ocrCfg = o.ocr && o.ocr.exe && cacheDir ? o.ocr : null;
+  const queue = [];
+  const queued = new Set();
+  let running = null;
+  const ocrDone = { done: 0, failed: 0 };
   const cache = new Map();
   const skipped = new Map();
 
@@ -334,14 +393,70 @@ function createIndex(opts) {
         if (ent.isDirectory()) { if (!skipDir(ent.name, full)) stack.push(full); continue; }
         if (!ent.isFile() || ent.name.charAt(0) === '~') continue;
         const ext = path.extname(ent.name).toLowerCase();
-        if (!TEXT_EXT.has(ext) && !ZIP_EXT.has(ext) && ext !== '.pdf') {
+        const img = IMG_EXT.has(ext);
+        if (img && (!ocrCfg || ent.name.charAt(0) === '.')) continue;
+        if (!TEXT_EXT.has(ext) && !ZIP_EXT.has(ext) && ext !== '.pdf' && !img) {
           if (SKIP_EXT.has(ext)) skipped.set(full, ext);
           continue;
         }
-        try { out.push({ full, st: fs.statSync(full) }); n++; } catch (e) { /* gone */ }
+        try {
+          const st = fs.statSync(full);
+          if (img && st.size < MIN_IMG_BYTES) continue;
+          out.push({ full, st });
+          n++;
+        } catch (e) { /* gone */ }
       }
     }
   }
+
+  // One OCR job at a time, in the background. When it ends (well or not), the result file
+  // exists and the file is read again with its text.
+  function enqueue(full, pages, key) {
+    if (queued.has(key)) return;
+    queued.add(key);
+    queue.push({ full, pages, key });
+    pump();
+  }
+
+  function pump() {
+    if (running || !queue.length) return;
+    const job = queue.shift();
+    running = job;
+    const out = path.join(cacheDir, job.key + '.ocr.json');
+    let ended = false;
+    let timer = null;
+    const end = (why) => {
+      if (ended) return;
+      ended = true;
+      clearTimeout(timer);
+      if (!fs.existsSync(out)) {
+        try { fs.writeFileSync(out, JSON.stringify({ error: why })); } catch (e) { /* tried again after a restart */ }
+      }
+      let ok = false;
+      try { ok = !JSON.parse(fs.readFileSync(out, 'utf8')).error; } catch (e) { ok = false; }
+      ocrDone[ok ? 'done' : 'failed']++;
+      queued.delete(job.key);
+      running = null;
+      // Read the file again now, with its OCR text, so status and the next search are current.
+      cache.delete(job.full);
+      try { load(job.full, fs.statSync(job.full)); } catch (e) { skipped.delete(job.full); }
+      setImmediate(pump);
+    };
+    let child;
+    try {
+      fs.mkdirSync(cacheDir, { recursive: true });
+      child = spawn(ocrCfg.exe, (ocrCfg.args || []).concat(['--file', job.full, '--pages', job.pages.join(','), '--out', out]),
+        { stdio: 'ignore', windowsHide: true });
+    } catch (e) {
+      end('spawn ' + e.message);
+      return;
+    }
+    timer = setTimeout(() => { try { child.kill(); } catch (e) { /* gone */ } }, OCR_TIMEOUT_MS);
+    child.on('error', (e) => end('spawn ' + e.message));
+    child.on('exit', (code) => end('exit ' + code));
+  }
+
+  const ctx = { cacheDir, ocr: ocrCfg ? { enqueue } : null };
 
   function load(full, st) {
     const key = st.mtimeMs + ':' + st.size;
@@ -349,7 +464,7 @@ function createIndex(opts) {
     if (hit && hit.key === key) return hit.doc;
     let doc = null;
     try {
-      doc = buildDoc(full, fileText(full, st, cacheDir));
+      doc = buildDoc(full, fileText(full, st, ctx));
     } catch (e) {
       skipped.set(full, e.reason || 'unreadable');
     }
@@ -471,10 +586,11 @@ function createIndex(opts) {
     for (const v of cache.values()) if (v.doc) { files++; passages += v.doc.passages.length; }
     const byExt = {};
     for (const why of skipped.values()) byExt[why] = (byExt[why] || 0) + 1;
-    return { files, passages, skipped: byExt };
+    const ocr = ocrCfg ? { on: true, queued: queue.length, running: running ? 1 : 0, done: ocrDone.done, failed: ocrDone.failed } : { on: false };
+    return { files, passages, skipped: byExt, ocr };
   }
 
-  return { search, preview, docs, stats, fileText: (full) => fileText(full, fs.statSync(full), cacheDir) };
+  return { search, preview, docs, stats, fileText: (full) => fileText(full, fs.statSync(full), ctx), idle: () => !running && !queue.length };
 }
 
 function clip(text, at, width) {

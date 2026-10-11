@@ -4,6 +4,18 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.3
+
+**扫描件和照片也能搜：OCR**
+- 没有文字层的 PDF 页（扫描件）、文件照片（`.png .jpg .jpeg .bmp .tif .webp`，20KB 到 25MB）用 OCR 认字，和其它文件一起排序检索；命中标〔第 N 页〕或〔图片〕。一份 PDF 里只有扫描的那几页送去 OCR，有文字的页照旧直接读。
+- 引擎是 RapidOCR（PaddleOCR 的中文模型跑在 ONNX Runtime 上，Apache-2.0，模型在包里，不用联网下载），PDF 页转图片用 pypdfium2（PDFium）。没选 Tesseract：中文准确率差一截；没选 PaddleOCR 本体：要装整个深度学习框架；没选 PyMuPDF：AGPL。
+- 不拖慢检索：OCR 在后台排队，一次一个文件，单个最长 30 分钟；检索照常回答，没认完的文件在 `route=status` 里记为 `ocr-pending`，认完立刻重新读入，下一次检索就能搜到。结果缓存在 `D:\dsh\runtime\kb-cache`，重启不重认；认失败记 `ocr-failed`，文件不变就不再重试。
+- 安装：`server\install-ocr.ps1`（装机时 `setup-server.ps1` 自动跑，失败不影响装机，只是不开 OCR）。用本机 Python 3.9–3.12 建单独的 venv（`D:\dsh\ocr-venv`），按 `server\ocr-requirements.txt` 装固定版本（首次要联网，约 150MB），然后用系统自带的微软雅黑画一行中文、让 OCR 认回来，认对了才写 `runtime\ocr.json` 打开 OCR。已装好的服务器单独跑一次这个脚本加 `-Restart` 即可。
+- PDF 文字缓存的格式变了（扫描页留了 OCR 标记），缓存键加了版本号，上一版的缓存自动作废、重新读一遍。
+- 实测：TDH 服务器装 97 秒，自检通过；一页扫描件加一张照片 4.1 秒认完（含加载模型），首次读入 0.2 秒返回、不等 OCR。
+
+证明：`scripts/prove-knowledge.js` 用一个故意慢 1.5 秒的替身 OCR 程序：OCR 进行中检索立刻返回；扫描件、混合 PDF（只送扫描的第 2 页）、照片认完都能搜到并标出页码；认失败的记一次、不再重试；OCR 刚结束状态就不再显示等待；不开 OCR 时扫描件报 `pdf-no-text`、照片不看。真 OCR 在本机和 TDH 服务器上各跑通一遍。
+
 ## 2026.10.11.2
 
 **知识库读 PDF**
