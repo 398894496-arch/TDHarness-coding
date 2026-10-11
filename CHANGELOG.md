@@ -4,6 +4,11 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.8
+
+**共享盘权限脚本：上线当天在 TDH 服务器上发现的两个问题**
+- (1) 改权限时原来的顺序是先 `/reset`、再授权、再切断继承，中间有一瞬间目录会继承 D 盘根目录的「登录用户都可修改」。dk 登录触发了一次重写，验证脚本正好在那一瞬间看到 `dshshare` 能写 `runtime`。现在改成用 .NET 一次性写入完整的权限列表，没有中间状态，写完再重置子项。(2) 以 SYSTEM 身份运行时（people-api 触发、夜间任务），`Get-LocalGroupMember` 返回空，`runtime` 和 `brain` 上逐个点名的本地管理员被去掉了，服务器上管理员的非提权程序（比如本机工作台的内核页）因此读不到。现在改用 ADSI 获取管理员；获取失败时保留原有的点名，绝不缩减。补的回归防护：CI 增加第 5 步，以 SYSTEM 身份运行一次，结果必须和管理员运行一致（改动为 0）；验证脚本增加检查，每个本地管理员都必须在 `runtime` 和 `brain` 上被单独点名。TDH 服务器现在 218 项全部通过。
+
 ## 2026.10.11.7
 
 第三方第六次复评列了 12 条建议，这一版做了其中 10 条；知识库部分借鉴了 [DSH-KRouter](https://github.com/398894496-arch/DSH-KRouter) 的做法。
@@ -15,7 +20,6 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 - 网关只监听本机：`gw-transition.ps1 -Finish` 收尾时写入 `GW_LISTEN=local` 并重启网关，此后只监听 127.0.0.1，防火墙关着时局域网也连不上；全新安装在 TLS 就绪时直接这样配置。证明：`prove-gw-auth.js` 从本机局域网地址去连，必须被拒绝。
 - 新增夜间工作流 `upstream-canary`：每晚取上游已发布的最新内核（按版本号，不按 `latest` 标签，因为上游的 `latest` 落后于最新版），跑一遍打补丁的证明。上游改了锚点会当天报红，不会等到员工更新时才出问题。
 
-- **上线当天在 TDH 服务器上发现并修好的两个问题**：(1) 改权限时原来的顺序是先 `/reset`、再授权、再切断继承，中间有一瞬间目录会继承 D 盘根目录的「登录用户都可修改」。dk 登录触发了一次重写，验证脚本正好在那一瞬间看到 `dshshare` 能写 `runtime`。现在改成用 .NET 一次性写入完整的权限列表，没有中间状态，写完再重置子项。(2) 以 SYSTEM 身份运行时（people-api 触发、夜间任务），`Get-LocalGroupMember` 返回空，`runtime` 和 `brain` 上逐个点名的本地管理员被去掉了，服务器上管理员的非提权程序（比如本机工作台的内核页）因此读不到。现在改用 ADSI 获取管理员；获取失败时保留原有的点名，绝不缩减。补的回归防护：CI 增加第 5 步，以 SYSTEM 身份运行一次，结果必须和管理员运行一致（改动为 0）；验证脚本增加检查，每个本地管理员都必须在 `runtime` 和 `brain` 上被单独点名。TDH 服务器现在 218 项全部通过。
 
 **安全上的取舍**
 - 管理员不会再被人恶意锁死：同一账号 15 分钟失败 30 次就锁的规则，对这个账号 30 天内成功登录过的地址不生效（记录在 `runtime\login-known.json`）；"同一地址"和"账号加地址"这两项限制照旧。局域网里有人从别处反复输错，管理员在自己常用的电脑上照样能登。证明：`prove-people.py`，去掉这条豁免后测试会失败。
