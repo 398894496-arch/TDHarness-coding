@@ -71,14 +71,20 @@ def main() -> None:
     host = site["host"]
     port = site["login_port"]
     base = "https://%s:%s" % (host, port)
-    # The seed admin's current password: changed in Settings after install, so read it from
-    # PASSWORDS.txt on this machine instead of assuming the seed value.
-    pass_file = Path(os.environ.get("TDH_PASSWORDS") or r"D:\dsh\runtime\caddy\PASSWORDS.txt")
-    seed_pw = "12345678"
-    if pass_file.is_file():
-        for line in pass_file.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
-            if line.strip().startswith("tdh:"):
-                seed_pw = line.strip().split(":", 1)[1].strip()
+    # The seed admin's password is random per install and kept in seed-admin.txt until the
+    # admin changes it (PASSWORDS.txt only holds hashes). Changed already: nothing to prove
+    # with, and the server has been signed into, so say so instead of failing setup.
+    caddy_dir = Path(os.environ.get("TDH_PASSWORDS") or r"D:\dsh\runtime\caddy\PASSWORDS.txt").parent
+    seed_file = caddy_dir / "seed-admin.txt"
+    seed_pw = ""
+    if seed_file.is_file():
+        parts = seed_file.read_text(encoding="utf-8-sig", errors="ignore").strip().split(None, 1)
+        if len(parts) == 2 and parts[0] == "tdh":
+            seed_pw = parts[1].strip()
+    if not seed_pw:
+        print("LOGIN_PROVE_SKIPPED=seed-password-changed")
+        print("LOGIN_PROVE_OK=1")
+        return
     code, hit, raw = post(base + "/company/login", {"username": "tdh", "password": seed_pw})
     print("LOGIN_HTTP=%s" % code)
     if code != 200 or hit.get("ok") is not True:

@@ -31,13 +31,15 @@ def free_port() -> int:
     return port
 
 
-def call(port: int, method: str, body: dict | None = None, token: str = "") -> tuple[int, dict]:
+def call(port: int, method: str, body: dict | None = None, token: str = "", src: str = "") -> tuple[int, dict]:
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request("http://127.0.0.1:%d/company/%s" % (port, "people" if method != "LOGIN" else "login"),
                                  data=data, method="GET" if method == "GET" else "POST")
     req.add_header("Content-Type", "application/json")
     if token:
         req.add_header("Authorization", "Bearer " + token)
+    if src:
+        req.add_header("X-Forwarded-For", src)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return int(resp.status), json.loads(resp.read().decode("utf-8") or "{}")
@@ -169,7 +171,25 @@ def main() -> None:
         code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"})
         check(code == 200, "new password works")
         passwords = (runtime / "caddy" / "PASSWORDS.txt").read_text(encoding="utf-8")
-        check(passwords.count("zhangsan:") == 1 and "tdh:seed-pass-123" in passwords, "one line per person, others kept")
+        check(passwords.count("zhangsan:") == 1 and "tdh:" in passwords, "one line per person, others kept")
+        # Stored as salted hashes: the seed's plain line became a hash at its first sign-in.
+        check("seed-pass-123" not in passwords and "brand-new-pass" not in passwords, "no password in the clear")
+        check(all(l.split(":", 1)[1].startswith("pbkdf2_sha256$") for l in passwords.splitlines() if l.strip()), "every line hashed")
+
+        # Sign-in throttle: 5 wrong passwords for one login from one address lock that pair,
+        # even for the right password; the same person from elsewhere still signs in.
+        for i in range(5):
+            code, _ = call(port, "LOGIN", {"username": "zhangsan", "password": "guess-%d" % i}, src="10.9.0.1")
+            check(code == 401, "wrong password %d" % i)
+        code, got = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"}, src="10.9.0.1")
+        check(code == 429 and got.get("error") == "too-many-attempts", "locked after 5 failures %r" % code)
+        code, _ = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"}, src="10.9.0.2")
+        check(code == 200, "same person from another address signs in")
+        # 20 failures from one address across logins lock that address.
+        for i in range(20):
+            call(port, "LOGIN", {"username": "nobody%d" % i, "password": "x"}, src="10.9.0.3")
+        code, got = call(port, "LOGIN", {"username": "tdh", "password": "seed-pass-123"}, src="10.9.0.3")
+        check(code == 429, "address locked after 20 failures")
         mine = hit["gw_token"]
         code, got = call(port, "POST", {"action": "self", "name": "小张", "avatar": PIXEL}, mine)
         row = next(p for p in got["people"] if p["login"] == "zhangsan")
@@ -210,7 +230,7 @@ def main() -> None:
         check(code == 200 and got.get("removed") == "zhangsan" and got.get("password_dropped") == 1, "remove %r" % got)
         check(not any(p["login"] == "zhangsan" for p in got["people"]), "removed person is off the roster")
         passwords = (runtime / "caddy" / "PASSWORDS.txt").read_text(encoding="utf-8")
-        check("zhangsan" not in passwords and "tdh:seed-pass-123" in passwords, "password line gone, others kept")
+        check("zhangsan" not in passwords and "\ntdh:pbkdf2_sha256$" in "\n" + passwords, "password line gone, others kept")
         code, hit = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"})
         check(code == 401, "a removed person cannot log in")
         check(not smb_pass_file.exists(), "share password file removed")

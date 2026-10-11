@@ -497,11 +497,12 @@ function callerOf(req) {
   return isService(req) ? 'server' : '';
 }
 
-// The gateway checks every request that spends a key or changes a setting:
-//   - model calls, files, /search, /fetch, /images, /videos: a live token;
+// The gateway checks every request:
 //   - POST /channels (keys and channel settings): a live token of an admin;
-//   - /health, GET /channels, /v1/company-models, /grok-quota, /grok-fast:
-//     open. They say which channels are bound and which models exist, never a key.
+//   - everything else but /health (model calls, files, /search, /fetch, /images,
+//     /videos, and the reads GET /channels, /v1/company-models, /grok-quota,
+//     /grok-fast, which name custom upstreams and make the gateway probe vendors):
+//     a live token.
 // Jobs on this machine (the nightly brain job, deep search calling the model
 // door) use the service token in runtime/gw-service.token, made at start and
 // readable only by administrators. A request is no longer trusted for coming
@@ -552,7 +553,8 @@ function tlsReady() {
   return caSeen.ready;
 }
 function clientOf(req) {
-  const a = String((req.socket && req.socket.remoteAddress) || '');
+  // A dual-stack socket reports IPv4 desks as ::ffff:a.b.c.d; log them as a.b.c.d.
+  const a = String((req.socket && req.socket.remoteAddress) || '').replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/, '$1');
   const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
   return fromThisMachine(req) && fwd ? fwd + ' via caddy' : a;
 }
@@ -561,23 +563,49 @@ const DENY = {
   plain: '这台服务器的网关已改走加密通道。请退出客户端再打开，接受更新。',
   admin: '只有管理员能改模型和钥匙设置。'
 };
+// What the two bridges (GW_PLAIN_LAN, GW_ALLOW_TOKENLESS) still let through, by desk
+// address: runtime/gw-legacy.json. server/gw-transition.ps1 reads it to tell when every
+// desk has updated and the bridges, and the LAN firewall rule for 8450, can go.
+const LEGACY_PATH = process.env.TDH_GW_LEGACY || path.join(ROOT, 'runtime', 'gw-legacy.json');
+let legacy = null;
+let legacyDirty = false;
+function noteLegacy(kind, req) {
+  if (!legacy) legacy = readJsonFile(LEGACY_PATH) || { plain: {}, tokenless: {} };
+  const bag = legacy[kind] || (legacy[kind] = {});
+  const who = clientOf(req);
+  const row = bag[who] || (bag[who] = { count: 0 });
+  row.count += 1;
+  row.last = new Date().toISOString();
+  if (kind === 'plain') row.login = callerOf(req) || row.login || '';
+  legacyDirty = true;
+}
+setInterval(() => {
+  if (!legacyDirty) return;
+  legacyDirty = false;
+  try { fs.writeFileSync(LEGACY_PATH, JSON.stringify(legacy, null, 1)); } catch (e) { /* the next tick tries again */ legacyDirty = true; }
+}, Number(process.env.TDH_GW_LEGACY_FLUSH_MS || 30000)).unref();
+
 function gate(req, url, env) {
   if (TRUST_LOOPBACK && fromThisMachine(req)) return null;
   const method = String(req.method || 'GET').toUpperCase();
   if (url === '/health') return null;
-  if (!fromThisMachine(req) && tlsReady() && String(env.GW_PLAIN_LAN || '').trim() !== '1') {
-    return { status: 403, obj: { error: { message: DENY.plain, type: 'gateway_plaintext' } } };
+  if (!fromThisMachine(req) && tlsReady()) {
+    if (String(env.GW_PLAIN_LAN || '').trim() !== '1') {
+      return { status: 403, obj: { error: { message: DENY.plain, type: 'gateway_plaintext' } } };
+    }
+    noteLegacy('plain', req);
   }
-  if (url === '/channels' || url === '/channels/') {
-    if (method !== 'POST') return null;
+  if ((url === '/channels' || url === '/channels/') && method === 'POST') {
     const who = personOf(req);
     if (!who) return { status: 401, obj: { ok: false, error: 'login', hint: DENY.login } };
     if (who.role !== 'admin') return { status: 403, obj: { ok: false, error: 'admin-only', hint: DENY.admin } };
     return null;
   }
-  if (url === '/v1/company-models' || url === '/company-models' || url === '/grok-quota' || url === '/grok-fast') return null;
   if (personOf(req) || isService(req)) return null;
-  if (!tokenOf(req) && String(env.GW_ALLOW_TOKENLESS || '').trim() === '1') return null;
+  if (!tokenOf(req) && String(env.GW_ALLOW_TOKENLESS || '').trim() === '1') {
+    noteLegacy('tokenless', req);
+    return null;
+  }
   return { status: 401, obj: { error: { message: DENY.login, type: 'gateway_unauthorized' } } };
 }
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -24,8 +25,10 @@ def load_site(path: Path) -> dict[str, str]:
     return site
 
 
-def fetch(url: str) -> tuple[int, bytes]:
+def fetch(url: str, headers: dict | None = None) -> tuple[int, bytes]:
     req = urllib.request.Request(url, method="GET")
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
     ctx = ssl._create_unverified_context()
     try:
         with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
@@ -108,8 +111,13 @@ def main() -> None:
         raise SystemExit("mailbox-floor-missing-tdh")
     print("MAILBOX_HAS_TDH=1")
 
-    gw_url = "http://%s:%s/channels" % (host, site.get("gateway_port") or "8450")
-    gcode, graw = fetch(gw_url)
+    # From this machine with the gateway's service token: the gateway trusts no address,
+    # every read needs a token, and once TLS is on a plain request from the LAN address
+    # would be refused as plaintext.
+    gw_url = "http://127.0.0.1:%s/channels" % (site.get("gateway_port") or "8450")
+    svc_file = Path(os.environ.get("TDH_GW_SERVICE_TOKEN_FILE") or r"D:\dsh\runtime\gw-service.token")
+    svc = svc_file.read_text(encoding="utf-8").strip() if svc_file.is_file() else ""
+    gcode, graw = fetch(gw_url, {"Authorization": "Bearer " + svc} if svc else None)
     print("CHANNELS_HTTP=%s" % gcode)
     if gcode != 200:
         raise SystemExit("channels-http")

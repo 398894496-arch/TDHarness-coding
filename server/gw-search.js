@@ -607,21 +607,46 @@ async function runSearch(ctx, query, maxResults, asked) {
 // office address, is refused too. fetchGuardTest lets the proof map names and
 // mark addresses as public without real DNS.
 const fetchGuardTest = { allow: new Set(), resolve: {} };
+// Eight 16-bit groups of an IPv6 address (handles "::" and a dotted IPv4 tail).
+function ip6Groups(s) {
+  const dotted = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(s);
+  if (dotted) {
+    const p = dotted.slice(1).map(Number);
+    s = s.slice(0, -dotted[0].length) + ((p[0] << 8) | p[1]).toString(16) + ':' + ((p[2] << 8) | p[3]).toString(16);
+  }
+  const parse = (part) => (part ? part.split(':').map((x) => parseInt(x, 16)) : []);
+  if (!s.includes('::')) return parse(s);
+  const [head, rest] = s.split('::');
+  const a = parse(head);
+  const b = parse(rest);
+  return a.concat(new Array(Math.max(0, 8 - a.length - b.length)).fill(0), b);
+}
+function v4Of(hi, lo) {
+  return [hi >> 8, hi & 255, lo >> 8, lo & 255].join('.');
+}
 function privateIp(ip) {
   if (fetchGuardTest.allow.has(ip)) return false;
   const v = net.isIP(ip);
   if (v === 4) {
-    const [a, b] = ip.split('.').map(Number);
+    const [a, b, c] = ip.split('.').map(Number);
+    // 198.18.0.0/15 is left out on purpose: a proxy's fake-ip DNS (Clash TUN on the
+    // server) answers every public name from it, so blocking it blocks every page.
     return a === 0 || a === 10 || a === 127 || a >= 224
       || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+      || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)
+      || (a === 192 && b === 0 && c === 0);
   }
   if (v === 6) {
-    const s = ip.toLowerCase();
-    if (s === '::' || s === '::1') return true;
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(s);
-    if (mapped) return privateIp(mapped[1]);
-    return /^f[cd]/.test(s) || /^fe[89ab]/.test(s) || /^ff/.test(s);
+    const g = ip6Groups(ip.toLowerCase());
+    if (g.length !== 8 || g.some((x) => Number.isNaN(x))) return true;
+    const zero = (from, to) => g.slice(from, to).every((x) => x === 0);
+    if (zero(0, 8) || (zero(0, 7) && g[7] === 1)) return true;                   // :: and ::1
+    if (zero(0, 5) && (g[5] === 0xffff || g[5] === 0)) return privateIp(v4Of(g[6], g[7])); // v4-mapped / v4-compatible
+    if (g[0] === 0x64 && g[1] === 0xff9b && zero(2, 6)) return privateIp(v4Of(g[6], g[7])); // NAT64 64:ff9b::/96
+    if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true;              // local-use NAT64 64:ff9b:1::/48
+    if (g[0] === 0x2002) return privateIp(v4Of(g[1], g[2]));                        // 6to4 2002::/16
+    const top = g[0] >> 8;
+    return top === 0xfc || top === 0xfd || top === 0xff || (g[0] & 0xffc0) === 0xfe80;
   }
   return true;
 }

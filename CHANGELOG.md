@@ -4,6 +4,24 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.10.5
+
+**登录与密码**（第三方第三次复评）
+- 登录限速：同一账号在同一地址 15 分钟内失败 5 次、同一地址失败 20 次、同一账号失败 30 次，就暂停从那里登录（`429 too-many-attempts`，提示 15 分钟后再试），最早那次失败过了 15 分钟自动解除；登录成功会清掉这个人的计数。登录接口只在本机监听、经 Caddy 进来，所以按 `X-Forwarded-For` 认来源。
+- 密码不再明文保存：`PASSWORDS.txt` 每行存加盐 PBKDF2 哈希（`pbkdf2_sha256$…`），比较用常量时间。原来的明文行照样能登录，那个人下次登录成功就自动改存成哈希，不用迁移。
+- 种子管理员不再是人人知道的 `12345678`：新装时随机生成，装机结束时显示（`DEFAULT_PASSWORD=`），也存在 `runtime\caddy\seed-admin.txt`（只有管理员能读），在设置里改掉后这个文件自动删除。已经装好的服务器沿用原来的密码。装机自检改为用这个文件登录；密码已改过时打印 `LOGIN_PROVE_SKIPPED=seed-password-changed`，不再卡住重装。
+
+**网关收口**
+- `GET /channels`、`/v1/company-models`、`/grok-quota`、`/grok-fast` 也要令牌了（前者会暴露自定义渠道的上游地址，后者会让网关去探测厂商）；只有 `/health` 不用。客户端一直带令牌调这些，不受影响。
+- 过渡期收尾：网关把两个过渡开关（`GW_ALLOW_TOKENLESS`、`GW_PLAIN_LAN`）还在放行的请求按客户端地址记进 `runtime\gw-legacy.json`。`server\gw-transition.ps1 -Status` 看还有谁在用，`-Finish` 删掉两个开关并关掉 8450 对局域网的防火墙规则（72 小时内还有人用就拒绝，`-Force` 强制）。全新安装在 TLS 就绪、没有过渡开关时自己关掉这条规则。
+- 修正上一版留下的问题：装机自检 `prove-gui.py` 原来从局域网地址明文访问 8450，TLS 就绪又没有过渡开关时重装会失败；现在走本机加服务令牌。
+
+**/fetch 内网判断补全**：`192.0.0.0/24`，以及嵌着 IPv4 的 IPv6 写法（NAT64 `64:ff9b::/96`、本地 NAT64 `64:ff9b:1::/48`、6to4 `2002::/16`、IPv4 兼容 / 映射地址的十六进制写法）都按里面的 IPv4 判断。`198.18.0.0/15` 故意不拦：服务器上 Clash 的 fake-ip 用这个段回答所有公网域名。
+
+**不改（已声明的取舍）**：公司盘仍对所有登录的人可见，不按人隔离，因为任务交付物放在个人目录里，审核要跨人看；知识库仍全员可搜。
+
+证明：`scripts/prove-people.py` 加上密码全部以哈希保存、明文种子登录后自动改存、5 次失败锁定同地址但换地址能登、20 次失败锁定地址；`scripts/prove-gw-auth.js` 加上读取接口要令牌、两个过渡开关的使用被记账（含明文请求对应的人）；`scripts/prove-gw-tls.js` 加上新的地址段。
+
 ## 2026.10.10.4
 
 **内核钉子对齐到安装包实际带的 0.2.1-alpha.1**
