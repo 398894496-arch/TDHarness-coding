@@ -1,6 +1,6 @@
 # TDH server from this repo
 
-Clone on a Windows machine, then run `powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1` as Administrator (PowerShell 7 `pwsh` works too). That finds git / node / python, pulls LFS, and starts the server. Running it again on a live server keeps the roster, passwords and model keys. To wipe a previous install first: `powershell -ExecutionPolicy Bypass -File scripts\wipe-tdh-server.ps1`.
+Clone on a Windows machine, then run `powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1` as Administrator (PowerShell 7 `pwsh` works too). That finds git / node / python, pulls LFS, and starts the server. Running it again on a live server keeps the roster, passwords and model keys. To wipe a previous install first: `powershell -ExecutionPolicy Bypass -File scripts\wipe-tdh-server.ps1` (lists what it would remove; add `-Yes` to remove it, see [Uninstall](#upgrade-back-up-uninstall)).
 
 That starts:
 
@@ -131,3 +131,33 @@ Optional, not run by setup: `powershell -ExecutionPolicy Bypass -File server\kou
 Both client packages (Windows, and Mac for Apple silicon and Intel) carry OpenCLI for browser work. Each person loads its Chrome extension once; the agent guides them through it. The Windows package also carries Windows-MCP (`windows-mcp/`, its own Python 3.14) and the Mac package carries Peekaboo (`peekaboo/`) for desktop apps; nothing to install. On a Mac the person turns on Accessibility and Screen Recording once, guided by the agent.
 
 Needs: Windows, Administrator, Python 3, Node 22+, Git LFS (`git lfs pull`).
+
+## Upgrade, back up, uninstall
+
+**Upgrade.** On the server, in the clone, as Administrator:
+
+```powershell
+git pull --ff-only
+git lfs pull
+powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1
+powershell -ExecutionPolicy Bypass -File server\publish-site-update.ps1 -BumpMark
+```
+
+Setup is safe to run again: it keeps the roster, passwords, model keys, the update-signing key and the company share, and restarts the services on the new code. The last line republishes the clients with this version's site patches; desks offer the update on their next launch. Read the new [CHANGELOG](../CHANGELOG.md) sections first: a few releases ask for a one-off step (for example `server\install-ocr.ps1 -Restart` when OCR packages change). Keep the clone clean: `git pull --ff-only` refuses to run over files you edited in it, which is what you want; put local changes in a branch or a fork.
+
+**Back up.** Everything a site cannot get back from this repository is under `D:\dsh`, plus Caddy's TLS root:
+
+| Folder | What | If lost |
+| --- | --- | --- |
+| `runtime\pack-sign\` | update-signing key | every desk refuses the next update until it is reinstalled |
+| `runtime\` (rest) | roster, password hashes, model keys and subscriptions, tokens, share-account passwords, TLS root, OCR config | people, keys and logins have to be set up again |
+| `company\` | the company share: personal folders, raw conversations, deliverables, handbook, company memory | the company's files |
+| `brain\` | the knowledge base (distilled pages, lessons) | rebuilt only partly, from what is still in the share |
+| `C:\Windows\System32\config\systemprofile\AppData\Roaming\Caddy\` (outside `D:\dsh`) | the TLS root Caddy made, with its private key; desks trust this root | on a new PC desks refuse the new root until their clients are republished and updated |
+
+`runtime` and `brain` are readable only by administrators: back them up as an administrator (or SYSTEM), for example with `robocopy D:\dsh <backup> /MIR /B /COPYALL /R:1 /W:1 /XD client-dist client-history ocr-venv` from an elevated prompt. `client-dist`, `client-history` and `ocr-venv` are rebuilt by setup and do not need a backup. Keep the backup off this PC and as private as the server itself: it holds the keys.
+
+**Restore** onto a new PC: install as above, stop the services (`schtasks /End /TN Autostart-PeopleApi` and the other `Autostart-*` tasks), copy the backup over `D:\dsh` and Caddy's folder back to the same place, run setup again. Desks keep working if the new PC has the same name (the address is `<computername>.local`); otherwise the clients have to be reinstalled from the new download page.
+
+**Uninstall.** `scripts\wipe-tdh-server.ps1` lists what it would remove; with `-Yes` it removes the services and nightly tasks, `D:\dsh` (company share, knowledge base, keys and all), the share, the share accounts and the TDH client folders on this PC. Back up first.
+

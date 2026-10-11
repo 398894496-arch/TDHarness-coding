@@ -1,8 +1,79 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.11.5** · [更新说明 / Changelog](CHANGELOG.md)
+[![prove](https://github.com/398894496-arch/TDHarness-coding/actions/workflows/prove.yml/badge.svg?branch=main)](https://github.com/398894496-arch/TDHarness-coding/actions/workflows/prove.yml)
+[![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness-coding?label=release)](https://github.com/398894496-arch/TDHarness-coding/releases)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share and the roster; employees run a desktop client (Windows or Mac) that talks only to that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘和花名册，员工电脑装桌面客户端，只连这台服务器。
+**当前版本 / Version: 2026.10.11.6** · [更新说明 / Changelog](CHANGELOG.md) · [Security](SECURITY.md)
+
+**TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share, the roster and the knowledge base; employees run a desktop client (Windows or Mac) whose agent works on their own computer (files, commands, browser, desktop apps); its model calls and web search go only through that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘、花名册和知识库；员工电脑装桌面客户端，AI 在员工自己的电脑上干活，模型调用和联网搜索只经过这台服务器。
+
+| | |
+| --- | --- |
+| **Server** | One Windows 10/11 or Windows Server PC; one command installs everything; no Docker, no cloud account |
+| **Clients** | Windows and macOS (Apple silicon and Intel), installed from the server's download page; signed, delta updates |
+| **Models** | OpenAI, Anthropic, DeepSeek, xAI / Grok subscription, Kimi, GLM, any OpenAI-compatible endpoint; keys never leave the server |
+| **People** | Roster with departments and roles (employee, director, admin), per-person tokens, deactivate takes everything away on the next request |
+| **Work** | Task cards with hand-in and review, a shared company disk, per-person workspaces that follow the person between computers |
+| **Knowledge** | Nightly distillation of everyone's AI work plus company documents (Office, WPS, PDF, scans via OCR), ranked search scoped by person and department ([details](docs/KNOWLEDGE.md)) |
+| **License** | MIT; third-party parts in [NOTICE.md](NOTICE.md) |
+
+### Is it for you?
+
+| Good fit | Not a fit |
+| --- | --- |
+| 10–50 people on one office LAN, one Windows PC that can stay on as the server | Hosted SaaS, or a server on Linux / in Docker (the server is Windows-only today) |
+| You want everyone's AI to *do* the work on their own machine, with keys, quotas and the company disk controlled centrally | A chat UI only, or a document Q&A portal over thousands of files (see the comparison below) |
+| Chinese office documents: Word / Excel / PowerPoint, WPS, PDF, scanned paper | Semantic search across wording ("费用核销" finding "报销"): search is keyword-based (BM25), no vector store yet |
+| Someone on site who can read PowerShell and Node when something breaks | Sign-in through AD / LDAP / SSO (accounts are TDH's own roster today) |
+
+### Status
+
+Young and moving fast, run in production. Started September 2026; [a dated release](https://github.com/398894496-arch/TDHarness-coding/releases) with notes for every merge to `main`, cut automatically. In daily use at two small companies (about 5 and 22 accounts). Four contributors so far. Every merge runs 12 proof scripts on Windows and Linux in CI (login and gateway authorisation, TLS switch, knowledge-search permissions and ranking, people management, patches, release notes, secret scan). The agent kernel is upstream `@deepseek-ai/dsh` **0.2.1-alpha.1**, pinned in [kernel.yml](kernel.yml) together with the client packages; CI applies every patch to exactly that version and fails if one no longer applies ([docs/UPSTREAM.md](docs/UPSTREAM.md)). Five rounds of third-party review so far; each finding and its fix is in the changelog.
+
+```mermaid
+flowchart LR
+  subgraph PCs[Employee computers]
+    D1[TDHarness desk<br/>agent works locally]
+  end
+  subgraph S[Windows server]
+    W[8443 Caddy: download, login, TLS]
+    P[people API 4181<br/>roster, tasks, accounts]
+    K[knowledge search 4182]
+    G[model gateway 8450<br/>keys, quotas, web search]
+    F[(company share<br/>per-person NTFS rights)]
+    B[(brain: nightly<br/>distilled knowledge)]
+  end
+  D1 -- HTTPS --> W
+  W --> P
+  W --> K
+  W -- /gw --> G
+  D1 -- SMB, own account --> F
+  G --> V[model vendors]
+  K --- B
+  F --> B
+```
+
+### Compared with
+
+These are good projects; pick by what you need. TDH is the one where the agent works on each employee's own computer while the company keeps the keys, the people and the disk.
+
+| If you mainly want… | Look at |
+| --- | --- |
+| A self-hosted ChatGPT-style web UI for a team, with document chat | [Open WebUI](https://github.com/open-webui/open-webui), [LibreChat](https://github.com/danny-avila/LibreChat) |
+| To build RAG apps and workflows, or Q&A over a large document library with vector search | [Dify](https://github.com/langgenius/dify), [RAGFlow](https://github.com/infiniflow/ragflow), [MaxKB](https://github.com/1Panel-dev/MaxKB) |
+| A single-user desktop document assistant | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) |
+| Agents that edit files, run commands and drive the browser and desktop apps on each employee's PC, under company accounts, keys and a shared company disk, installed on a LAN in one command | **TDH** |
+
+They combine: a Dify or RAGFlow instance can sit next to TDH for large-scale document Q&A.
+
+### Known limits
+
+- The server is Windows only; the knowledge search is keyword-based (no embeddings); no AD / LDAP / SSO; no handwriting OCR, and scanned tables lose their grid.
+- The agent has the employee's own rights on their computer. TDH does not pretend to stop the employee; it controls keys, quotas, the company disk and who sees what ([SECURITY.md](SECURITY.md)).
+- The server's own administrators can open everything on the server.
+- The kernel is an alpha upstream; this repo pins it, patches it and fails hard when a patch no longer applies.
+- The two desk templates (`client/*.zip`) are built by the maintainer; the desk plugins inside are readable JavaScript but their history is not in this repository yet, and CI does not rebuild the templates ([NOTICE.md](NOTICE.md#what-ships-as-binaries-and-where-it-comes-from)).
 
 ## Delivery is a one-click install / 交付就是一键安装
 
@@ -86,7 +157,7 @@ The screenshots use made-up people and tasks.
 
 Also on the server and in the client (October 2026):
 
-- **Knowledge base, filled every night.** Task `TDH-Brain-Daily` (00:15) reads the day's conversations where the desk keeps them, writes an evidence layer and one distilled page per person per day through the gateway, and collects corrections. Company documents go in `company\_handbook\_company` (everyone) or `company\_handbook\<dept>` (that department): `.md .txt .csv .docx .xlsx .pptx .pdf` are read as they are (PDF through the vendored Mozilla pdf.js), old binary Office and WPS files (`.doc .xls .ppt .wps .et .dps`) through olefile / xlrd in the same venv as OCR; scanned PDF pages and pictures of documents (`.png .jpg …`) are read by OCR (RapidOCR, installed by setup into its own venv; runs in the background, one file at a time, so a search never waits for it). The desk searches through `/company/knowledge` (`127.0.0.1:4182`): passages ranked by BM25, Chinese matched by two-character terms (no dictionary, no vector store), the snippet is the text around the hit with its line. Only with the login token a person got at sign-in: a revoked token or a disabled person gets nothing, a name typed into a header is ignored, and each search is logged (who, how many hits, not the question). Who finds what: everyone gets the company handbook, company memory and corrections; a department its handbook and adopted lessons; each person their own memory and daily pages; a director the daily pages of their department; an admin all of it. Raw conversations never come up in a search; they are opened one file at a time by their owner, that department's director or an admin. Every desk's account page tells the person this (知识库会记下什么).
+- **Knowledge base, filled every night.** Task `TDH-Brain-Daily` (00:15) distils each person's conversations of the day; company documents go in `company\_handbook\_company` (everyone) or `company\_handbook\<dept>` (that department): Word, Excel, PowerPoint (new and old formats), WPS, PDF, and scans or photos through OCR in the background. Search is ranked (BM25, Chinese by two-character terms, snippet at the hit with page and line), answers only a live login token, and is scoped by person and department; the company share's folder rights say the same. Every desk's account page tells the person what is kept and who sees it. Details: [docs/KNOWLEDGE.md](docs/KNOWLEDGE.md).
 - **Web search through the gateway.** Chinese queries go to domestic engines first (Bing China, 360) with Exa alongside; GitHub, Bilibili and YouTube have their own channels. A query starting with `深搜 ` is answered by Grok's own web search with sources; it finishes in the background and is picked up by asking the same query again.
 - **Browser work.** The Windows client ships OpenCLI with its Chrome extension in `opencli/`. The first time the agent needs a browser it checks the bridge, and if the extension is not loaded it walks the person through loading it, one step at a time.
 - **Generated images and videos in the conversation.** A file the agent hands over shows right in the conversation: an image as a picture (click to open it large), a video as a player, and every handed-over file has a download button that saves it to the person's computer. The side panel's file view has the same download button.
@@ -94,7 +165,7 @@ Also on the server and in the client (October 2026):
 - **Long conversations.** Context is compacted automatically at 80% of the model's window (400K of Grok's 500K) and again if the provider reports the prompt too long. `/compact` does it by hand.
 - **Talking-head editing (optional).** `powershell -ExecutionPolicy Bypass -File server\koubo\install.ps1` installs a tool that turns a recording into a Jianying (CapCut China) draft: alignment, transcription that tells the presenter from an off-screen voice, cuts, stabilisation, subtitles and layouts. The agent follows `SKILL.md` beside it.
 
-Both client packages carry kernel 0.2.1-alpha.1. The Mac package runs on Apple silicon and Intel; it does not ship ffmpeg (`brew install ffmpeg` if the agent should watch videos). `kernel.yml` pins the kernel for the kernel-only path below, not for the desk.
+Running a server: [upgrade, back up, uninstall](docs/SERVER.md#upgrade-back-up-uninstall). Both client packages carry kernel 0.2.1-alpha.1. The Mac package runs on Apple silicon and Intel; it does not ship ffmpeg (`brew install ffmpeg` if the agent should watch videos). `kernel.yml` pins the kernel for the kernel-only path below, not for the desk.
 
 ## Open work
 

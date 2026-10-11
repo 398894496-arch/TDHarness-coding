@@ -10,6 +10,18 @@ Upstream does not accept external pull requests. Kernel-shaped bugs can be repor
 
 The repository name `TDHarness-coding` is a working title. It can change later. Do not bake `coding` into npm package names or app bundle ids.
 
+## What ships as binaries, and where it comes from
+
+| File | What | Version / SHA-256 | License |
+| --- | --- | --- | --- |
+| `server/caddy.exe` (Git LFS) | Caddy web server: download page, login, TLS | `caddy version` reports v2.11.4; SHA-256 `3bd070148b059884a40360c6ef648ade172b7f0cc9636a9af951653aac3a85ee` | Apache-2.0, https://github.com/caddyserver/caddy (you may replace it with your own download of the same version) |
+| `client/CompanyDesk-win.zip` (Git LFS) | the Windows desk template setup turns into this site's installer | SHA-256 `d2ed90a351b7311eb7b0ccce8202ba3a1bcdcf32d5347c6b7d9b5f448ad2511d` | see the list below |
+| `client/CompanyDesk-mac.zip` (Git LFS) | the macOS desk template | SHA-256 `0458081bc5551aa6b95bff4a99f7236f4fd1ad3b03d188ddae00e20e1be943d0` | see the list below |
+
+The two desk templates are built by the maintainer from the pinned kernel, the desk plugins (`plugins/company-*`, readable JavaScript inside the templates; their history is kept in the maintainer's private repository, not here yet) and the parts below; CI does not rebuild them from source yet. Setup applies `server/site-patches` to them on the server, so what a site's desks run is the template plus the patches in this repository. Inside each, `NOTICE.txt` lists the parts and licenses and `BUILD.json` lists a build identifier and the SHA-256 of every file (the desk uses it to offer updates and to check its own files on launch; it names the server, nothing about people).
+
+Parts of the desk templates: Node.js 22 (MIT); DeepSeek Harness `@deepseek-ai/dsh` (MIT); OpenCLI `@jackwener/opencli` 1.8.8 and its Chrome extension (Apache-2.0, https://github.com/jackwener/opencli); Noto Sans CJK SC (SIL OFL 1.1). Windows: [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) 0.8.7 (MIT) with an embedded Python (PSF License), FFmpeg (below), Microsoft Edge WebView2 SDK DLLs (redistributed under Microsoft's terms for WebView2 apps). macOS: [Peekaboo](https://github.com/openclaw/Peekaboo) 4.9.0 (MIT).
+
 ## FFmpeg
 
 The Windows client zip ships `ffmpeg.exe`, `ffprobe.exe` and their libraries under `CompanyDesk/ffmpeg/`, unmodified, from the BtbN build `ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip` (https://github.com/BtbN/FFmpeg-Builds). That build is distributed under the GNU Lesser General Public License version 3; the full text is in `CompanyDesk/ffmpeg/LICENSE.txt` inside the zip, and the source is at https://ffmpeg.org/download.html (release 8.1). The desk runs these programs as separate executables and does not link against them.

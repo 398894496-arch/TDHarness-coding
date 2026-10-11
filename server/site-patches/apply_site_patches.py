@@ -55,6 +55,7 @@ class Patcher:
         self.prm = load(pdir / "patch_people_remove.py")
         self.pwd = load(pdir / "patch_people_wording.py")
         self.kbn = load(pdir / "patch_kb_notice.py")
+        self.ntc = load(pdir / "patch_notice_txt.py")
         self.gtls = load(pdir / "patch_gw_tls.py")
         self.kwatch = load(pdir / "patch_kernel_watch.py")
         # This server's Caddy root (export-ca.ps1). Given: desks reach the gateway over
@@ -133,6 +134,8 @@ class Patcher:
             return text_patch(mdl_fn, data)
         if rel.endswith("home/profiles/web/overlay.yml"):
             return text_patch(lambda t: self.ovl.patch(t, self.default_model, self.default_effort), data)
+        if top and base == "NOTICE.txt":
+            return self.ntc.patch_bytes(data)
         if top and base in ("tree-restore.ps1", "tree-restore.sh", "start.ps1", "start.command"):
             data, how = self.scripts.patch_bytes(base, data)
             if base in ("tree-restore.ps1", "tree-restore.sh"):

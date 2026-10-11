@@ -4,6 +4,18 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.6
+
+**让第一次看到这个仓库的人（和 agent）能判断要不要用它**
+- README 首屏：徽章（CI、版本、许可证），一张一览表，「适合谁 / 不适合谁」，成熟度（什么时候开始、几处在用、几位贡献者、CI 跑什么、内核版本和锁定方式），架构图（端口和各服务的关系），和 Open WebUI、LibreChat、Dify、RAGFlow、MaxKB、AnythingLLM 的对照（各自适合什么、可以一起用），已知局限。知识库那一大段挪到 `docs/KNOWLEDGE.md`。
+- 改正一句不准确的话：之前写「客户端只连这台服务器」，但浏览器操作用的是员工电脑自己的浏览器。现在写的是「模型调用和联网搜索只经过这台服务器」。
+- 新增 `SECURITY.md`：怎么私下报告漏洞（已打开 GitHub 的私密漏洞报告），保护了什么、怎么保护的，以及不防什么（员工本人、服务器管理员、提示注入、服务器被攻破、没有 SSO）。
+- `docs/SERVER.md` 新增「升级、备份、卸载」：升级四条命令；要备份的目录各存了什么、丢了会怎样（包括不在 `D:\dsh` 里的 Caddy TLS 根证书）；换新机器怎么恢复。
+- `scripts\wipe-tdh-server.ps1` 改为默认只列出会删什么，加 `-Yes` 才真删；顺带删掉两个夜间任务和装机、登录时建的共享盘账号（之前会留下来）。
+- `NOTICE.md` 写明仓库里的二进制是什么、从哪来：`caddy.exe` 的版本和 SHA-256，两个客户端模板的 SHA-256、组成和许可证（补上了按 Apache-2.0 要求登记的 OpenCLI），以及模板由维护者构建、桌面插件的历史还不在这个仓库里。
+- 客户端包里的 `NOTICE.txt` 还是 9 月的旧内容（内核 0.1.1-rc.2、「只连 8450」、CompanyDesk.exe）。新增站点补丁 `site-patches/patch_notice_txt.py`（`@@notice-v2`），换成当前的组成、许可证，以及 `BUILD.json` 的用途说明（构建标识和每个文件的 SHA-256，用于提示更新和启动自检，不含个人信息）。下次发布带上。
+- GitHub 页面：话题去掉 `coding-agents`、`sandbox`，加上 `self-hosted`、`on-premise`、`llm-gateway`、`knowledge-base` 等；关掉空的 Wiki。
+
 ## 2026.10.11.5
 
 **公司盘的文件权限和知识库对齐**（第三方第五次复评）
