@@ -6,7 +6,7 @@ That starts:
 
 - download and login on `https://<this-pc>:8443/`
 - people API on `127.0.0.1:4181`
-- knowledge search on `127.0.0.1:4182`, reached from the LAN at `/company/knowledge` with a login token only (empty until the first night). Put company documents in `D:\dsh\company\_handbook\_company` (everyone) or `_handbook\<dept id>` (that department); `.md .txt .csv .docx .xlsx .pptx` are read, `.pdf` is not yet (the `status` route counts what was skipped). Nothing to rebuild: the search notices new and changed files on the next question.
+- knowledge search on `127.0.0.1:4182`, reached from the LAN at `/company/knowledge` with a login token only (empty until the first night). Put company documents in `D:\dsh\company\_handbook\_company` (everyone) or `_handbook\<dept id>` (that department); `.md .txt .csv .docx .xlsx .pptx .pdf` are read (a scanned PDF with no text layer is not: there is no OCR; the `status` route counts what was skipped and why). PDF text is kept in `D:\dsh\runtime\kb-cache` so a restart does not read every PDF again; the folder is safe to delete. Nothing to rebuild: the search notices new and changed files on the next question.
 - task `TDH-Brain-Daily` at 00:15: reads the day's conversations and distils them into the brain (`server/brain/run-daily.ps1`)
 - model gateway on port 8450, IPv4 and IPv6 (clients that resolve `<name>.local` often get the IPv6 link-local address first)
 

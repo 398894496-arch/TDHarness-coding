@@ -10,7 +10,8 @@
 //        pages up the management line, raw conversations only by path, frontmatter
 //        narrowing, 90-system never)
 // and checks the ranking: Chinese words found without a dictionary, the snippet is
-// the text around the hit with its line, .docx / .xlsx / .pptx are read, .pdf is
+// the text around the hit with its line, .docx / .xlsx / .pptx are read, a Chinese .pdf
+// is read through pdf.js and the hit names its page, a scan and a broken .pdf are
 // reported as skipped, and paths never carry the server's own folders.
 'use strict';
 
@@ -75,6 +76,45 @@ function zip(members) {
   return Buffer.concat([...locals, cd, end]);
 }
 
+// A PDF the way Chinese ones usually are: a Type0 font with Identity-H encoding, text as
+// glyph ids, a ToUnicode CMap to read them back, the second page's content deflated.
+// Each page is a list of lines; an empty list is a page with no text layer (a scan).
+function pdf(pages) {
+  const chars = [...new Set(pages.flat().join(''))];
+  const cid = (s) => [...s].map((c) => (chars.indexOf(c) + 1).toString(16).padStart(4, '0')).join('');
+  const objs = [];
+  const add = (body) => { objs.push(body); return objs.length; };
+  const stream = (dict, data) => Buffer.concat([Buffer.from('<<' + dict + ' /Length ' + data.length + '>>\nstream\n'), data, Buffer.from('\nendstream')]);
+  const map = chars.map((c, i) => '<' + (i + 1).toString(16).padStart(4, '0') + '> <' + c.codePointAt(0).toString(16).padStart(4, '0') + '>').join('\n');
+  const cmap = '/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def 1 begincodespacerange <0000> <FFFF> endcodespacerange\n'
+    + chars.length + ' beginbfchar\n' + map + '\nendbfchar endcmap CMapName currentdict /CMap defineresource pop end end';
+  const toUni = add(stream('', Buffer.from(cmap)));
+  const desc = add(Buffer.from('<</Type /FontDescriptor /FontName /Fake /Flags 4 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80>>'));
+  const cidFont = add(Buffer.from('<</Type /Font /Subtype /CIDFontType2 /BaseFont /Fake /CIDSystemInfo <</Registry (Adobe) /Ordering (Identity) /Supplement 0>> /FontDescriptor ' + desc + ' 0 R /DW 1000>>'));
+  const font = add(Buffer.from('<</Type /Font /Subtype /Type0 /BaseFont /Fake /Encoding /Identity-H /DescendantFonts [' + cidFont + ' 0 R] /ToUnicode ' + toUni + ' 0 R>>'));
+  const pagesId = objs.length + 1;
+  objs.push(null);
+  const kids = pages.map((lines, i) => {
+    const ops = lines.map((l, k) => 'BT /F1 12 Tf 72 ' + (700 - 20 * k) + ' Td <' + cid(l) + '> Tj ET').join('\n');
+    const content = i === 1 ? add(stream(' /Filter /FlateDecode', zlib.deflateSync(Buffer.from(ops)))) : add(stream('', Buffer.from(ops)));
+    return add(Buffer.from('<</Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [0 0 612 792] /Resources <</Font <</F1 ' + font + ' 0 R>>>> /Contents ' + content + ' 0 R>>'));
+  });
+  objs[pagesId - 1] = Buffer.from('<</Type /Pages /Kids [' + kids.map((k) => k + ' 0 R').join(' ') + '] /Count ' + kids.length + '>>');
+  const root = add(Buffer.from('<</Type /Catalog /Pages ' + pagesId + ' 0 R>>'));
+  const parts = [Buffer.from('%PDF-1.7\n')];
+  const offs = [];
+  let at = parts[0].length;
+  objs.forEach((b, i) => {
+    const o = Buffer.concat([Buffer.from((i + 1) + ' 0 obj\n'), b, Buffer.from('\nendobj\n')]);
+    offs.push(at);
+    parts.push(o);
+    at += o.length;
+  });
+  const xref = 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n' + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+  parts.push(Buffer.from(xref + 'trailer\n<</Size ' + (objs.length + 1) + ' /Root ' + root + ' 0 R>>\nstartxref\n' + at + '\n%%EOF\n'));
+  return Buffer.concat(parts);
+}
+
 function put(root, rel, content) {
   const p = path.join(root, ...rel.split('/'));
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -97,7 +137,9 @@ async function main() {
     'ppt/slides/slide1.xml': '<p:sld><a:p><a:r><a:t>入职第一周</a:t></a:r></a:p></p:sld>',
     'ppt/slides/slide2.xml': '<p:sld><a:p><a:r><a:t>报销走飞书审批，发票抬头写公司全称</a:t></a:r></a:p></p:sld>',
   }));
-  put(company, '_handbook/_company/scan.pdf', '%PDF-1.4 退货');
+  put(company, '_handbook/_company/expenses.pdf', pdf([['报销制度', '先在飞书提交申请'], ['差旅住宿每晚上限四百元', '超出部分自理']]));
+  put(company, '_handbook/_company/scan.pdf', pdf([[]]));
+  put(company, '_handbook/_company/broken.pdf', '%PDF-1.4 退货');
   put(company, '_shared/_memory/01-projects/pricing.md', '---\nowner: adm\nvisibility: company\n---\n# 报价\n\n' + filler + '\n大客户报价单价 12 元，满一千件九折。\n');
   put(company, '_shared/_memory/01-projects/salary.md', '---\nowner: adm\nvisibility: boss\n---\n# 薪资\n\n退货组的薪资方案只给管理员看。\n');
   // Department handbooks: ops has a warehouse sheet, sales its own page.
@@ -139,7 +181,7 @@ async function main() {
   const log = path.join(dir, 'know.log');
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'knowledge-search.js')], {
     env: { ...process.env, TDH_BRAIN: brain, TDH_COMPANY: company, TDH_KNOW_PORT: String(port), TDH_ROSTER: path.join(dir, 'roster.json'),
-      TDH_GW_TOKENS: path.join(dir, 'gw-tokens.json'), TDH_KNOW_LOG: log },
+      TDH_GW_TOKENS: path.join(dir, 'gw-tokens.json'), TDH_KNOW_LOG: log, TDH_KB_CACHE: path.join(dir, 'kb-cache') },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   try {
@@ -226,6 +268,11 @@ async function main() {
     assert.ok(ppt.hits[0].text.includes('第 2 页') || ppt.hits[0].text.includes('飞书审批'), ppt.hits[0].text);
     const sheet = await as('amy', { route: 'search', query: '破损' });
     assert.ok(sheet.hits.some((h) => h.path.endsWith('warehouse.xlsx') && h.text.includes('1001 | 退货入库 | 破损')), JSON.stringify(sheet.hits));
+    // PDF: Chinese read back through ToUnicode, from a deflated page, and the hit says which page.
+    const stay = await as('eve', { route: 'search', query: '住宿上限多少' });
+    assert.strictEqual(stay.hits[0].path, 'company/_handbook/_company/expenses.pdf', JSON.stringify(stay.hits));
+    assert.ok(stay.hits[0].text.startsWith('〔第 2 页〕') && stay.hits[0].text.includes('每晚上限四百元'), stay.hits[0].text);
+    assert.ok(fs.readdirSync(path.join(dir, 'kb-cache')).some((f) => f.endsWith('.txt')), 'pdf text cached on disk');
     // One character still finds something.
     assert.ok((await as('amy', { route: 'search', query: '税' })).status === 'not-found');
     assert.ok((await as('amy', { route: 'search', query: '运' })).hits.length > 0);
@@ -236,7 +283,8 @@ async function main() {
     const st = await as('amy', { route: 'status' });
     assert.strictEqual(st.account, 'amy');
     assert.strictEqual(st.dept, 'ops');
-    assert.ok(st.index.skipped['.pdf'] >= 1, JSON.stringify(st.index));
+    assert.ok(st.index.skipped['pdf-no-text'] >= 1, 'a scan is reported: ' + JSON.stringify(st.index));
+    assert.ok(st.index.skipped['pdf-unreadable'] >= 1, 'a broken pdf is reported: ' + JSON.stringify(st.index));
 
     const logged = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.ok(logged.filter((l) => l.login === 'amy').length > 5);
