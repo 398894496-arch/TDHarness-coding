@@ -185,9 +185,18 @@ if (-not (Test-Path -LiteralPath $rosterPath)) {
   Write-Output 'ROSTER_SEEDED=1'
 } else { Write-Output 'ROSTER_KEPT=1' }
 $passPath = Join-Path $Runtime 'caddy\PASSWORDS.txt'
+$seedFile = Join-Path $Runtime 'caddy\seed-admin.txt'
 if (-not (Test-Path -LiteralPath $passPath)) {
+  # A random seed password per install, not a well-known one. Shown at the end of setup and
+  # kept in seed-admin.txt (administrators only) until the admin changes it in Settings.
   New-Item -ItemType Directory -Force -Path (Split-Path -Parent $passPath) | Out-Null
-  [IO.File]::WriteAllText($passPath, "tdh:12345678`n", $Utf8NoBom)
+  $alphabet = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  $rb = New-Object 'System.Byte[]' 14
+  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($rb)
+  $seedPw = -join ($rb | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
+  [IO.File]::WriteAllText($passPath, "tdh:$seedPw`n", $Utf8NoBom)
+  [IO.File]::WriteAllText($seedFile, "tdh $seedPw`n", $Utf8NoBom)
+  & icacls.exe $seedFile /inheritance:r /grant:r '*S-1-5-32-544:F' '*S-1-5-18:F' | Out-Null
   Write-Output 'PASSWORDS_SEEDED=1'
 } else { Write-Output 'PASSWORDS_KEPT=1' }
 $gwEnv = Join-Path $Runtime 'gateway.env'
@@ -425,9 +434,19 @@ if (($caOut | Out-String) -match 'CA_EXPORTED=changed') {
   if ($LASTEXITCODE -ne 0) { throw 'tls-publish-failed' }
   Write-Output 'GW_TLS_PUBLISHED=1'
 }
+# Desks reach the gateway through Caddy (8443/gw) from 127.0.0.1. With TLS ready and no
+# plaintext bridge, nothing on the LAN should reach 8450 directly: close the rule again.
+if ((Test-Path -LiteralPath (Join-Path $Runtime 'company-ca.crt')) -and -not (Select-String -LiteralPath (Join-Path $Runtime 'gateway.env') -Pattern '^GW_PLAIN_LAN=' -Quiet -ErrorAction SilentlyContinue)) {
+  Remove-NetFirewallRule -DisplayName 'tdh-lan-8450' -ErrorAction SilentlyContinue
+  Write-Output 'FIREWALL_8450_LAN=closed'
+}
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'plant-client.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'plant-client-failed' }
 Write-Output ('DOWNLOAD=https://' + $lan + ':8443/')
 Write-Output 'DEFAULT_LOGIN=tdh'
+if (Test-Path -LiteralPath $seedFile) {
+  Write-Output ('DEFAULT_PASSWORD=' + ((Get-Content -LiteralPath $seedFile -TotalCount 1) -split ' ', 2)[1])
+  Write-Output ('DEFAULT_PASSWORD_FILE=' + $seedFile + '  (change it in Settings > Account; the file goes away then)')
+}
 Write-Output 'GW_KEY_FILE=D:\dsh\runtime\gateway.env'
 Write-Output 'SITE_INSTALL_OK=1'

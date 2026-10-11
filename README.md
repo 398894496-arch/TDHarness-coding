@@ -1,6 +1,6 @@
 # TDHarness-coding
 
-**当前版本 / Version: 2026.10.10.4** · [更新说明 / Changelog](CHANGELOG.md)
+**当前版本 / Version: 2026.10.10.5** · [更新说明 / Changelog](CHANGELOG.md)
 
 **TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share and the roster; employees run a desktop client (Windows or Mac) that talks only to that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘和花名册，员工电脑装桌面客户端，只连这台服务器。
 
@@ -36,7 +36,7 @@ git lfs pull
 powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1
 ```
 
-**默认管理员：账号 `tdh`，密码 `12345678`。** 安装会用这个账号登录。打开桌面快捷方式后也用它。这是装机种子账号，不是仓库里的密钥。**装完请马上改掉**：设置 → 账号 → 修改密码。重跑安装不会覆盖已有的账号和密码。
+**默认管理员：账号 `tdh`，初始密码每次安装随机生成**：装机结束时显示（`DEFAULT_PASSWORD=`），也存在服务器的 `D:\dsh\runtime\caddy\seed-admin.txt`（只有管理员能读）。 打开桌面快捷方式后用它登录，**登录后马上在 设置 → 账号 → 修改密码 改掉**，那个文件随之删除。2026.10.10.5 之前装的服务器沿用原来的密码。重跑安装不会覆盖已有的账号和密码。
 
 **Employees** download the client from `https://<computername>.local:8443/` (Windows or Mac; the browser warns about the self-signed certificate once) and sign in with the account an admin created in Settings → 人员.
 

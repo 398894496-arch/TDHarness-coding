@@ -18,7 +18,7 @@ It does **not** upload or copy:
 - Tailscale auth keys
 - office roster or office IPs
 
-**默认管理员：账号 `tdh`，密码 `12345678`。** 安装脚本用这个账号登录（`LOGIN_PROVE_OK=1`），桌面快捷方式也用它。
+**默认管理员：账号 `tdh`，初始密码每次安装随机生成**：装机结束时显示（`DEFAULT_PASSWORD=`），也存在服务器的 `D:\dsh\runtime\caddy\seed-admin.txt`（只有管理员能读）。 安装脚本用它自检登录（`LOGIN_PROVE_OK=1`；密码已经改过时打印 `LOGIN_PROVE_SKIPPED=seed-password-changed`），桌面快捷方式也用它。
 
 Those stay on the machine that runs setup. Setup compiles `TDHarness.exe` for this LAN (`COMPILE_APPHOST_OK=1`), serves `/client/version.json`, and proves the AppHost login URL (`GUI_PROVE_OK=1`) before planting the desktop client. Put a model key in `D:\dsh\runtime\gateway.env` (copied from `server/gateway.env.example`). Restart the `Autostart-Gateway` task after editing.
 
@@ -62,7 +62,8 @@ Desks reach the gateway over TLS: Caddy on the login port forwards `https://<thi
 | --- | --- |
 | Model calls, vendor files, `/search`, `/fetch`, `/images`, `/videos` | A live login token: in `runtime\gw-tokens.json`, not revoked, and its person active on the roster. Otherwise `401` |
 | `POST /channels` (add, replace or drop a key; channel settings) | The live token of an **admin**. Otherwise `401` / `403`, and `gateway.env` / `channels.json` are left alone |
-| `/health`, `GET /channels`, `/v1/company-models`, `/grok-quota`, `/grok-fast` | Nothing. They say which channels are bound and which models exist, never a key |
+| `/health` | Nothing |
+| `GET /channels`, `/v1/company-models`, `/grok-quota`, `/grok-fast` | A live token too: they name custom upstreams and make the gateway probe vendors |
 | Jobs on this PC (nightly brain job, deep search calling the model door) | The service token in `runtime\gw-service.token`, made by the gateway at start, readable by administrators only. It spends keys like a person; it cannot change them |
 | A request straight from the LAN to 8450 (plaintext) | Refused (`403`, `gateway_plaintext`) once `runtime\company-ca.crt` exists, unless `gateway.env` has `GW_PLAIN_LAN=1` |
 
@@ -71,6 +72,8 @@ Coming from `127.0.0.1` is worth nothing: Caddy forwards every desk from there, 
 Revoking a token or deactivating a person in 人员 takes effect on the next request; the gateway rereads both files when either changes. Every refusal prints a `GW_DENY` line in the gateway log, with the desk's own address when it came through Caddy. `node scripts/prove-gw-auth.js` proves all of the above against a stand-in vendor (`GW_AUTH_PROVE_OK=1`); `node scripts/prove-gw-tls.js` proves the TLS switch and the `/fetch` guard (`GW_TLS_PROVE_OK=1`).
 
 **The TLS switch.** `server\export-ca.ps1` copies Caddy's root (made by `tls internal` on Caddy's first start) to `runtime\company-ca.crt`. That one file decides everything: the site patches move desks to `8443/gw` and pack the root, `TDHarness.exe` is built with the https gateway, and the gateway starts refusing plaintext from the LAN. `publish-site-update.ps1` exports it every time. A fresh install builds its packs before Caddy has ever run, so setup exports the root after the services are up and publishes once more. **Upgrading a live server:** desks already installed still talk plain 8450 until they take the update, so put `GW_PLAIN_LAN=1` in `gateway.env` first (setup does this itself when it sees desks were already out), publish with `-BumpMark`, and remove the line once every desk has updated. A new Caddy root (Caddy's data wiped) means publishing again.
+
+**Ending the bridges.** The gateway records what `GW_ALLOW_TOKENLESS` and `GW_PLAIN_LAN` still let through, by desk address, in `runtime\gw-legacy.json`. `powershell -ExecutionPolicy Bypass -File server\gw-transition.ps1 -Status` shows it; `-Finish` removes both lines and the LAN firewall rule for 8450 (`tdh-lan-8450`), and refuses while a bridge was used in the last 72 hours (`-QuietHours`, or `-Force`). A fresh install closes that rule itself once TLS is ready.
 
 `/fetch` reads public pages only: the address as written, where its name really resolves, and every redirect hop are checked against private, loopback, link-local, CGNAT and multicast ranges.
 
@@ -90,7 +93,7 @@ Desks see the new mark on their next launch and offer the update. Each publish k
 
 ## Accounts on first login
 
-The login API heals the two things a remote desk needs before it can open: the person's own share account and the person's `emp-<login>` folder. Login names are matched case-insensitively and are 2 to 16 characters. Passwords are in `D:\dsh\runtime\caddy\PASSWORDS.txt`, one `login:password` per line, read on every login. Everyone can change their own password in Settings → 账号 → 修改密码 (the old one is required); **the seed admin should change `12345678` there right after install.**
+The login API heals the two things a remote desk needs before it can open: the person's own share account and the person's `emp-<login>` folder. Login names are matched case-insensitively and are 2 to 16 characters. Passwords are in `D:\dsh\runtime\caddy\PASSWORDS.txt`, one `login:pbkdf2_sha256$...` salted hash per line (a plain `login:password` line still works and becomes a hash at that person's next sign-in), compared in constant time. Sign-in is throttled: 5 failures for one login from one address, 20 from one address, or 30 for one login within 15 minutes refuse further tries from there (`429 too-many-attempts`) until the oldest ages out; a correct sign-in clears that person's count. Everyone can change their own password in Settings → 账号 → 修改密码 (the old one is required); **the seed admin should change the install-time password there right after install.**
 
 ### Company share accounts
 

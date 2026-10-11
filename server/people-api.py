@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -22,6 +24,8 @@ import tickets as ticket_board  # noqa: E402
 ROOT = Path(os.environ.get("TDH_ROOT") or r"D:\dsh")
 ROSTER = Path(os.environ.get("TDH_ROSTER") or str(ROOT / "runtime" / "roster.json"))
 PASS_FILE = Path(os.environ.get("TDH_PASSWORDS") or str(ROOT / "runtime" / "caddy" / "PASSWORDS.txt"))
+# The seed admin's install-time password, shown once by setup; removed when it is changed.
+SEED_FILE = PASS_FILE.parent / "seed-admin.txt"
 TOKEN_STORE = Path(os.environ.get("TDH_GW_TOKENS") or str(ROOT / "runtime" / "gw-tokens.json"))
 # The gateway writes one line per model call here (tokens only, by person).
 USAGE_DIR = Path(os.environ.get("TDH_USAGE_DIR") or str(ROOT / "runtime" / "usage"))
@@ -124,12 +128,98 @@ def pass_map() -> dict[str, str]:
     return out
 
 
+# Passwords are kept as salted PBKDF2 hashes: a copy of PASSWORDS.txt no longer gives
+# anyone's password away. A plain line (the seed, or a file from before this) still
+# works and is rewritten as a hash at that person's next successful sign-in.
+PW_SCHEME = "pbkdf2_sha256"
+PW_ROUNDS = 200000
+
+
+def hash_password(pw: str) -> str:
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, PW_ROUNDS)
+    return "%s$%d$%s$%s" % (PW_SCHEME, PW_ROUNDS, salt.hex(), dk.hex())
+
+
+def is_hashed(stored: str) -> bool:
+    return str(stored or "").startswith(PW_SCHEME + "$")
+
+
+def verify_password(stored: str | None, pw: str) -> bool:
+    """Constant-time either way; a missing line still costs one hash, so timing says nothing."""
+    stored = str(stored or "")
+    if is_hashed(stored):
+        try:
+            _, rounds, salt, want = stored.split("$", 3)
+            dk = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), bytes.fromhex(salt), int(rounds))
+            return hmac.compare_digest(dk.hex(), want)
+        except (ValueError, TypeError):
+            return False
+    if not stored:
+        hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), b"no-such-login-salt", PW_ROUNDS)
+        return False
+    return hmac.compare_digest(stored.encode("utf-8"), pw.encode("utf-8"))
+
+
 def set_password(login: str, pw: str) -> None:
-    """Replace one person's line in PASSWORDS.txt (or add it); everything else stays."""
+    """Replace one person's line in PASSWORDS.txt (or add it) with a hash; everything else stays."""
     drop_password(login)
     PASS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with PASS_FILE.open("a", encoding="utf-8") as fh:
-        fh.write("%s:%s\n" % (login, pw))
+        fh.write("%s:%s\n" % (login, hash_password(pw)))
+    if login == SEED_ADMIN:
+        # The install-time password shown by setup is no longer valid.
+        try:
+            SEED_FILE.unlink()
+        except OSError:
+            pass
+
+
+# Sign-in throttle. The login API is reached only through Caddy (it listens on loopback),
+# so X-Forwarded-For is the desk's address. Failures are counted per login+address, per
+# address and per login over 15 minutes; past a limit that key is refused (429) without
+# looking at the password, until its oldest failure ages out. In memory: a restart clears it.
+LOGIN_WINDOW = 900
+LOGIN_LIMITS = {"pair": 5, "src": 20, "login": 30}
+_LOGIN_MU = threading.Lock()
+_LOGIN_FAILS: dict[str, list[float]] = {}
+
+
+def _login_keys(login: str, src: str) -> dict[str, str]:
+    return {"pair": "p:" + login + "|" + src, "src": "s:" + src, "login": "l:" + login}
+
+
+def _recent(key: str, now: float) -> list[float]:
+    hits = [t for t in _LOGIN_FAILS.get(key, []) if now - t < LOGIN_WINDOW]
+    if hits:
+        _LOGIN_FAILS[key] = hits
+    else:
+        _LOGIN_FAILS.pop(key, None)
+    return hits
+
+
+def login_blocked(login: str, src: str) -> bool:
+    now = time.time()
+    with _LOGIN_MU:
+        keys = _login_keys(login, src)
+        return any(len(_recent(keys[k], now)) >= LOGIN_LIMITS[k] for k in keys)
+
+
+def login_failed(login: str, src: str) -> None:
+    now = time.time()
+    with _LOGIN_MU:
+        if len(_LOGIN_FAILS) > 20000:
+            for k in list(_LOGIN_FAILS):
+                _recent(k, now)
+        for key in _login_keys(login, src).values():
+            _LOGIN_FAILS.setdefault(key, []).append(now)
+
+
+def login_succeeded(login: str, src: str) -> None:
+    with _LOGIN_MU:
+        keys = _login_keys(login, src)
+        _LOGIN_FAILS.pop(keys["pair"], None)
+        _LOGIN_FAILS.pop(keys["login"], None)
 
 
 def drop_password(login: str) -> int:
@@ -526,11 +616,13 @@ def check_login(username: str, password: str) -> dict | None:
     if not login or not password:
         return None
     stored = pass_map().get(login)
-    if stored is None or stored != password:
+    if not verify_password(stored, password):
         return None
     row = person(login)
     if not row or row.get("status") != "active":
         return None
+    if not is_hashed(stored or ""):
+        set_password(login, password)
     pid = str(row.get("pid") or ("p-" + login))
     ensure_personal_dir(row)
     # Own account first; the shared one only while the own one cannot be made.
@@ -647,7 +739,7 @@ class Handler(BaseHTTPRequestHandler):
                 me = str(actor.get("login") or "")
                 old = str(payload.get("password_old") or "")
                 new = str(payload.get("password_new") or "")
-                if pass_map().get(me) != old:
+                if not verify_password(pass_map().get(me), old):
                     fail("password-wrong")
                     return
                 if len(new) < 8:
@@ -705,9 +797,7 @@ class Handler(BaseHTTPRequestHandler):
                 "pid": "p-" + secrets.token_hex(6),
             })
             ensure_personal_dir(data["people"][-1])
-            PASS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with PASS_FILE.open("a", encoding="utf-8") as fh:
-                fh.write("%s:%s\n" % (login, pw))
+            set_password(login, pw)
             done()
             return
 
@@ -894,10 +984,17 @@ class Handler(BaseHTTPRequestHandler):
             self._mailbox(payload)
             return
         if path == "/company/login":
-            hit = check_login(str(payload.get("username") or payload.get("login") or ""), str(payload.get("password") or ""))
+            name = str(payload.get("username") or payload.get("login") or "").strip().lower()
+            src = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip() or self.client_address[0]
+            if login_blocked(name, src):
+                self._send(*json_bytes({"ok": False, "error": "too-many-attempts", "hint": "登录失败次数太多，请 15 分钟后再试，或找管理员。"}, 429))
+                return
+            hit = check_login(name, str(payload.get("password") or ""))
             if hit is None:
+                login_failed(name, src)
                 self._send(*json_bytes({"ok": False, "error": "bad-login"}, 401))
                 return
+            login_succeeded(name, src)
             self._send(*json_bytes(hit))
             return
         if path == "/company/desk-lease":

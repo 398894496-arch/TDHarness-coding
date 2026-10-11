@@ -67,7 +67,9 @@ async function startGateway(root, port, extraEnv) {
       TDH_GROK_FAST: path.join(root, 'grok-fast.json'),
       TDH_GW_PORT: String(port),
       TDH_GW_SERVICE_TOKEN_FILE: path.join(root, 'gw-service.token'),
-      TDH_COMPANY_CA: path.join(root, 'company-ca.crt')
+      TDH_COMPANY_CA: path.join(root, 'company-ca.crt'),
+      TDH_GW_LEGACY: path.join(root, 'gw-legacy.json'),
+      TDH_GW_LEGACY_FLUSH_MS: '200'
     }, extraEnv || {}),
     stdio: ['ignore', 'pipe', 'inherit']
   });
@@ -202,11 +204,14 @@ async function main() {
     r = await call(port, 'POST', '/channels', bearer(boss), { action: 'add-key', preset: 'kimi', key: 'stand-in-kimi-key' });
     assert.equal(r.status, 200, 'an admin can add a key');
     assert.match(fs.readFileSync(envFile, 'utf8'), /^KIMI_API_KEY=stand-in-kimi-key$/m);
-    for (const url of ['/health', '/channels', '/grok-quota']) {
+    assert.equal((await call(port, 'GET', '/health', {})).status, 200, '/health stays open');
+    for (const url of ['/channels', '/grok-quota', '/grok-fast', '/v1/company-models']) {
       r = await call(port, 'GET', url, {});
-      assert.equal(r.status, 200, url + ' stays open');
+      assert.equal(r.status, 401, url + ' needs a token (it names upstreams / probes vendors)');
     }
-    assert.doesNotMatch(JSON.stringify((await call(port, 'GET', '/channels', {})).obj), /stand-in/, 'the open read never shows a key');
+    r = await call(port, 'GET', '/channels', bearer(amy));
+    assert.equal(r.status, 200, 'a person reads the channels');
+    assert.doesNotMatch(JSON.stringify(r.obj), /stand-in/, 'the read never shows a key');
     console.log('GW_CHANNELS_ADMIN_OK=1');
 
     // 4. Revoking a token or disabling a person cuts the next call, no restart.
@@ -227,6 +232,9 @@ async function main() {
     assert.equal(seen.length, n + 1);
     assert.equal((await chat(bearer(revoked))).status, 401, 'a revoked token is refused even with the switch on');
     assert.equal((await call(port, 'POST', '/channels', {}, addKey)).status, 401, 'settings stay admin-only with the switch on');
+    await new Promise((res) => setTimeout(res, 600));
+    const seenLegacy = JSON.parse(fs.readFileSync(path.join(root, 'gw-legacy.json'), 'utf8'));
+    assert.ok(Object.values(seenLegacy.tokenless || {}).some((row) => row.count >= 1 && row.last), 'tokenless use is recorded for gw-transition');
     console.log('GW_TOKENLESS_SWITCH_OK=1');
     fs.writeFileSync(envFile, baseEnv);
 
@@ -283,6 +291,9 @@ async function main() {
       assert.equal(r.status, 200, 'GW_PLAIN_LAN=1 lets plaintext through during the switch');
       r = await viaLan({});
       assert.equal(r.status, 401, 'the bridge never waives the token');
+      await new Promise((res) => setTimeout(res, 600));
+      const plainSeen = JSON.parse(fs.readFileSync(path.join(root, 'gw-legacy.json'), 'utf8')).plain || {};
+      assert.ok(Object.entries(plainSeen).some(([ip, row]) => ip === lan.address && row.login === 'amy'), 'plaintext use is recorded with the person');
       console.log('GW_PLAIN_LAN_OK=1');
     }
 

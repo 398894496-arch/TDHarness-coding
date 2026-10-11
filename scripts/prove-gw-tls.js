@@ -32,7 +32,13 @@ async function proveFetchGuard() {
   for (const ip of ['127.0.0.1', '10.1.2.3', '172.16.0.9', '192.168.50.10', '169.254.169.254', '100.100.1.1', '0.0.0.0', '::1', 'fd7a::1', 'fe80::1', '::ffff:192.168.1.1', '224.0.0.1']) {
     assert.equal(privateIp(ip), true, ip + ' is private');
   }
-  for (const ip of ['8.8.8.8', '1.1.1.1', '2606:4700::1111']) assert.equal(privateIp(ip), false, ip + ' is public');
+  for (const ip of ['192.0.0.8', '64:ff9b::c0a8:101', '64:ff9b::192.168.1.1', '64:ff9b:1::5', '2002:c0a8:101::1', '::ffff:c0a8:101', '::192.168.1.1', 'ff02::1']) {
+    assert.equal(privateIp(ip), true, ip + ' embeds or is a private address');
+  }
+  // 198.18.0.0/15 stays allowed: Clash's fake-ip DNS on the server answers public names from it.
+  for (const ip of ['8.8.8.8', '1.1.1.1', '2606:4700::1111', '64:ff9b::808:808', '2002:808:808::1', '::ffff:8.8.8.8', '198.18.0.5']) {
+    assert.equal(privateIp(ip), false, ip + ' is public');
+  }
 
   let b = null;
   const a = await listen((req, res) => {
