@@ -467,6 +467,15 @@ if (($caOut | Out-String) -match 'CA_EXPORTED=changed') {
 if ((Test-Path -LiteralPath (Join-Path $Runtime 'company-ca.crt')) -and -not (Select-String -LiteralPath (Join-Path $Runtime 'gateway.env') -Pattern '^GW_PLAIN_LAN=' -Quiet -ErrorAction SilentlyContinue)) {
   Remove-NetFirewallRule -DisplayName 'tdh-lan-8450' -ErrorAction SilentlyContinue
   Write-Output 'FIREWALL_8450_LAN=closed'
+  # And listen on this machine only (read at start, so restart the gateway once).
+  $gwEnvFile = Join-Path $Runtime 'gateway.env'
+  if (-not (Select-String -LiteralPath $gwEnvFile -Pattern '^GW_LISTEN=' -Quiet -ErrorAction SilentlyContinue)) {
+    Add-Content -LiteralPath $gwEnvFile -Value "`r`n# Desks reach the gateway through Caddy's /gw; nothing on the LAN needs 8450.`r`nGW_LISTEN=local" -Encoding ASCII
+    & schtasks.exe /End /TN 'Autostart-Gateway' 2>&1 | Out-Null
+    Stop-ListenPort 8450
+    & schtasks.exe /Run /TN 'Autostart-Gateway' 2>&1 | Out-Null
+    Write-Output 'GW_LISTEN=local'
+  }
 }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'plant-client.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'plant-client-failed' }

@@ -4,6 +4,10 @@ Official [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-
 
 This file is extra. Product PRs stay in **this** repo.
 
+## Knowing first when upstream moves
+
+The workflow `upstream-canary` applies this repository's kernel patches to the newest published `@deepseek-ai/dsh` every night (by version number: upstream's `latest` tag can lag behind its newest build). Red there means a patch anchor moved upstream; nothing breaks for anyone, because desks run the pinned kernel in `kernel.yml` until it is changed together with the client packages. Fix the anchors (or add a variant) on a branch, then move the pin.
+
 ## Three different posts (do not mix)
 
 | Kind | Category | What to put |

@@ -231,7 +231,9 @@ function search(person, body) {
     return { ok: true, status: found.length ? 'ok' : 'not-found', ...who, evidence: true, layer: 'evidence', hits: found.map(hit) };
   }
   if (!query) return { ok: false, status: 'bad-request', ...who, hits: [] };
-  const found = index.search(roots(person), [query], { limit: LIMIT, perFile: 3, allow: (full, fm) => fmAllows(person, fm) });
+  // The company's synonyms, and the department's own (同义词.txt in its handbook).
+  const syn = index.synonyms([C('_handbook', '_company')].concat(person.dept && person.role !== 'admin' ? [C('_handbook', safe(person.dept))] : []));
+  const found = index.search(roots(person), [query], { limit: LIMIT, perFile: 3, allow: (full, fm) => fmAllows(person, fm), synonyms: syn });
   return { ok: true, status: found.length ? 'ok' : 'not-found', ...who, layer: 'lookup', hits: found.map(hit) };
 }
 

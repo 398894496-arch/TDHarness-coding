@@ -22,7 +22,11 @@ File types: `.md .txt .csv`, `.docx .xlsx .pptx` (read with Node's zlib, no extr
 - Files are cut into passages and ranked with BM25. Latin words and numbers are terms; Chinese is cut into overlapping two-character terms, so 退货运费谁承担 finds 运费由公司承担 without a dictionary. Question words (怎么, 是谁) do not count; coverage is weighted by how rare each word is, and words that occur nowhere do not count against an answer.
 - The snippet is the text around the hit, with its line; a hit in a PDF, deck or workbook names its page or sheet (〔第 3 页〕, 〔Sheet1〕).
 - Files are cached in memory by modification time and size; a changed file is read again on the next search.
-- Keyword search only: no embeddings, no vector store. 费用核销 will not find a page that only says 报销.
+- **Refuses instead of guessing** (after [DSH-KRouter](https://github.com/398894496-arch/DSH-KRouter)): the question is cut into two-character words with a general word list (jieba's, MIT) plus the files' own words; when its specific words that occur nowhere outnumber the ones the first hit covers, or the first hit covers under half of three or more, the answer is nothing. On the desk, nothing lets the agent fall back to web search; a weak hit would stop it at the wrong page.
+- **The company's own synonyms**: `company\_handbook\_company\同义词.txt` (or `synonyms.txt`, also in a department's handbook), one group per line, `报销 = 核销, 报账`. A question is also asked with each synonym; when its own word occurs nowhere and a synonym does, only the synonym is used. The file is not searched itself.
+- Keyword search with synonyms, no embeddings, no vector store: a wording that is neither in the files nor in the synonym list is not found.
+
+How well: `node scripts/prove-kb-recall.js` (12 handbook pages, 26 questions with an answer, 12 without, one that needs a synonym): the right page first 26/26, off-topic refused 12/12, the synonym found. Run on a real office library before and after, the refusal changed none of 13 everyday questions and refused two off-topic ones that had been answered with unrelated pages. Still answered weakly: a question whose words all occur somewhere but never together (客户要退款怎么处理 matched a page about customers handling orders).
 
 ## Who finds what
 

@@ -34,6 +34,10 @@ The knowledge search reads PDF text with Mozilla pdf.js (`pdfjs-dist` 4.10.38, l
 
 `server/install-ocr.ps1` installs, with pip into its own venv on the server (not shipped in this repository), RapidOCR `rapidocr-onnxruntime` 1.4.4 (Apache License 2.0, PaddleOCR models, https://github.com/RapidAI/RapidOCR), ONNX Runtime (MIT), pypdfium2 (Apache-2.0 / BSD-3-Clause, PDFium), olefile (BSD-2-Clause) and xlrd (BSD-3-Clause) for old Office files, and their dependencies, at the versions pinned in `server/ocr-requirements.txt`.
 
+## Word list for the knowledge search
+
+`server/kb-lexicon.txt` lists general Chinese two-character words by frequency, derived from jieba 0.42.1's `dict.txt` (MIT, https://github.com/fxsjy/jieba), as published in DSH-KRouter (MIT). The knowledge search uses it to tell a question's specific words from generic ones.
+
 ## Vendor marks
 
 The Grok, OpenAI and Claude marks on the desk's model settings page are taken

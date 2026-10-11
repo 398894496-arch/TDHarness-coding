@@ -7,8 +7,9 @@
 #   -Status          what is on, and who used a bridge when
 #   -Finish          drop both lines and the LAN firewall rule for 8450; refused while a
 #                    bridge was used in the last -QuietHours (default 72), unless -Force
-# The gateway reads gateway.env on every request: no restart. Desks reach it through
-# Caddy (8443/gw) from 127.0.0.1, which the firewall rule does not affect.
+# The gateway reads the bridges from gateway.env on every request. -Finish also sets
+# GW_LISTEN=local (only this machine can connect to 8450) and restarts the gateway for it.
+# Desks reach it through Caddy (8443/gw) from 127.0.0.1, which neither change affects.
 # Keep this file ASCII: Windows PowerShell 5.1 reads BOM-less UTF-8 as the ANSI code page.
 param([switch]$Status, [switch]$Finish, [int]$QuietHours = 72, [switch]$Force)
 $ErrorActionPreference = 'Stop'
@@ -62,9 +63,18 @@ if ($Finish) {
     $who = ($recent | ForEach-Object { $_.kind + ':' + $_.desk + $(if ($_.login) { '(' + $_.login + ')' } else { '' }) }) -join ', '
     throw ('bridges-still-used: ' + $who + ' (have them reopen TDHarness and take the update, or pass -Force)')
   }
-  $keep = @($lines | Where-Object { $_ -notmatch '^\s*GW_(ALLOW_TOKENLESS|PLAIN_LAN)\s*=' -and $_ -notmatch '^#.*(still use plain 8450|Remove once every desk has updated|Remove once all have updated)' })
+  $keep = @($lines | Where-Object { $_ -notmatch '^\s*GW_(ALLOW_TOKENLESS|PLAIN_LAN|LISTEN)\s*=' -and $_ -notmatch '^#.*(still use plain 8450|Remove once every desk has updated|Remove once all have updated)' })
+  # Nothing reaches 8450 from the LAN any more: listen on this machine only (defence in depth
+  # when the firewall is off). Desks come through Caddy's /gw on 127.0.0.1.
+  $keep += 'GW_LISTEN=local'
   [IO.File]::WriteAllLines($envFile, $keep, [Text.UTF8Encoding]::new($false))
   Write-Output 'BRIDGES_REMOVED=1'
   if ($rule) { Remove-NetFirewallRule -DisplayName 'tdh-lan-8450'; Write-Output 'FIREWALL_8450_LAN=closed' }
+  Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'gw-lite\.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  Start-Sleep -Seconds 1
+  Start-ScheduledTask -TaskName 'Autostart-Gateway'
+  for ($i = 0; $i -lt 20; $i++) { Start-Sleep -Milliseconds 500; if (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8450 -State Listen -ErrorAction SilentlyContinue) { break } }
+  $wide = @(Get-NetTCPConnection -LocalPort 8450 -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -ne '127.0.0.1' })
+  Write-Output ('GW_LISTEN_LOCAL_ONLY=' + [int]($wide.Count -eq 0))
   Write-Output 'GW_TRANSITION_DONE=1'
 }

@@ -119,7 +119,10 @@ if ($ds) {
     Expect ('dshshare-for-' + $p.login) $ds $f 'write' $true
     Expect ('dshshare-for-' + $p.login) $ds (Join-Path $f '.dsh-desk') 'write' $true
   }
-  Expect 'dshshare' $ds (Join-Path $Company '_handbook') 'read' $true
+  # dshshare reads what everyone reads only while someone still mounts as it; then nothing.
+  $stillOn = @($people | Where-Object { -not (Sid-Of ('smb-' + $_.login)) }).Count -gt 0
+  Expect 'dshshare' $ds (Join-Path $Company '_handbook') 'read' $stillOn
+  Expect 'dshshare' $ds $Company 'read' $stillOn
   Expect 'dshshare' $ds (Join-Path $Root 'runtime') 'read' $false
   Expect 'dshshare' $ds (Join-Path $Root 'brain') 'read' $false
   Expect 'dshshare' $ds $Company 'write' $false
