@@ -118,8 +118,41 @@ if (-not $ServerOnly) {
 }
 
 # ---- server folders ----
-$localAdmins = @(Get-LocalGroupMember -SID $SID_ADMINS -ErrorAction SilentlyContinue | Where-Object { $_.PrincipalSource -eq 'Local' -and $_.ObjectClass -eq 'User' } | ForEach-Object { $_.SID.Value })
+# Local administrators by SID through ADSI: Get-LocalGroupMember returns nothing when run as
+# SYSTEM (people-api, the nightly task) on some machines, and an empty list would take the
+# administrators' own programs off runtime.
+function Local-AdminSids {
+  $users = @{}
+  foreach ($u in @(Get-LocalUser -ErrorAction SilentlyContinue)) { $users[$u.SID.Value] = 1 }
+  $out = @()
+  try {
+    $name = (New-Object Security.Principal.SecurityIdentifier $SID_ADMINS).Translate([Security.Principal.NTAccount]).Value.Split('\')[-1]
+    $group = [ADSI]('WinNT://' + $env:COMPUTERNAME + '/' + $name + ',group')
+    foreach ($m in @($group.psbase.Invoke('Members'))) {
+      $bytes = $m.GetType().InvokeMember('objectSid', 'GetProperty', $null, $m, $null)
+      $sid = (New-Object Security.Principal.SecurityIdentifier($bytes, 0)).Value
+      if ($users.ContainsKey($sid)) { $out += $sid }
+    }
+  } catch { return $null }
+  return ,$out
+}
+$localAdmins = Local-AdminSids
 $serverDirs = @($Runtime, (Join-Path $Root 'brain'))
+if ($null -eq $localAdmins -or $localAdmins.Count -eq 0) {
+  # Never shrink on a failed lookup: keep whoever is named on the folders now.
+  Write-Output 'LOCAL_ADMINS=unknown (keeping the administrators already named on runtime and brain)'
+  $localAdmins = @()
+  foreach ($d in $serverDirs) {
+    if (Test-Path -LiteralPath $d) {
+      foreach ($r in (Get-Acl -LiteralPath $d).Access) {
+        if ($r.IsInherited) { continue }
+        $sid = try { $r.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { '' }
+        if ($sid -match '^S-1-5-21-') { $localAdmins += $sid }
+      }
+    }
+  }
+  $localAdmins = @($localAdmins | Select-Object -Unique)
+}
 foreach ($d in $serverDirs) { foreach ($s in $localAdmins) { Grant $d $s 'F' } }
 foreach ($d in $serverDirs) { if (-not $rules.Contains([IO.Path]::GetFullPath($d).TrimEnd('\'))) { $rules[[IO.Path]::GetFullPath($d).TrimEnd('\')] = @{} } }
 
@@ -161,18 +194,22 @@ foreach ($path in $sorted) {
     $backedUp = $true
   }
   if (-not $exists) { New-Item -ItemType Directory -Force -Path $path | Out-Null }
-  # Parentheses: in PowerShell the comma binds tighter than +.
-  $grants = @(('*' + $SID_SYSTEM + ':(OI)(CI)F'), ('*' + $SID_ADMINS + ':(OI)(CI)F'))
-  foreach ($k in $rules[$path].Keys) { if ($k -ne $SID_SYSTEM -and $k -ne $SID_ADMINS) { $grants += ('*' + $k + ':(OI)(CI)' + $rules[$path][$k]) } }
-  $grants = @($grants | ForEach-Object { $_ -replace ':\(OI\)\(CI\)R$', ':(OI)(CI)RX' })
-  # One grant per call: Windows PowerShell 5.1 hands an array to icacls as one argument.
-  & icacls.exe $path /reset /Q | Out-Null
-  foreach ($g in $grants) {
-    & icacls.exe $path /grant:r $g /Q | Out-Null
-    if ($LASTEXITCODE) { throw ('icacls-failed ' + $label + ' ' + $g) }
+  # The whole list in one write: protected, no inherited entries, exactly these grants.
+  # Never step through /reset: for that moment the folder would inherit from D:\ (where
+  # Authenticated Users may change everything).
+  $sec = New-Object Security.AccessControl.DirectorySecurity
+  $sec.SetAccessRuleProtection($true, $false)
+  $inherit = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+  $want2 = @{}
+  $want2[$SID_SYSTEM] = 'F'
+  $want2[$SID_ADMINS] = 'F'
+  foreach ($k in $rules[$path].Keys) { if ($k -ne $SID_SYSTEM -and $k -ne $SID_ADMINS) { $want2[$k] = $rules[$path][$k] } }
+  foreach ($k in $want2.Keys) {
+    $fsr = [Security.AccessControl.FileSystemRights]$RIGHTS[$want2[$k]]
+    $rule = New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $k), $fsr, $inherit, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
+    $sec.AddAccessRule($rule)
   }
-  & icacls.exe $path /inheritance:r /Q | Out-Null
-  if ($LASTEXITCODE) { throw ('icacls-failed ' + $label + ' inheritance') }
+  (Get-Item -LiteralPath $path -Force).SetAccessControl($sec)
   # The first time a folder is taken over, and whenever someone has granted Everyone,
   # Authenticated Users or Users on it again (an older setup did so file by file), what is
   # below may carry entries of its own: make it all inherit again. Folders with their own

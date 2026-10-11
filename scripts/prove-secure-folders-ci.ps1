@@ -83,6 +83,20 @@ try {
   New-Account 'smb-bob'
   Apply 'bob moved' | Out-Null
   Prove $true 'everyone on an own account'
+
+  # 5. As SYSTEM, the way people-api and the nightly task run it: same answer, nothing to change.
+  # (Run as SYSTEM, an older version saw no local administrators and took them off runtime.)
+  $task = 'tdh-ci-secure-folders'
+  $log = Join-Path $Root 'system-run.log'
+  $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -Command "& ''' + (Join-Path $server 'secure-folders.ps1') + ''' -Root ''' + $Root + ''' -Apply *> ''' + $log + '''"')
+  Register-ScheduledTask -TaskName $task -Action $act -Principal (New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest) -Force | Out-Null
+  Start-ScheduledTask -TaskName $task
+  for ($i = 0; $i -lt 300; $i++) { Start-Sleep 1; if ((Get-ScheduledTask -TaskName $task).State -ne 'Running') { break } }
+  Unregister-ScheduledTask -TaskName $task -Confirm:$false
+  $sys = Get-Content -LiteralPath $log -Raw
+  if ($sys -notmatch 'SECURE_FOLDERS_OK=1' -or $sys -notmatch 'CHANGES=0') { Write-Output $sys; throw 'as SYSTEM, secure-folders wanted changes the administrator run did not' }
+  Write-Output 'SYSTEM_RUN_CHANGES=0'
+  Prove $true 'after the SYSTEM run'
   Write-Output 'SECURE_FOLDERS_CI_OK=1'
 } finally {
   foreach ($u in $made) { Remove-LocalUser -Name $u -ErrorAction SilentlyContinue }
