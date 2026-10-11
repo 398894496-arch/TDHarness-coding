@@ -296,6 +296,16 @@ async function main() {
       const plainSeen = JSON.parse(fs.readFileSync(path.join(root, 'gw-legacy.json'), 'utf8')).plain || {};
       assert.ok(Object.entries(plainSeen).some(([ip, row]) => ip === lan.address && row.login === 'amy'), 'plaintext use is recorded with the person');
       console.log('GW_PLAIN_LAN_OK=1');
+
+      // Bridges gone (gw-transition -Finish): GW_LISTEN=local, nobody on the LAN can connect.
+      gw3.kill();
+      fs.writeFileSync(envFile, baseEnv + 'GW_LISTEN=local\n');
+      gw3 = await startGateway(root, port3, {});
+      const err = await viaLan(bearer(amy2)).then(() => null, (e) => e);
+      assert.ok(err && /ECONNREFUSED|EHOSTUNREACH|ETIMEDOUT/.test(String(err.code || err.message)), 'local-only gateway refuses a LAN connection: ' + (err && err.code));
+      const local = await call(port3, 'GET', '/health');
+      assert.equal(local.status, 200, 'and still answers on 127.0.0.1');
+      console.log('GW_LISTEN_LOCAL_OK=1');
     }
 
     console.log('GW_AUTH_PROVE_OK=1');

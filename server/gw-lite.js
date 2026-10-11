@@ -1045,7 +1045,17 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// 双栈监听：员工端按 <主机名>.local 解析时常先拿到 IPv6 链路本地地址，只听 0.0.0.0 会被拒，桌面端要等超时重试。
-server.listen({ port: PORT, host: '::', ipv6Only: false }, () => {
-  process.stdout.write('LISTEN=[::]:' + PORT + ' dual-stack\n');
-});
+// Once no desk reaches 8450 straight from the LAN (TLS through Caddy's /gw and no
+// GW_PLAIN_LAN bridge), gateway.env says GW_LISTEN=local: only this machine can connect,
+// whatever the firewall does. Read at start: gw-transition.ps1 -Finish restarts the gateway.
+// Otherwise dual-stack: desks resolving <name>.local often get the IPv6 link-local address
+// first, and a 0.0.0.0-only listener would make them wait for a timeout.
+if (/^local$/i.test(String(loadEnv(ENV_PATH).GW_LISTEN || '').trim())) {
+  server.listen({ port: PORT, host: '127.0.0.1' }, () => {
+    process.stdout.write('LISTEN=127.0.0.1:' + PORT + ' local-only\n');
+  });
+} else {
+  server.listen({ port: PORT, host: '::', ipv6Only: false }, () => {
+    process.stdout.write('LISTEN=[::]:' + PORT + ' dual-stack\n');
+  });
+}

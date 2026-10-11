@@ -24,5 +24,8 @@ if ($env:TDH_FULL_PATCHES -eq "1") {
   node (Join-Path $Root "patches\apply-kernel-patches.js") $Prefix --only $CodingMarks
 }
 Write-Output "SETUP_OK=1"
+Write-Output "MODE=kernel-only"
+Write-Output "NOTE=This is only the patched dsh CLI on this computer: no login, no team, no company disk, no knowledge base, no shared model keys."
+Write-Output "NOTE=The team desk (TDHarness) is a server: run scripts\setup-all.ps1 as Administrator on the Windows PC that will hold the keys; employees install the desk from its download page."
 Write-Output "PATH_HINT=$Prefix\bin"
 Write-Output "NEXT=set DEEPSEEK_API_KEY=... then dsh --patch overlays\solo.yml"

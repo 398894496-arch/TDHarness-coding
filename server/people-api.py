@@ -225,10 +225,29 @@ def set_password(login: str, pw: str) -> None:
 # so X-Forwarded-For is the desk's address. Failures are counted per login+address, per
 # address and per login over 15 minutes; past a limit that key is refused (429) without
 # looking at the password, until its oldest failure ages out. In memory: a restart clears it.
+# The per-login limit does not apply from an address that login signed in from in the last
+# 30 days (runtime/login-known.json): otherwise anyone on the LAN could keep the admin out
+# by failing 30 times from elsewhere. The per-address and per-pair limits still apply there.
 LOGIN_WINDOW = 900
 LOGIN_LIMITS = {"pair": 5, "src": 20, "login": 30}
 _LOGIN_MU = threading.Lock()
 _LOGIN_FAILS: dict[str, list[float]] = {}
+KNOWN_FILE = ROOT / "runtime" / "login-known.json"
+KNOWN_DAYS = 30
+KNOWN_PER_LOGIN = 20
+
+
+def _known() -> dict:
+    try:
+        data = json.loads(KNOWN_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _known_here(login: str, src: str, now: float) -> bool:
+    seen = (_known().get(login) or {}).get(src)
+    return bool(seen) and now - float(seen) < KNOWN_DAYS * 86400
 
 
 def _login_keys(login: str, src: str) -> dict[str, str]:
@@ -248,7 +267,8 @@ def login_blocked(login: str, src: str) -> bool:
     now = time.time()
     with _LOGIN_MU:
         keys = _login_keys(login, src)
-        return any(len(_recent(keys[k], now)) >= LOGIN_LIMITS[k] for k in keys)
+        known = _known_here(login, src, now)
+        return any(len(_recent(keys[k], now)) >= LOGIN_LIMITS[k] for k in keys if not (k == "login" and known))
 
 
 def login_failed(login: str, src: str) -> None:
@@ -266,6 +286,20 @@ def login_succeeded(login: str, src: str) -> None:
         keys = _login_keys(login, src)
         _LOGIN_FAILS.pop(keys["pair"], None)
         _LOGIN_FAILS.pop(keys["login"], None)
+        if not src:
+            return
+        now = time.time()
+        data = _known()
+        mine = {a: t for a, t in (data.get(login) or {}).items() if now - float(t) < KNOWN_DAYS * 86400}
+        mine[src] = now
+        data[login] = dict(sorted(mine.items(), key=lambda kv: -float(kv[1]))[:KNOWN_PER_LOGIN])
+        try:
+            KNOWN_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = KNOWN_FILE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data), encoding="utf-8")
+            os.replace(tmp, KNOWN_FILE)
+        except OSError:
+            pass  # a lost record only means the per-login limit applies there too
 
 
 def drop_password(login: str) -> int:

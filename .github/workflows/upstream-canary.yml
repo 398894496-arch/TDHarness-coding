@@ -1,0 +1,32 @@
+name: upstream-canary
+# Every night: do this repository's kernel patches still apply to the newest published
+# @deepseek-ai/dsh? A failure here does not block anything; it says, before any desk
+# updates, that upstream moved an anchor (see docs/UPSTREAM.md for what to do).
+on:
+  schedule:
+    - cron: "17 19 * * *"   # 03:17 Beijing time
+  workflow_dispatch:
+jobs:
+  latest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Newest published kernel (by version, not by tag: upstream's "latest" lags behind)
+        id: v
+        run: |
+          NEWEST="$(npm view @deepseek-ai/dsh versions --json | node -e 'const v=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log([].concat(v).pop())')"
+          PIN="$(awk -F': ' '/^id:/{gsub(/[" ]/, "", $2); print $2; exit}' kernel.yml)"
+          echo "newest=$NEWEST pinned=$PIN tags=$(npm view @deepseek-ai/dsh dist-tags --json | tr -d '\n ')"
+          echo "newest=$NEWEST" >> "$GITHUB_OUTPUT"
+          echo "pinned=$PIN" >> "$GITHUB_OUTPUT"
+      - name: Apply the patches to the newest kernel
+        if: steps.v.outputs.newest != steps.v.outputs.pinned
+        run: |
+          npm install -g "@deepseek-ai/dsh@${{ steps.v.outputs.newest }}" --prefix "$HOME/tdh-newest"
+          KERNEL_PREFIX="$HOME/tdh-newest" node scripts/prove-patches.js
+      - name: Already pinned to the newest
+        if: steps.v.outputs.newest == steps.v.outputs.pinned
+        run: echo "pinned kernel is the newest published; the main CI covers it"

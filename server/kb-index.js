@@ -84,6 +84,7 @@ function indexTerms(text) {
 // Question words carry no topic: 客户要退款怎么处理 is about 客户 / 退款, not 怎么.
 const QUERY_STOP = new Set(['怎么', '么处', '么办', '什么', '如何', '为什', '么样', '哪些', '哪里', '哪个', '是否', '可以',
   '能否', '一下', '是不', '不是', '我们', '你们', '他们', '这个', '那个', '的是', '是谁', '谁来', '有没', '没有', '请问',
+  '能不', '不能', '应该', '现在', '到底', '我的', '你的', '要不', '不要', '还是', '多少', '关于', '帮我', '一个',
   'how', 'what', 'the', 'is', 'are', 'do', 'does', 'to', 'of', 'and', 'in', 'for']);
 
 // Terms for a query: bigrams for runs of two or more characters, the character itself
@@ -111,6 +112,66 @@ function queryTermsAll(text, add, out) {
     }
   }
   return out;
+}
+
+// ---------- refusing instead of guessing (after DSH-KRouter) ----------
+//
+// A question about something the files never mention must get nothing: on the desk, nothing
+// lets the agent search the web, while a weak hit stops it at the wrong page. The question is
+// cut into two-character words (a general word list plus the words the files use), and the
+// first hit is refused when the question's specific words that occur nowhere outnumber the
+// ones that hit, e.g. 外贸报关流程 against a page about 发货流程, or 公司年会 against a page
+// that only says 公司. The word list is jieba's (MIT), as DSH-KRouter publishes it.
+
+const LEXICON_FILE = path.join(__dirname, 'kb-lexicon.txt');
+const GENERIC_WORDS = 1000;
+// A two-character piece holding one of these is part of the question, not its subject.
+const QUESTION_CHARS = /[的了吗呢吧啊么什哪几谁怎啥呀]/;
+let lexiconCache = null;
+
+function lexicon() {
+  if (!lexiconCache) {
+    let words = [];
+    try { words = fs.readFileSync(LEXICON_FILE, 'utf8').split(/\r?\n/).filter((w) => w && w.charAt(0) !== '#'); } catch (e) { /* no list: corpus words only */ }
+    lexiconCache = { known: new Set(words), generic: new Set(words.slice(0, GENERIC_WORDS)) };
+  }
+  return lexiconCache;
+}
+
+// The question's Chinese as known two-character words, left to right; whatever lies between
+// known words is one unknown piece (机除垢 in 咖啡机除垢周期), not cut into made-up pairs.
+function questionWords(raw, inCorpus) {
+  const { known } = lexicon();
+  const isWord = (w) => known.has(w) || inCorpus(w);
+  const out = [];
+  for (const run of norm(raw).match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+/g) || []) {
+    const r = Array.from(run);
+    let loose = '';
+    const flush = () => { if (Array.from(loose).length >= 2) out.push(loose); loose = ''; };
+    let i = 0;
+    while (i < r.length) {
+      const here = i + 1 < r.length ? r[i] + r[i + 1] : '';
+      if (here && isWord(here)) { flush(); out.push(here); i += 2; continue; }
+      loose += r[i];
+      i += 1;
+    }
+    flush();
+  }
+  return out;
+}
+
+function refuses(raw, df, topText) {
+  const { generic } = lexicon();
+  // A piece is somewhere in the files when each of its two-character parts is.
+  const somewhere = (w) => { const r = Array.from(w); for (let i = 0; i + 1 < r.length; i++) if (!((df.get(r[i] + r[i + 1]) || 0) > 0)) return false; return true; };
+  const specific = [...new Set(questionWords(raw, (w) => (df.get(w) || 0) > 0))]
+    .filter((w) => !generic.has(w) && !QUERY_STOP.has(w) && !QUESTION_CHARS.test(w));
+  const top = norm(topText).replace(/\s+/g, '');
+  const absent = specific.filter((w) => !somewhere(w));
+  const onTop = specific.filter((w) => somewhere(w) && top.indexOf(w) >= 0);
+  if (absent.length > onTop.length && (absent.length >= 2 || onTop.length === 0)) return true;
+  // A longer question whose first hit covers less than half of what it asks about.
+  return specific.length >= 3 && onTop.length * 2 < specific.length;
 }
 
 // ---------- files ----------
@@ -246,6 +307,9 @@ function head(full, n) {
 }
 
 const OLE_MAGIC = Buffer.from('d0cf11e0a1b11ae1', 'hex');
+
+// The company's own synonyms, one group per line: 报销 = 费用核销, 报账. Not indexed itself.
+const SYNONYM_FILE = /^(同义词|synonyms)\.txt$/i;
 
 // Put OCR text into the pages pdf-text.mjs marked; list the pages still without any.
 function applyOcr(text, pages) {
@@ -425,7 +489,7 @@ function createIndex(opts) {
       for (const ent of ents) {
         const full = path.join(dir, ent.name);
         if (ent.isDirectory()) { if (!skipDir(ent.name, full)) stack.push(full); continue; }
-        if (!ent.isFile() || ent.name.charAt(0) === '~') continue;
+        if (!ent.isFile() || ent.name.charAt(0) === '~' || SYNONYM_FILE.test(ent.name)) continue;
         const ext = path.extname(ent.name).toLowerCase();
         const img = IMG_EXT.has(ext);
         if (img && (!ocrCfg || ent.name.charAt(0) === '.')) continue;
@@ -530,11 +594,45 @@ function createIndex(opts) {
 
   // queries: the question first, then any aliases; a passage scores by its best one.
   // Returns [{ full, line, text, score, title, fm }], best first, at most perFile per file.
+  // Synonym groups from 同义词.txt / synonyms.txt directly inside the given folders.
+  function synonyms(roots) {
+    const groups = [];
+    for (const root of roots) {
+      let names = [];
+      try { names = fs.readdirSync(root).filter((n) => SYNONYM_FILE.test(n)); } catch (e) { continue; }
+      for (const n of names) {
+        let text = '';
+        try { text = fs.readFileSync(path.join(root, n), 'utf8').replace(/^\uFEFF/, ''); } catch (e) { continue; }
+        for (const line of text.split(/\r?\n/)) {
+          const words = line.replace(/#.*$/, '').split(/[=,，、;；|]/).map((w) => norm(w).trim()).filter(Boolean);
+          if (words.length >= 2) groups.push(words);
+        }
+      }
+    }
+    return groups;
+  }
+
+  // The question, and the same question with each synonym in place of the word it asked with.
+  // Each variant remembers the word it replaced, so a word the files never use can drop out.
+  function expand(queries, groups) {
+    const out = queries.map((q) => ({ text: q, from: '', to: '' }));
+    const first = norm(queries[0] || '');
+    for (const g of groups || []) {
+      for (const w of g) {
+        if (!w || first.indexOf(w) < 0) continue;
+        for (const o of g) if (o !== w && out.length < 9) out.push({ text: first.split(w).join(o), from: w, to: o });
+      }
+    }
+    const seen = new Set();
+    return out.filter((q) => !seen.has(q.text) && seen.add(q.text));
+  }
+
   function search(roots, queries, sopts) {
     const so = sopts || {};
     const limit = so.limit || 24;
     const perFile = so.perFile || 3;
-    const qs = (Array.isArray(queries) ? queries : [queries]).map((q) => ({ raw: norm(q).replace(/\s+/g, ''), terms: queryTerms(q) }))
+    const asked = expand(Array.isArray(queries) ? queries : [queries], so.synonyms);
+    let qs = asked.map((q) => ({ raw: norm(q.text).replace(/\s+/g, ''), terms: queryTerms(q.text), from: q.from, to: q.to }))
       .filter((q) => q.terms.length);
     if (!qs.length) return [];
     const all = docs(roots, so.allow);
@@ -543,6 +641,9 @@ function createIndex(opts) {
     const df = new Map();
     const wanted = new Set();
     for (const q of qs) for (const t of q.terms) wanted.add(t);
+    // The question's own words too (stop words and all), for refusing below.
+    for (const q of qs) for (const t of indexTerms(q.raw)) wanted.add(t);
+    for (const q of qs) for (const t of indexTerms(q.from + q.to)) wanted.add(t);
     for (const { doc } of all) {
       for (const p of doc.passages) {
         N++;
@@ -551,6 +652,10 @@ function createIndex(opts) {
       }
     }
     if (!N) return [];
+    // When the question's word occurs nowhere and a synonym of it does, ask with the synonym only.
+    const nowhere = (w) => { const ts = indexTerms(w); return ts.filter((x) => x.length >= 2 || ts.length === 1).some((x) => !df.has(x)); };
+    if (qs.some((q) => q.from && nowhere(q.from) && !nowhere(q.to))) qs = qs.filter((q) => q.from && nowhere(q.from) && !nowhere(q.to));
+    if (!qs.length) return [];
     const avg = total / N;
     const idf = (t) => { const d = df.get(t) || 0; return Math.log(1 + (N - d + 0.5) / (d + 0.5)); };
     // Coverage counts only terms that occur somewhere: in 运费是谁来承担的, 是谁 / 谁来 are
@@ -564,6 +669,7 @@ function createIndex(opts) {
       for (const p of doc.passages) {
         let best = 0;
         let bestTerm = '';
+        let bestQ = null;
         for (const q of qs) {
           let s = 0;
           let have = 0;
@@ -585,15 +691,24 @@ function createIndex(opts) {
           if (q.live.length > 1 && cover < 0.5) continue;
           s *= cover * cover;
           if (q.raw.length >= 2 && norm(p.text).replace(/\s+/g, '').indexOf(q.raw) >= 0) s *= 1.6;
+          // The synonym stands for what the person asked about: weigh the passages that use it.
+          if (q.to && norm(p.text).indexOf(q.to) >= 0) s *= 1.5;
           let inTitle = 0;
           for (const t of q.terms) if (doc.titleTerms.has(t)) inTitle++;
           s *= 1 + 0.5 * (inTitle / q.live.length);
-          if (s > best) { best = s; bestTerm = q.raw.length >= 2 && norm(p.text).replace(/\s+/g, '').indexOf(q.raw) >= 0 ? q.raw : top; }
+          if (s > best) { best = s; bestQ = q; bestTerm = q.raw.length >= 2 && norm(p.text).replace(/\s+/g, '').indexOf(q.raw) >= 0 ? q.raw : top; }
         }
-        if (best > 0) scored.push({ full, doc, p, score: best, term: bestTerm });
+        if (best > 0) scored.push({ full, doc, p, score: best, term: bestTerm, q: bestQ });
       }
     }
     scored.sort((a, b) => b.score - a.score);
+    if (scored.length && so.refuse !== false) {
+      if (refuses(scored[0].q.raw, df, scored[0].p.text)) {
+        const none = [];
+        none.refused = 'off-topic';
+        return none;
+      }
+    }
     const per = new Map();
     const out = [];
     for (const s of scored) {
@@ -629,7 +744,7 @@ function createIndex(opts) {
     return { files, passages, skipped: byExt, ocr, legacy };
   }
 
-  return { search, preview, docs, stats, fileText: (full) => fileText(full, fs.statSync(full), ctx), idle: () => !running && !queue.length };
+  return { search, synonyms, preview, docs, stats, fileText: (full) => fileText(full, fs.statSync(full), ctx), idle: () => !running && !queue.length };
 }
 
 function clip(text, at, width) {

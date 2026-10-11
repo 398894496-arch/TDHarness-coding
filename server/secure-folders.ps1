@@ -173,13 +173,36 @@ foreach ($path in $sorted) {
   }
   & icacls.exe $path /inheritance:r /Q | Out-Null
   if ($LASTEXITCODE) { throw ('icacls-failed ' + $label + ' inheritance') }
-  # The first time a folder is taken over, what is below it may still carry entries of its
-  # own (an older install granted Everyone file by file): make it all inherit again. Folders
-  # with their own rule further down lose theirs here and get it back on their turn: the
-  # list runs shortest path first, and each is compared when its turn comes.
-  if (-not $cur.protected -and $exists) {
+  # The first time a folder is taken over, and whenever someone has granted Everyone,
+  # Authenticated Users or Users on it again (an older setup did so file by file), what is
+  # below may carry entries of its own: make it all inherit again. Folders with their own
+  # rule further down lose theirs here and get it back on their turn: the list runs shortest
+  # path first, and each is compared when its turn comes.
+  $foreign = $cur.set -match '(^|,)(S-1-1-0|S-1-5-11|S-1-5-32-545):'
+  if ($exists -and (-not $cur.protected -or $foreign)) {
     & icacls.exe (Join-Path $path '*') /reset /T /C /Q 2>&1 | Out-Null
   }
+}
+
+# Who still connects as dshshare, for smb-accounts.ps1 -Status / -Finish: client address and
+# when, kept 30 days. Written every run (roster changes, sign-ins, nightly).
+if (-not $ServerOnly -and (Test-Path -LiteralPath $Runtime)) {
+  $seenFile = Join-Path $Runtime 'dshshare-seen.json'
+  $seen = @{ since = (Get-Date).ToUniversalTime().ToString('s') + 'Z'; clients = @{} }
+  if (Test-Path -LiteralPath $seenFile) {
+    try {
+      $j = Get-Content -LiteralPath $seenFile -Raw | ConvertFrom-Json
+      $seen.since = [string]$j.since
+      foreach ($p in @($j.clients.PSObject.Properties)) {
+        if (((Get-Date).ToUniversalTime() - [DateTime]::Parse($p.Value).ToUniversalTime()).TotalDays -lt 30) { $seen.clients[$p.Name] = [string]$p.Value }
+      }
+    } catch { }
+  }
+  $who = $env:COMPUTERNAME + '\dshshare'
+  foreach ($s in @(Get-SmbSession -ErrorAction SilentlyContinue | Where-Object { $_.ClientUserName -eq $who })) {
+    $seen.clients[[string]$s.ClientComputerName] = (Get-Date).ToUniversalTime().ToString('s') + 'Z'
+  }
+  if ($Apply) { [IO.File]::WriteAllText($seenFile, ($seen | ConvertTo-Json -Depth 3), [Text.UTF8Encoding]::new($false)) }
 }
 
 if (-not $ServerOnly) {

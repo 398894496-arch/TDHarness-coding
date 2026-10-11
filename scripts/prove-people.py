@@ -190,6 +190,20 @@ def main() -> None:
             call(port, "LOGIN", {"username": "nobody%d" % i, "password": "x"}, src="10.9.0.3")
         code, got = call(port, "LOGIN", {"username": "tdh", "password": "seed-pass-123"}, src="10.9.0.3")
         check(code == 429, "address locked after 20 failures")
+        # 30 failures for one login spread over many addresses lock that login, but not from
+        # an address it signed in from before: nobody can keep the admin out that way.
+        code, _ = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"}, src="10.9.1.200")
+        check(code == 200, "zhangsan signs in from their usual address")
+        for i in range(32):
+            call(port, "LOGIN", {"username": "zhangsan", "password": "wrong-%d" % i}, src="10.9.2.%d" % (i // 4))
+        code, got = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"}, src="10.9.3.1")
+        check(code == 429, "login locked from a new address after 30 failures %r" % code)
+        code, got = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"}, src="10.9.1.200")
+        check(code == 200, "still signs in from the usual address %r" % code)
+        for i in range(5):
+            call(port, "LOGIN", {"username": "zhangsan", "password": "guess-%d" % i}, src="10.9.1.200")
+        code, _ = call(port, "LOGIN", {"username": "zhangsan", "password": "brand-new-pass"}, src="10.9.1.200")
+        check(code == 429, "a known address still locks after 5 wrong passwords of its own")
         mine = hit["gw_token"]
         code, got = call(port, "POST", {"action": "self", "name": "小张", "avatar": PIXEL}, mine)
         row = next(p for p in got["people"] if p["login"] == "zhangsan")

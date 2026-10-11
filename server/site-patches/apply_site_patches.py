@@ -56,6 +56,7 @@ class Patcher:
         self.pwd = load(pdir / "patch_people_wording.py")
         self.kbn = load(pdir / "patch_kb_notice.py")
         self.ntc = load(pdir / "patch_notice_txt.py")
+        self.kbf = load(pdir / "patch_kb_frame.py")
         self.gtls = load(pdir / "patch_gw_tls.py")
         self.kwatch = load(pdir / "patch_kernel_watch.py")
         # This server's Caddy root (export-ca.ps1). Given: desks reach the gateway over
@@ -106,6 +107,9 @@ class Patcher:
             data, how2 = text_patch(self.msync.patch, data)
             if str(how2).startswith("patched"):
                 how = ("patched+" if str(how).startswith("patched") else "") + "model-sync"
+            data, how3 = text_patch(self.kbf.patch, data)
+            if str(how3).startswith("patched"):
+                how = ("patched+" if str(how).startswith("patched") else "") + "kb-frame"
             return data, how
         if rel.endswith("company-shell/lib/client.js"):
             data, how = text_patch(self.prm.patch, data)

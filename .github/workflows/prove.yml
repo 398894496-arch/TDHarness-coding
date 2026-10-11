@@ -64,6 +64,12 @@ jobs:
         run: node scripts/prove-gw-auth.js
       - name: Prove the TLS gateway switch and the /fetch guard
         run: node scripts/prove-gw-tls.js
+      - name: Prove the company-share rights (throwaway accounts; fails if the share opens again)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prove-secure-folders-ci.ps1
+      - name: Prove knowledge-search recall (right page first, off-topic refused, synonyms)
+        run: node scripts/prove-kb-recall.js
       - name: Prove people management, including removing an account for good
         if: runner.os == 'Linux'
         run: python3 scripts/prove-people.py

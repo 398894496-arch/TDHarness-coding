@@ -364,6 +364,11 @@ async function main() {
       assert.ok(!s.skipped['.wps'], 'a zip .wps needs no venv: ' + JSON.stringify(s));
       assert.strictEqual(s.ocr.on, false);
     }
+    // The company's synonym list reaches the search: the files only ever say 运费, never 邮费.
+    put(company, '_handbook/_company/同义词.txt', '运费 = 邮费\n');
+    const syn = await as('eve', { route: 'search', query: '邮费' });
+    assert.ok(syn.hits.length && syn.hits[0].text.includes('运费') && syn.hits.some((h) => h.path === 'company/_handbook/_company/after-sales.docx'), 'synonym list used: ' + JSON.stringify(syn.hits.slice(0, 3)));
+    assert.ok(!syn.hits.some((h) => h.path.endsWith('同义词.txt')), 'the list itself is not searched');
     // One character still finds something.
     assert.ok((await as('amy', { route: 'search', query: '税' })).status === 'not-found');
     assert.ok((await as('amy', { route: 'search', query: '运' })).hits.length > 0);
