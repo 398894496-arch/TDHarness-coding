@@ -10,19 +10,26 @@
 // back to single characters. The snippet is the text around the best hit, not the top of
 // the file.
 //
-// Office files (.docx .xlsx .pptx) are opened with zlib, no extra packages. .pdf and other
-// binaries are counted as skipped so the status route can say so.
+// Office files (.docx .xlsx .pptx) are opened with zlib, no extra packages. PDFs are read by
+// pdf-text.mjs (vendored pdf.js) in a child process, one file at a time, and the text is
+// kept in cacheDir so a restart does not read them again. A PDF without a text layer (a
+// scan) and the old binary formats (.doc .xls .ppt) are counted as skipped, with the reason,
+// so the status route can say so.
 //
 // Shared verbatim by the public server (server/kb-index.js) and the office
 // (scripts/p-org-memory/kb-index.js). Keep the two copies identical.
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const { spawnSync } = require('child_process');
 
 const TEXT_EXT = new Set(['.md', '.txt', '.csv', '.tsv']);
 const ZIP_EXT = new Set(['.docx', '.xlsx', '.pptx']);
-const SKIP_EXT = new Set(['.pdf', '.doc', '.xls', '.ppt', '.wps', '.et', '.dps']);
+const SKIP_EXT = new Set(['.doc', '.xls', '.ppt', '.wps', '.et', '.dps']);
+const PDF_SCRIPT = path.join(__dirname, 'pdf-text.mjs');
+const MAX_PDF_BYTES = 60 << 20;
 const MAX_TEXT_BYTES = 4 << 20;
 const MAX_ZIP_BYTES = 40 << 20;
 const MAX_EXTRACT_CHARS = 2 << 20;
@@ -33,7 +40,7 @@ const B = 0.75;
 
 // ---------- terms ----------
 
-const RUN_RE = /([぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]+)|([\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_]+)/gu;
+const RUN_RE = /([\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]+)|([\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_]+)/gu;
 
 function norm(text) {
   return String(text || '').normalize('NFKC').toLowerCase();
@@ -198,20 +205,51 @@ function xlsxText(z) {
   return lines.join('\n');
 }
 
-// The text of a file, or null when this index does not read that kind of file.
-function fileText(full, size) {
+function skip(reason) {
+  const e = new Error(reason);
+  e.reason = reason;
+  return e;
+}
+
+// PDF text through pdf-text.mjs, cached on disk by path, mtime and size.
+function pdfText(full, st, cacheDir) {
+  if (st.size > MAX_PDF_BYTES) throw skip('too-large');
+  if (!fs.existsSync(PDF_SCRIPT)) throw skip('.pdf');
+  let cached = '';
+  if (cacheDir) {
+    const key = crypto.createHash('sha1').update(full + '|' + st.mtimeMs + '|' + st.size).digest('hex');
+    cached = path.join(cacheDir, key + '.txt');
+    try { return fs.readFileSync(cached, 'utf8'); } catch (e) { /* not read yet */ }
+  }
+  const r = spawnSync(process.execPath, [PDF_SCRIPT, full], { encoding: 'utf8', timeout: 120000, maxBuffer: 64 << 20, windowsHide: true });
+  if (r.status !== 0) throw skip(r.status === 2 ? 'pdf-unreadable' : 'pdf-failed');
+  const text = String(r.stdout || '');
+  if (cached) {
+    try { fs.mkdirSync(cacheDir, { recursive: true }); fs.writeFileSync(cached, text); } catch (e) { /* read again next time */ }
+  }
+  return text;
+}
+
+// The text of a file. Throws (with .reason) when it cannot be read.
+function fileText(full, st, cacheDir) {
+  const size = st.size;
   const ext = path.extname(full).toLowerCase();
   if (TEXT_EXT.has(ext)) {
-    if (size > MAX_TEXT_BYTES) return null;
-    return fs.readFileSync(full, 'utf8').replace(/^﻿/, '');
+    if (size > MAX_TEXT_BYTES) throw skip('too-large');
+    return fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, '');
+  }
+  if (ext === '.pdf') {
+    const text = pdfText(full, st, cacheDir);
+    if (!text.trim()) throw skip('pdf-no-text');
+    return text;
   }
   if (ZIP_EXT.has(ext)) {
-    if (size > MAX_ZIP_BYTES) return null;
+    if (size > MAX_ZIP_BYTES) throw skip('too-large');
     const z = zipMembers(fs.readFileSync(full));
     const text = ext === '.docx' ? docxText(z) : ext === '.xlsx' ? xlsxText(z) : pptxText(z);
     return text.slice(0, MAX_EXTRACT_CHARS);
   }
-  return null;
+  throw skip(ext || 'no-extension');
 }
 
 function frontmatter(lines) {
@@ -225,14 +263,14 @@ function frontmatter(lines) {
   return { fm, body: i < lines.length ? i + 1 : 0 };
 }
 
-function addPassage(doc, line, text) {
+function addPassage(doc, line, text, section) {
   const t = text.trim();
   if (!t) return;
   const terms = indexTerms(t);
   if (!terms.length) return;
   const tf = new Map();
   for (const x of terms) tf.set(x, (tf.get(x) || 0) + 1);
-  doc.passages.push({ line, text: t, tf, len: terms.length });
+  doc.passages.push({ line, text: t, tf, len: terms.length, section: section || '' });
 }
 
 function buildDoc(full, text) {
@@ -246,8 +284,11 @@ function buildDoc(full, text) {
   let start = body + 1;
   let buf = [];
   let chars = 0;
+  // The heading a passage sits under: the page of a PDF or deck, the sheet of a workbook.
+  let section = '';
+  let bufSection = '';
   const flush = (next) => {
-    addPassage(doc, start, buf.join('\n'));
+    addPassage(doc, start, buf.join('\n'), bufSection);
     buf = [];
     chars = 0;
     start = next;
@@ -256,8 +297,11 @@ function buildDoc(full, text) {
     const l = lines[i];
     const n = i + 1;
     if (!l.trim()) { if (buf.length) flush(n + 1); else start = n + 1; continue; }
-    if (/^#{1,6}\s/.test(l) && buf.length) flush(n);
-    if (!buf.length) start = n;
+    if (/^#{1,6}\s/.test(l)) {
+      if (buf.length) flush(n);
+      section = l.replace(/^#+\s*/, '').trim();
+    }
+    if (!buf.length) { start = n; bufSection = section; }
     buf.push(l);
     chars += l.length;
     if (chars >= PASSAGE_CHARS) flush(n + 1);
@@ -271,6 +315,7 @@ function buildDoc(full, text) {
 function createIndex(opts) {
   const o = opts || {};
   const skipDir = o.skipDir || ((name) => name.charAt(0) === '.' || name === 'node_modules');
+  const cacheDir = o.cacheDir || '';
   const cache = new Map();
   const skipped = new Map();
 
@@ -289,7 +334,7 @@ function createIndex(opts) {
         if (ent.isDirectory()) { if (!skipDir(ent.name, full)) stack.push(full); continue; }
         if (!ent.isFile() || ent.name.charAt(0) === '~') continue;
         const ext = path.extname(ent.name).toLowerCase();
-        if (!TEXT_EXT.has(ext) && !ZIP_EXT.has(ext)) {
+        if (!TEXT_EXT.has(ext) && !ZIP_EXT.has(ext) && ext !== '.pdf') {
           if (SKIP_EXT.has(ext)) skipped.set(full, ext);
           continue;
         }
@@ -304,11 +349,9 @@ function createIndex(opts) {
     if (hit && hit.key === key) return hit.doc;
     let doc = null;
     try {
-      const text = fileText(full, st.size);
-      if (text != null) doc = buildDoc(full, text);
-      else skipped.set(full, 'too-large');
+      doc = buildDoc(full, fileText(full, st, cacheDir));
     } catch (e) {
-      skipped.set(full, 'unreadable');
+      skipped.set(full, e.reason || 'unreadable');
     }
     cache.set(full, { key, doc });
     if (doc) skipped.delete(full);
@@ -407,7 +450,7 @@ function createIndex(opts) {
       if (n >= perFile) continue;
       per.set(s.full, n + 1);
       const snip = snippet(s.p, s.term);
-      out.push({ full: s.full, line: snip.line, text: snip.text, score: Math.round(s.score * 100) / 100, title: s.doc.title, fm: s.doc.fm });
+      out.push({ full: s.full, line: snip.line, text: snip.text, section: s.p.section, score: Math.round(s.score * 100) / 100, title: s.doc.title, fm: s.doc.fm });
       if (out.length >= limit) break;
     }
     return out;
@@ -419,7 +462,7 @@ function createIndex(opts) {
     try { st = fs.statSync(full); } catch (e) { return []; }
     const doc = load(full, st);
     if (!doc) return [];
-    return doc.passages.slice(0, limit || 3).map((p) => ({ full, line: p.line, text: clip(p.text, 0, 300), title: doc.title, fm: doc.fm }));
+    return doc.passages.slice(0, limit || 3).map((p) => ({ full, line: p.line, text: clip(p.text, 0, 300), section: p.section, title: doc.title, fm: doc.fm }));
   }
 
   function stats() {
@@ -431,7 +474,7 @@ function createIndex(opts) {
     return { files, passages, skipped: byExt };
   }
 
-  return { search, preview, docs, stats, fileText: (full) => { const st = fs.statSync(full); return fileText(full, st.size); } };
+  return { search, preview, docs, stats, fileText: (full) => fileText(full, fs.statSync(full), cacheDir) };
 }
 
 function clip(text, at, width) {

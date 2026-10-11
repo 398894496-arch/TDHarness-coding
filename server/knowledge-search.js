@@ -39,9 +39,12 @@ const TOKENS = process.env.TDH_GW_TOKENS || path.join(ROOT, 'runtime', 'gw-token
 const ROSTER = process.env.TDH_ROSTER || path.join(ROOT, 'runtime', 'roster.json');
 const LOG = process.env.TDH_KNOW_LOG || path.join(ROOT, 'logs', 'knowledge-search.log');
 const LIMIT = 24;
+// Text already pulled out of PDFs, so a restart does not read them again. Safe to delete.
+const CACHE = process.env.TDH_KB_CACHE || path.join(ROOT, 'runtime', 'kb-cache');
 
 const index = createIndex({
   skipDir: (name) => name.charAt(0) === '.' || name === 'node_modules' || name === '90-system',
+  cacheDir: CACHE,
 });
 
 function readBody(req) {
@@ -170,8 +173,11 @@ function layerOf(full) {
   return 'lookup';
 }
 
+// A hit in a PDF, deck or workbook says which page or sheet: line numbers of extracted text
+// mean nothing to the person who opens the file.
 function hit(h) {
-  return { layer: layerOf(h.full), path: relName(h.full), line: h.line, text: h.text, title: h.title };
+  const where = h.section && !/\.(md|txt)$/i.test(h.full) ? '〔' + h.section + '〕 ' : '';
+  return { layer: layerOf(h.full), path: relName(h.full), line: h.line, text: where + h.text, title: h.title };
 }
 
 function resolveNamed(named) {

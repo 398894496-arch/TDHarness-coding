@@ -14,6 +14,10 @@ The repository name `TDHarness-coding` is a working title. It can change later. 
 
 The Windows client zip ships `ffmpeg.exe`, `ffprobe.exe` and their libraries under `CompanyDesk/ffmpeg/`, unmodified, from the BtbN build `ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip` (https://github.com/BtbN/FFmpeg-Builds). That build is distributed under the GNU Lesser General Public License version 3; the full text is in `CompanyDesk/ffmpeg/LICENSE.txt` inside the zip, and the source is at https://ffmpeg.org/download.html (release 8.1). The desk runs these programs as separate executables and does not link against them.
 
+## pdf.js
+
+The knowledge search reads PDF text with Mozilla pdf.js (`pdfjs-dist` 4.10.38, legacy build, Apache License 2.0, Copyright Mozilla Foundation, https://github.com/mozilla/pdf.js). `server/vendor/pdfjs/` holds `pdf.mjs`, `pdf.worker.mjs` and the packed CMaps, unmodified, with the license text.
+
 ## Vendor marks
 
 The Grok, OpenAI and Claude marks on the desk's model settings page are taken

@@ -4,6 +4,18 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.2
+
+**知识库读 PDF**
+- 公司盘 `_handbook` 里的 PDF 现在会被读取，和 docx、xlsx、pptx 一起参与排序检索。解析用 Mozilla pdf.js（Firefox 内置的那个，`pdfjs-dist` 4.10.38，Apache-2.0），只放了文字提取需要的文件（`server/vendor/pdfjs/`，约 4.6MB，含中文字体映射表），不用装 npm 包。
+- 每个 PDF 在子进程里解析（`server/pdf-text.mjs`），坏文件或超大文件拖不垮检索服务；单个上限 60MB、120 秒。提取出的文字缓存在 `D:\dsh\runtime\kb-cache`，重启不用重读，这个文件夹可以随时删。实测 37 页、17MB 的论文 0.9 秒。
+- 命中 PDF、PPT、Excel 时，摘要前标出位置：〔第 2 页〕、〔工作表名〕。
+- 很多中文字体把「二」之类映射成康熙部首（⼆ U+2F06），提取时折回普通汉字，否则搜「二段」搜不到。
+- pdf.js 用 `console.log` 往标准输出打警告，会混进正文；子进程里全部静音，正文只走 `process.stdout.write`。
+- 没有文字层的扫描件不做 OCR，`route=status` 记为 `pdf-no-text`；损坏或加了密码的记为 `pdf-unreadable`。
+
+证明：`scripts/prove-knowledge.js` 现场生成一份中文 PDF（Type0 字体、Identity-H 编码、ToUnicode 映射，第二页内容压缩，这是 Word 导出中文 PDF 的常见结构），问「住宿上限多少」第一条就是它，摘要以〔第 2 页〕开头；一份扫描件、一份损坏文件分别报告；缓存目录里有提取结果。
+
 ## 2026.10.11
 
 **知识库检索重做**（第三方对「企业知识库」的评审）
