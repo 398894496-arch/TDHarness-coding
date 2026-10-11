@@ -4,6 +4,15 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.9
+
+**全新安装的内核页能用了**
+- 之前：服务器本机工作台的内核页（下载、试启动、切换内核）要用 `D:\dsh\runtime` 里的一套工具，但这些工具只有某个站点当年用一次性脚本放进去过，装机脚本不放。全新安装的服务器上，内核页会提示「服务器缺少 ps-runner.mjs」。
+- 现在：`setup-server.ps1` 每次运行都把 `ps-runner.mjs`、`win-kernel-plug-lan.ps1`、`win-kernel-cutover-lan.ps1`、`kernel-selftest.mjs` 和打补丁脚本（放在 `runtime\kernel-patch\`）更新到仓库里的版本；`runtime\dsh-kernel.yml`（站点当前用的内核和回滚目标）只在不存在时按 `kernel.yml` 写一次，之后由内核页维护。
+- 打补丁脚本换成工作台安装包实际在用的完整版：公开仓原来只有编程子集，少了工作台需要的 8 个补丁，包括设置模块的导出兼容、子代理只注册一次、本机网页登录跳过 cookie、模型页顶部的额度栏、填了 DeepSeek 钥匙后按钥匙列出可用模型等。用公开仓的旧版打出来的新内核，试启动会失败。补丁内容里没有密钥、地址或人名。`--only` 子集照旧，只装内核的路径不受影响。员工电脑上去掉"创作"预设的 `strip-creative-preset.ps1` 也一起放进来，去掉了里面写死的用户路径。
+- `prove-patches.js` 跟着补上了新增补丁的目标文件和 0.1.7 之后的预设位置；Markdown 插槽补丁只适用于 0.1.2 到 0.1.6 之前的内核，检查也按这个范围来。
+- 实测（TDH 服务器，用新的打补丁脚本跑内核页的下载流程，不切换）：0.2.1-alpha.1 打了 16 个补丁，试启动通过（页面 200，165 个插件全部加载）；上游的 0.2.1-alpha.2 补丁打得上，但试启动失败（页面和插件加载不了），内核页会拒绝切换到它。测试用的目录已删除，站点在用的内核没有变。
+
 ## 2026.10.11.8
 
 **共享盘权限脚本：上线当天在 TDH 服务器上发现的两个问题**

@@ -53,13 +53,22 @@ function presetCandidates(name) {
   return [
     path.join('config', 'agent-presets', name, 'agent.cordis.yml'),
     path.join('node_modules', '@deepseek-ai', 'dsh-agent-presets', 'presets', name, 'agent.cordis.yml'),
+    // 0.1.7 and later: one patch file per preset in the web app.
+    path.join('node_modules', '@deepseek-ai', 'dsh-web-app', 'presets', name + '.patch.yml'),
   ];
 }
 
 // 0.1.2-only targets: absent from a 0.1.1 gold, which is exactly what the
 // patcher's minKernel gate is for. Copied when the gold has them.
+// Targets of the desk patches (settings, subagent, loopback web auth, models page): present in
+// every kernel line so far, but copied only when there, so a future kernel that drops one is
+// reported by the patcher (moved / missing), not by this copier.
 const OPTIONAL_FILES = [
   path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-chat', 'lib', 'client.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-settings', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-tool-subagent', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-client-connection', 'lib', 'index.js'),
+  path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-models', 'lib', 'client.js'),
 ];
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tdh-coding-patch-'));
@@ -108,6 +117,7 @@ const boot = fs.readFileSync(path.join(dst, BOOT_FILE), 'utf8');
 const goldVersion = JSON.parse(fs.readFileSync(path.join(src, 'package.json'), 'utf8')).version;
 const goldNums = String(goldVersion).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
 const goldIs012Line = goldNums[0] > 0 || goldNums[1] > 1 || (goldNums[1] === 1 && goldNums[2] >= 2);
+const goldBelow016 = goldNums[0] === 0 && (goldNums[1] === 0 || (goldNums[1] === 1 && goldNums[2] < 6));
 const sessionText = fs.readFileSync(path.join(dst, SESSION_FILE), 'utf8');
 const chatRel = OPTIONAL_FILES[0];
 const chatText = fs.existsSync(path.join(dst, chatRel)) ? fs.readFileSync(path.join(dst, chatRel), 'utf8') : '';
@@ -122,7 +132,8 @@ const marks = [
   ['SESSION_EVENTS_ALIAS', sessionText.includes('company-session-events-alias-v1') === goldIs012Line],
   // The markdown slot patch is minKernel-gated to the 0.1.2 line, where
   // dsh-client-ui-chat first ships; it must land there and stay off 0.1.1.
-  ['MARKDOWN_SLOT', chatText.includes('company-assistant-markdown-slot-v1') === (goldIs012Line && chatText !== '')],
+  // The markdown slot belongs to 0.1.2 up to (not including) 0.1.6; later kernels are left alone.
+  ['MARKDOWN_SLOT', chatText.includes('company-assistant-markdown-slot-v1') === (goldIs012Line && goldBelow016 && chatText !== '')],
 ];
 let bad = 0;
 for (const [name, ok] of marks) {

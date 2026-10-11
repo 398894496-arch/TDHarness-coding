@@ -86,7 +86,9 @@ Set by `server/secure-folders.ps1` from the roster and each person's account; ch
 
 `client/CompanyDesk-{win,mac}.zip` are templates: the pinned kernel `@deepseek-ai/dsh` (see `kernel.yml`), Node, the desk plugins (`plugins/company-*`), OpenCLI, Windows-MCP or Peekaboo. Setup and `publish-site-update.ps1` turn them into this site's packages: `server/site-patches/*.py` patch them (each patch carries an `@@mark` and is a no-op the second time), `site-cs.py` writes the site's address and seals `BUILD.json`, `pack-sign.js` signs `version.json`, `pack-delta.py` builds delta packs. The desk checks the signature before an update and its own files on every launch.
 
-The kernel itself is patched by `patches/apply-kernel-patches.js` (anchors that must match exactly once; a missing anchor fails). CI applies them to the pinned version on every change; `upstream-canary` applies them to the newest published version every night.
+The kernel itself is patched by `patches/apply-kernel-patches.js` (anchors that must match exactly once; a missing anchor fails; a patch whose anchors are all gone in a newer kernel is reported as moved). The full set is what the desk packages run; `--only` picks the subset the kernel-only CLI uses. CI applies the full set to the pinned version on every change; `upstream-canary` applies it to the newest published version every night.
+
+**Changing the kernel from the desk** (the version page on the server's own desk, admins only): setup puts `ps-runner.mjs`, `win-kernel-plug-lan.ps1`, `win-kernel-cutover-lan.ps1`, `kernel-selftest.mjs` and the patcher (`runtime\kernel-patch\`, with `strip-creative-preset.ps1`) into `D:\dsh\runtime`, and writes `runtime\dsh-kernel.yml` (the kernel this site runs, and the one to roll back to) once. Download installs a version into `runtime\dsh-<version>`, patches it and boots it against a copy of the desk's home (page, every plugin); switching copies it into the desk and boots it again, and puts the previous kernel back if that fails.
 
 ## Proofs
 
