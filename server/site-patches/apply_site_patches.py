@@ -54,6 +54,7 @@ class Patcher:
         self.gwt = load(pdir / "patch_gw_token.py")
         self.prm = load(pdir / "patch_people_remove.py")
         self.pwd = load(pdir / "patch_people_wording.py")
+        self.kbn = load(pdir / "patch_kb_notice.py")
         self.gtls = load(pdir / "patch_gw_tls.py")
         self.kwatch = load(pdir / "patch_kernel_watch.py")
         # This server's Caddy root (export-ca.ps1). Given: desks reach the gateway over
@@ -110,6 +111,9 @@ class Patcher:
             data, how2 = text_patch(self.pwd.patch, data)
             if str(how2).startswith("patched"):
                 how = ("patched+" if str(how).startswith("patched") else "") + "people-wording"
+            data, how3 = text_patch(self.kbn.patch, data)
+            if str(how3).startswith("patched"):
+                how = ("patched+" if str(how).startswith("patched") else "") + "kb-notice"
             return data, how
         if rel.endswith("company-grok-media/lib/index.js"):
             data, how = text_patch(self.media.patch, data)

@@ -53,7 +53,7 @@ Settings → **人员**. Accounts grouped by department. Boss and managers issue
 
 ### Also running
 
-- **Knowledge base:** a nightly job distils each person's conversations of the day into a page the desk can search.
+- **Knowledge base:** a nightly job distils each person's conversations of the day into a page the desk can search; company documents (`.md .txt .csv .docx .xlsx .pptx`) dropped in `company\_handbook` are searched with them, ranked, by department. It is a work memory for the agents, not a document Q&A product: for thousands of PDFs and scanned files, put a dedicated RAG system (Dify, RAGFlow, MaxKB) next to it.
 - **Web search:** domestic engines first for Chinese, Exa, GitHub, Bilibili; `深搜 ` for Grok's sourced web search.
 - **Browser:** OpenCLI ships with the Windows client; the agent guides each person through loading its extension once.
 - **Long work:** automatic context compaction at 80% of the model's window, and on a too-long prompt.
@@ -108,7 +108,7 @@ If you need “everyone in chat on AI next week,” do not use this repo.
 
 Done here: the tree is scanned for office IPs and keys; the patcher refuses well-known live prefixes; a network workspace is not allowed as the sandbox root; desks reach the model gateway over TLS (8443/gw, pinned to this server's own root), it answers only a live per-person login token and trusts no address, only an admin's token can change keys, and its page reader refuses private addresses ([SERVER.md](SERVER.md#who-the-gateway-answers)).
 
-You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation; everyone on the roster can search the whole knowledge base; the seed admin `tdh` gets a random password per install, shown once at the end of setup; change it right after (Settings → 账号 → 修改密码). Passwords are stored as salted hashes and sign-in is throttled; the company share is not split per person (anyone signed in can open anyone's folder), by design, because task deliverables are reviewed across people.
+You still need to know: the agent cannot police you; this repo does not see your key or bill; there is no per-person disk isolation; the knowledge base is scoped by department and person (raw conversations only by their owner, that department's director and admins), and every desk says so on its account page; the seed admin `tdh` gets a random password per install, shown once at the end of setup; change it right after (Settings → 账号 → 修改密码). Passwords are stored as salted hashes and sign-in is throttled; the company share is not split per person (anyone signed in can open anyone's folder), by design, because task deliverables are reviewed across people.
 
 ## What it will not do
 

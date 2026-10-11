@@ -204,7 +204,7 @@ if (-not (Test-Path -LiteralPath $gwEnv)) {
   Copy-Item -LiteralPath (Join-Path $Server 'gateway.env.example') -Destination $gwEnv
 }
 
-foreach ($n in @('_office', '_shared', '_skills', '_control', 'content')) {
+foreach ($n in @('_office', '_shared', '_skills', '_control', 'content', '_handbook', '_handbook\_company')) {
   New-Item -ItemType Directory -Force -Path (Join-Path $Company $n) | Out-Null
 }
 
