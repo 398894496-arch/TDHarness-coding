@@ -1,0 +1,20 @@
+# Company shell. This row owns the sidebar area.
+#
+# `disabled: true` drops the shipped row instead of registering on top of it.
+# That distinction is the whole point: stacking a second occupant on the single
+# `sidebar` slot would leave two copies of the area in the tree and the pack
+# would stop being replaceable. Dropping the row means our component is the only
+# occupant, so we owe every descendant slot a home (see lib/client.js).
+#
+# `ui-workspace` stays enabled on purpose — it is a separate row, and it still
+# supplies the shipped WorkspaceBrowser that we render inside our first tab.
+#
+# `ui-brand-official` is dropped so the whale / "deepseek HARNESS" wordmark are
+# not fighting our THE DIVA occupants on the three brand seats.
+- id: ui-sidebar
+  disabled: true
+- id: ui-brand-official
+  disabled: true
+- insert:
+    - id: company-shell
+      name: company-shell

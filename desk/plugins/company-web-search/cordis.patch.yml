@@ -1,0 +1,5 @@
+# Company web door. Model still calls web_search / web_fetch.
+# Door URL comes from overlay site tokens. Do not hardcode a host here.
+- insert:
+    - id: company-web-search
+      name: company-web-search

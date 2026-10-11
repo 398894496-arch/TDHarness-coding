@@ -1,0 +1,19 @@
+{
+  "name": "dsh-bridge-browser",
+  "version": "0.0.3",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  }
+}

@@ -1,0 +1,5 @@
+# Company Grok imagine door. Tools: generate_image / generate_video.
+# Door URL comes from overlay site tokens. Do not hardcode a host here.
+- insert:
+    - id: company-grok-media
+      name: company-grok-media

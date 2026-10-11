@@ -1,0 +1,5 @@
+# Host: edit_pos tool + POST /company/edit-pos. Sidecars live under
+# $DSH_HOME/edit-pos, not the workspace and not browser storage.
+- insert:
+    - id: company-edit-pos
+      name: company-edit-pos

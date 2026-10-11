@@ -1,0 +1,12 @@
+# Vendored from Lum1104/dsh-browser (bridge-browser). Company name is
+# dsh-bridge-browser. Token lives under this desk's DSH_HOME, not ~/.dsh.
+# Chrome sidebar chat is not the employee conversation surface.
+- insert:
+    - id: bridge-browser
+      name: dsh-bridge-browser
+      config:
+        sessionWorkspacePath: ""
+        deferSessionCreate: true
+        toolTimeoutMs: 90000
+        snapshotMaxChars: 32000
+        maxInteractiveItems: 60
