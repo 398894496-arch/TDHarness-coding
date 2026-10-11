@@ -567,10 +567,12 @@ const DENY = {
 // address: runtime/gw-legacy.json. server/gw-transition.ps1 reads it to tell when every
 // desk has updated and the bridges, and the LAN firewall rule for 8450, can go.
 const LEGACY_PATH = process.env.TDH_GW_LEGACY || path.join(ROOT, 'runtime', 'gw-legacy.json');
-let legacy = null;
-let legacyDirty = false;
+// `since` is when this record began: "nobody used a bridge for 72 hours" means nothing
+// until the record itself is 72 hours old.
+let legacy = readJsonFile(LEGACY_PATH) || { plain: {}, tokenless: {} };
+let legacyDirty = !legacy.since;
+if (!legacy.since) legacy.since = new Date().toISOString();
 function noteLegacy(kind, req) {
-  if (!legacy) legacy = readJsonFile(LEGACY_PATH) || { plain: {}, tokenless: {} };
   const bag = legacy[kind] || (legacy[kind] = {});
   const who = clientOf(req);
   const row = bag[who] || (bag[who] = { count: 0 });

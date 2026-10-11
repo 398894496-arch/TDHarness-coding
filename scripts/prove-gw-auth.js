@@ -235,6 +235,7 @@ async function main() {
     await new Promise((res) => setTimeout(res, 600));
     const seenLegacy = JSON.parse(fs.readFileSync(path.join(root, 'gw-legacy.json'), 'utf8'));
     assert.ok(Object.values(seenLegacy.tokenless || {}).some((row) => row.count >= 1 && row.last), 'tokenless use is recorded for gw-transition');
+    assert.ok(seenLegacy.since && Date.parse(seenLegacy.since) <= Date.now(), 'the record says since when it watches');
     console.log('GW_TOKENLESS_SWITCH_OK=1');
     fs.writeFileSync(envFile, baseEnv);
 
