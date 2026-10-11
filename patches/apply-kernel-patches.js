@@ -1,15 +1,22 @@
 #!/usr/bin/env node
-// Shape a pinned @deepseek-ai/dsh prefix. Coding-tree patches, not a live hot fix.
+// Shape the pinned kernel prefix: apply company patches to framework source.
+// The full set is what the desk packages run (desk patches: settings export,
+// subagent registered once, loopback web auth, models page); `--only` picks the
+// subset the kernel-only CLI path uses (scripts/setup.sh). Helpers in ./lib.
+// On a server the kernel page runs this from D:\dsh\runtime\kernel-patch
+// (setup-server.ps1 puts it there). Not a live hot fix.
 //
-// Run against a prefix you own, after `npm install -g --prefix` and before
-// `dsh` uses it. Never point this at a running node_modules.
+// This is distribution shape. It runs against a prefix we own, after
+// `npm install -g --prefix` and before the desk or client zip uses it --
+// the same slot as strip-creative-preset.sh. It must never be pointed at a
+// running employee node_modules; 三底座合同 forbids that.
 //
 // Why anchored edits and not a vendored copy of the whole file: a full-file
 // copy silently reverts every upstream fix the next time the kernel is bumped,
 // and nothing reports it. Here an anchor that no longer matches is a hard
 // failure, so a kernel bump forces someone to look at the patch again.
 //
-// usage: node patches/apply-kernel-patches.js <prefix>
+// usage: node scripts/p-product-base/apply-kernel-patches.js <prefix>
 'use strict';
 
 const fs = require('fs');
@@ -74,8 +81,12 @@ function editVariants(edit) {
   return [{ from: edit.from, to: edit.to }];
 }
 
+function scoreEdit(text, edit) {
+  return editVariants(edit).map((v, i) => ({ i, v, n: text.split(v.from).length - 1 }));
+}
+
 function applyEdit(text, edit, file) {
-  const scored = editVariants(edit).map((v, i) => ({ i, v, n: text.split(v.from).length - 1 }));
+  const scored = scoreEdit(text, edit);
   const matched = scored.filter((s) => s.n === 1);
   if (matched.length !== 1) {
     // The kernel moved. Do not guess -- a patch that half-applies to a
@@ -97,6 +108,7 @@ function presetCandidates(name) {
   return [
     path.join('config', 'agent-presets', name, 'agent.cordis.yml'),
     path.join('node_modules', '@deepseek-ai', 'dsh-agent-presets', 'presets', name, 'agent.cordis.yml'),
+    path.join('node_modules', '@deepseek-ai', 'dsh-web-app', 'presets', name + '.patch.yml'),
   ];
 }
 
@@ -119,6 +131,7 @@ const MARKDOWN_SLOT_PATCH = {
     file: path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-chat', 'lib', 'client.js'),
     mark: 'company-assistant-markdown-slot-v1',
     minKernel: '0.1.2',
+    maxKernel: '0.1.6',
     append:
       '\n// --- company-assistant-markdown-slot-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n',
     edits: [
@@ -129,13 +142,13 @@ const MARKDOWN_SLOT_PATCH = {
       },
       {
         name: 'assistant-markdown-slot-render',
-        from: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {\n\t\t\t\t\t\t\ttext: block.text,\n\t\t\t\t\t\t\tstreaming,\n\t\t\t\t\t\t\tlabels,\n\t\t\t\t\t\t\tfileMentions: mentions,\n\t\t\t\t\t\t\tpathImages\n\t\t\t\t\t\t}, i));',
-        to: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(react.Fragment, { children: renderMarkdown({ text: block.text, streaming, labels, fileMentions: mentions, pathImages }) }, i));',
+        from: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {\n\t\t\t\t\t\t\ttext: block.text,\n\t\t\t\t\t\t\tstreaming,\n\t\t\t\t\t\t\tlabels,\n\t\t\t\t\t\t\tfileMentions: mentions\n\t\t\t\t\t\t}, i));',
+        to: '\t\t\t\t\t\trendered.push((0, react_jsx_runtime.jsx)(react.Fragment, { children: renderMarkdown({ text: block.text, streaming, labels, fileMentions: mentions }) }, i));',
       },
       {
         name: 'assistant-node-render-slot',
-        from: 'function AssistantNodeView({ node, groupPart, useDisclosure, useTurnData,',
-        to: 'function AssistantNodeView({ node, renderSlot, groupPart, useDisclosure, useTurnData,',
+        from: 'function AssistantNodeView({ node, useTurnData,',
+        to: 'function AssistantNodeView({ node, renderSlot, useTurnData,',
       },
       {
         name: 'assistant-node-markdown-fallback',
@@ -144,8 +157,8 @@ const MARKDOWN_SLOT_PATCH = {
       },
       {
         name: 'assistant-markdown-child-slot',
-        from: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tinject: () => ({ hooks: { presentation } })\n\t\t\t}, AssistantNodeView)',
-        to: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tchildren: { "conversation.assistant.markdown": { kind: "single", scope: "session" } },\n\t\t\t\tinject: () => ({ hooks: { presentation } })\n\t\t\t}, AssistantNodeView)',
+        from: 'key: "assistant-step",\n\t\t\t\tlocale: NS\n\t\t\t}, AssistantNodeView)',
+        to: 'key: "assistant-step",\n\t\t\t\tlocale: NS,\n\t\t\t\tchildren: { "conversation.assistant.markdown": { kind: "single", scope: "session" } }\n\t\t\t}, AssistantNodeView)',
       },
     ],
 };
@@ -184,6 +197,122 @@ const PATCHES = [
     ],
   },
   MARKDOWN_SLOT_PATCH,
+  {
+    // 0.1.2 renamed settingsNamespace -> parseSettingsNamespace and stopped
+    // exporting it. Vendor plugins (dsh-better-sidebar, ego-browser) still
+    // import the old name; missing export kills the whole plugin tree at boot.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-settings', 'lib', 'index.js'),
+    mark: 'company-settings-namespace-compat-v1',
+    minKernel: '0.1.2',
+    append: '\n// --- company-settings-namespace-compat-v1 ---\n',
+    edits: [
+      {
+        name: 'alias-settingsNamespace',
+        from:
+          'function parseSettingsNamespace(value) {\n' +
+          '\tif (!NAMESPACE_PATTERN.test(value)) throw new TypeError(`settings namespace "${value}" must match ${String(NAMESPACE_PATTERN)}`);\n' +
+          '\treturn value;\n' +
+          '}',
+        to:
+          'function parseSettingsNamespace(value) {\n' +
+          '\tif (!NAMESPACE_PATTERN.test(value)) throw new TypeError(`settings namespace "${value}" must match ${String(NAMESPACE_PATTERN)}`);\n' +
+          '\treturn value;\n' +
+          '}\n' +
+          'function settingsNamespace(value) {\n' +
+          '\treturn parseSettingsNamespace(value);\n' +
+          '}',
+      },
+      {
+        name: 'export-settingsNamespace',
+        from: 'export { SettingsConflictError, SettingsProvider, SettingsProvider as default, redactSecrets };',
+        to: 'export { SettingsConflictError, SettingsProvider, SettingsProvider as default, redactSecrets, settingsNamespace };',
+      },
+    ],
+  },
+  {
+    // 0.1.7 renamed SettingsProvider -> SettingsForms and dropped
+    // parseSettingsNamespace. better-sidebar 0.16.1 still imports
+    // settingsNamespace; missing export is "failed to import" and the
+    // official Failed to load plugins page.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-settings', 'lib', 'index.js'),
+    mark: 'company-settings-namespace-compat-v2',
+    minKernel: '0.1.7',
+    append: '\n// --- company-settings-namespace-compat-v2 ---\n',
+    edits: [
+      {
+        name: 'export-settingsNamespace-forms',
+        from: 'export { SettingsConflictError, SettingsForms, SettingsForms as default, redactSecrets };',
+        to:
+          'function settingsNamespace(value) {\n' +
+          '\treturn value;\n' +
+          '}\n' +
+          'export { SettingsConflictError, SettingsForms, SettingsForms as default, redactSecrets, settingsNamespace };',
+      },
+    ],
+  },
+  {
+    // Host base and the selected preset both register toolName "subagent".
+    // The second register throws and session create dies.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-tool-subagent', 'lib', 'index.js'),
+    mark: 'company-subagent-tool-once-v1',
+    minKernel: '0.1.7',
+    append: '\n// --- company-subagent-tool-once-v1 ---\n',
+    edits: [
+      {
+        name: 'skip-subagent-tool-if-present',
+        from:
+          '\tconst mount = (subagentProvider) => {\n' +
+          '\t\tassertSubagentProviderConfiguration(subagentProvider);\n' +
+          '\t\tconst wording = providerWording(subagentProvider.inheritsParentContext);\n',
+        to:
+          '\tconst mount = (subagentProvider) => {\n' +
+          '\t\tassertSubagentProviderConfiguration(subagentProvider);\n' +
+          '\t\tif (runtimeCtx.tools.get(toolName) !== void 0) return;\n' +
+          '\t\tconst wording = providerWording(subagentProvider.inheritsParentContext);\n',
+      },
+    ],
+  },
+  {
+    // 0.1.2 prints dsh web: http://127.0.0.1:PORT/?token=... and 401s
+    // any other load. Company WKWebView / WebView2 hardcode the bare
+    // loopback URL. Desk binds 127.0.0.1 only; skip the cookie on loopback.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-client-connection', 'lib', 'index.js'),
+    mark: 'company-loopback-web-auth-v1',
+    minKernel: '0.1.2',
+    append: '\n// --- company-loopback-web-auth-v1 ---\n',
+    edits: [
+      {
+        name: 'loopback-skip-api-cookie',
+        from:
+          '\trequestRejection(request) {\n' +
+          '\t\tif (!isTrustedApiRequest(request, this.trustedHosts)) return 403;\n' +
+          '\t\treturn this.browserAuth.isAuthenticated(request) ? void 0 : 401;\n' +
+          '\t}',
+        to:
+          '\trequestRejection(request) {\n' +
+          '\t\tif (!isTrustedApiRequest(request, this.trustedHosts)) return 403;\n' +
+          '\t\tconst host = header$1(request.headers, "host");\n' +
+          '\t\tconst hostUrl = host === void 0 ? void 0 : parseAuthority(host);\n' +
+          '\t\tif (hostUrl !== void 0 && isLoopbackHostname(hostUrl.hostname)) return void 0;\n' +
+          '\t\treturn this.browserAuth.isAuthenticated(request) ? void 0 : 401;\n' +
+          '\t}',
+      },
+      {
+        name: 'loopback-skip-index-cookie',
+        from:
+          '\tauthorizeIndex(request, response) {\n' +
+          '\t\treturn this.browserAuth.authorizeIndex(request, response);\n' +
+          '\t}',
+        to:
+          '\tauthorizeIndex(request, response) {\n' +
+          '\t\tconst host = header$1(request.headers, "host");\n' +
+          '\t\tconst hostUrl = host === void 0 ? void 0 : parseAuthority(host);\n' +
+          '\t\tif (hostUrl !== void 0 && isLoopbackHostname(hostUrl.hostname)) return true;\n' +
+          '\t\treturn this.browserAuth.authorizeIndex(request, response);\n' +
+          '\t}',
+      },
+    ],
+  },
   {
     file: path.join('node_modules', '@deepseek-ai', 'dsh-sandbox-local', 'lib', 'index.js'),
     mark: MARK,
@@ -403,9 +532,8 @@ const PATCHES = [
     edits: [
       {
         name: 'win-junction-mklink',
-        // 0.1.7 removed ensureSymlink from dsh-app-boot. Nothing left to
-        // retarget; a missing anchor skips this patch instead of failing.
-        skipIfGone: true,
+        // Official ensureSymlink (rc.2). v1/v2 already-applied is skipped
+        // via `already`. Do not require packing on Windows.
         variants: [
           {
             from:
@@ -542,13 +670,24 @@ const PATCHES = [
     edits: [
       {
         name: 'win-junction-mklink-local-cwd',
-        skipIfGone: true,
         from:
           '\tconst r = spawnSync("cmd.exe", ["/c", "mklink", "/J", link, target], { encoding: "utf8", windowsHide: true });\n',
         to:
           '\tconst r = spawnSync("cmd.exe", ["/c", "mklink", "/J", link, target], { encoding: "utf8", windowsHide: true, cwd: process.env.SystemRoot || "C:\\\\Windows" });\n',
       },
     ],
+  },
+  {
+    // 0.1.7 removed ensureSymlink. AppHost used to RestoreProduct the
+    // whole zip whenever win-junction-failed was missing. Stamp the
+    // string so older exe copies also skip that path.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-app-boot', 'lib', 'index.js'),
+    mark: 'company-win-junction-mark-v5',
+    already: ['win-junction-failed', 'company-win-junction-mark-v5'],
+    minKernel: '0.1.7',
+    append:
+      '\n// win-junction-failed // company-win-junction-mark-v5: 0.1.7 has no ensureSymlink; do not RestoreProduct\n',
+    edits: [],
   },
   {
     // Permit an empty result only for a complete, single missing-root
@@ -683,6 +822,107 @@ const PATCHES = [
       },
     ],
   },
+  {
+    // Official models page has no top slot. Company quota sits above the
+    // provider list; the page itself stays the shipped one.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-models', 'lib', 'client.js'),
+    mark: 'company-models-header-v1',
+    minKernel: '0.1.7',
+    append:
+      '\n// --- company-models-header-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n',
+    edits: [
+      {
+        name: 'models-header-slot',
+        from:
+          '\t\t\t\tchildren: [\n' +
+          '\t\t\t\t\t(0, react_jsx_runtime.jsx)("h2", {\n' +
+          '\t\t\t\t\t\tclassName: ModelsSection_module_css_default["title"],\n' +
+          '\t\t\t\t\t\tchildren: t("title")\n' +
+          '\t\t\t\t\t}),\n',
+        to:
+          '\t\t\t\tchildren: [\n' +
+          '\t\t\t\t\trenderSlot("settings.models.header", {}),\n' +
+          '\t\t\t\t\t(0, react_jsx_runtime.jsx)("h2", {\n' +
+          '\t\t\t\t\t\tclassName: ModelsSection_module_css_default["title"],\n' +
+          '\t\t\t\t\t\tchildren: t("title")\n' +
+          '\t\t\t\t\t}),\n',
+      },
+      {
+        name: 'models-header-child',
+        from:
+          '\t\t\t\t\t"settings.models.footer": {\n' +
+          '\t\t\t\t\t\tkind: "list",\n' +
+          '\t\t\t\t\t\tscope: "root"\n' +
+          '\t\t\t\t\t}\n',
+        to:
+          '\t\t\t\t\t"settings.models.header": {\n' +
+          '\t\t\t\t\t\tkind: "list",\n' +
+          '\t\t\t\t\t\tscope: "root"\n' +
+          '\t\t\t\t\t},\n' +
+          '\t\t\t\t\t"settings.models.footer": {\n' +
+          '\t\t\t\t\t\tkind: "list",\n' +
+          '\t\t\t\t\t\tscope: "root"\n' +
+          '\t\t\t\t\t}\n',
+      },
+    ],
+  },
+  {
+    // After a DeepSeek key is saved, replace the pinned default catalog
+    // with the models that key can actually call.
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-models', 'lib', 'client.js'),
+    mark: 'company-models-key-discover-v1',
+    minKernel: '0.1.7',
+    append:
+      '\n// --- company-models-key-discover-v1 (company patch; see scripts/p-product-base/apply-kernel-patches.js) ---\n',
+    edits: [
+      {
+        name: 'discover-deepseek-models-from-key',
+        from:
+          '\t\t\t\tif (keyValue.length > 0) {\n' +
+          '\t\t\t\t\tconst stored = await operations.storeCredential(keyRef, keyValue);\n' +
+          '\t\t\t\t\tif (stored !== void 0) return stored;\n' +
+          '\t\t\t\t}\n' +
+          '\t\t\t\tsetKeyDraft("");\n',
+        to:
+          '\t\t\t\tif (keyValue.length > 0) {\n' +
+          '\t\t\t\t\tconst stored = await operations.storeCredential(keyRef, keyValue);\n' +
+          '\t\t\t\t\tif (stored !== void 0) return stored;\n' +
+          '\t\t\t\t\tif (layout === "deepseek") {\n' +
+          '\t\t\t\t\t\tconst listed = await operations.discoverModels("llm-pi-ai", {\n' +
+          '\t\t\t\t\t\t\tbaseURL: "https://api.deepseek.com/v1",\n' +
+          '\t\t\t\t\t\t\tapi: "openai-completions",\n' +
+          '\t\t\t\t\t\t\tapiKey: keyValue\n' +
+          '\t\t\t\t\t\t});\n' +
+          '\t\t\t\t\t\tif (listed.kind === "found" && listed.models.length > 0) {\n' +
+          '\t\t\t\t\t\t\tconst models = listed.models.map((model) => ({ id: model.id, ...model.name === void 0 ? {} : { name: model.name } }));\n' +
+          '\t\t\t\t\t\t\tconst withModels = schema.setPath(schema.setPath(next, ["models"], models), ["baseURL"], "https://api.deepseek.com/anthropic");\n' +
+          '\t\t\t\t\t\t\tconst writtenModels = await operations.writeSettings(ns, pathOps(settingsPath, committedOriginal, withModels), expectedRevision);\n' +
+          '\t\t\t\t\t\t\tif (writtenModels.kind === "written") {\n' +
+          '\t\t\t\t\t\t\t\tsetCommittedOriginal(schema.getPath(writtenModels.view.user, settingsPath));\n' +
+          '\t\t\t\t\t\t\t\tsetExpectedRevision(writtenModels.view.revision);\n' +
+          '\t\t\t\t\t\t\t\tsetDraft(withModels);\n' +
+          '\t\t\t\t\t\t\t}\n' +
+          '\t\t\t\t\t\t}\n' +
+          '\t\t\t\t\t}\n' +
+          '\t\t\t\t}\n' +
+          '\t\t\t\tsetKeyDraft("");\n',
+      },
+    ],
+  },
+  {
+    file: path.join('node_modules', '@deepseek-ai', 'dsh-client-ui-settings-models', 'lib', 'client.js'),
+    mark: 'company-models-key-unlocked-v1',
+    minKernel: '0.1.7',
+    append:
+      '\n// --- company-models-key-unlocked-v1 ---\n',
+    edits: [
+      {
+        name: 'deepseek-key-always-editable',
+        from: '\t\t\tconst keyLocked = keyState?.writable === false;\n',
+        to: '\t\t\tconst keyLocked = layout === "deepseek" ? false : keyState?.writable === false;\n',
+      },
+    ],
+  },
 ];
 
 const kernelRoot = resolveKernelRoot();
@@ -723,6 +963,11 @@ for (const patch of PATCHES) {
     skipped += 1;
     continue;
   }
+  if (patch.maxKernel && !kernelBelowMin(KERNEL_VERSION, patch.maxKernel)) {
+    console.log('PATCH_SKIP_KERNEL=' + patch.file + '|' + patch.mark + '|kernel=' + KERNEL_VERSION + '|needs<' + patch.maxKernel);
+    skipped += 1;
+    continue;
+  }
   const target = path.join(kernelRoot, patch.file);
   if (!fs.existsSync(target)) {
     console.error('PATCH_FAIL=target-missing|' + target);
@@ -756,17 +1001,16 @@ for (const patch of PATCHES) {
     continue;
   }
 
+  const gone = patch.edits.length && patch.edits.every((edit) => scoreEdit(text, edit).every((s) => s.n === 0));
+  if (gone) {
+    console.log('PATCH_SKIP_MOVED=' + patch.file + '|' + patch.mark + '|kernel=' + KERNEL_VERSION);
+    skipped += 1;
+    continue;
+  }
+
   for (const edit of patch.edits) {
-    const scored = editVariants(edit).map((v) => text.split(v.from).length - 1);
-    if (edit.skipIfGone && scored.every((n) => n === 0)) {
-      console.log('PATCH_SKIP_ANCHOR=' + patch.file + '|' + patch.mark + '|' + edit.name);
-      skipped += 1;
-      text = null;
-      break;
-    }
     text = applyEdit(text, edit, patch.file);
   }
-  if (text == null) continue;
   text = text.trimEnd() + '\n' + patch.append;
 
   fs.writeFileSync(target, text, 'utf8');
@@ -789,7 +1033,11 @@ if (onlyMarks.size) {
 
 const presetRel = resolvePresetRel('standard');
 if (!presetRel) {
-  console.log('PRESET_SKILLS_SKIP=standard|missing');
+  console.error('PATCH_FAIL=preset-missing|' + presetCandidates('standard').join(' , '));
+  process.exit(1);
+}
+if (presetRel.endsWith('.patch.yml')) {
+  console.log('PRESET_PIN_SKIP=0.1.7-patch-layout|' + presetRel);
 } else {
 const presetPath = path.join(kernelRoot, presetRel);
 const PRESET_MARK = 'company-preset-skills-v1';
@@ -832,6 +1080,10 @@ function pinPresetFetch(name) {
   const presetRel = resolvePresetRel(name);
   if (!presetRel) {
     console.log('PRESET_FETCH_SKIP=' + name + '|missing');
+    return;
+  }
+  if (presetRel.endsWith('.patch.yml')) {
+    console.log('PRESET_FETCH_SKIP=' + name + '|0.1.7-patch-layout');
     return;
   }
   const presetPath = path.join(kernelRoot, presetRel);
@@ -908,6 +1160,10 @@ function pinPresetInstrRoot(name, presetRel) {
     console.log('PRESET_INSTR_SKIP=' + name + '|missing');
     return;
   }
+  if (presetRel.endsWith('.patch.yml')) {
+    console.log('PRESET_INSTR_SKIP=' + name + '|0.1.7-patch-layout');
+    return;
+  }
   const presetPath = path.join(kernelRoot, presetRel);
   let text = fs.readFileSync(presetPath, 'utf8');
   if (text.includes(mark)) {
@@ -943,8 +1199,8 @@ function pinPresetInstrRoot(name, presetRel) {
 
 pinPresetInstrRoot('standard', resolvePresetRel('standard'));
 pinPresetInstrRoot('code', resolvePresetRel('code'));
-pinPresetInstrRoot('company-think', path.join('config', 'agent-presets', 'company-think', 'agent.cordis.yml'));
-pinPresetInstrRoot('company-think-eval', path.join('config', 'agent-presets', 'company-think-eval', 'agent.cordis.yml'));
+pinPresetInstrRoot('company-think', resolvePresetRel('company-think'));
+pinPresetInstrRoot('company-think-eval', resolvePresetRel('company-think-eval'));
 
 console.log('PATCH_APPLIED=' + applied);
 console.log('PATCH_SKIPPED=' + skipped);

@@ -477,6 +477,25 @@ if ((Test-Path -LiteralPath (Join-Path $Runtime 'company-ca.crt')) -and -not (Se
     Write-Output 'GW_LISTEN=local'
   }
 }
+# What the kernel page on this server's desk needs to download, patch, try and switch a
+# kernel (the version page): the runner, the two scripts, the self-test and the kernel patcher.
+# Refreshed on every run; the version record is written only once (it names the kernel this
+# site runs now, and the page keeps it up to date).
+$kp = Join-Path $Runtime 'kernel-patch'
+New-Item -ItemType Directory -Force -Path (Join-Path $kp 'lib') | Out-Null
+foreach ($f in 'ps-runner.mjs', 'kernel-selftest.mjs', 'win-kernel-plug-lan.ps1', 'win-kernel-cutover-lan.ps1') {
+  Copy-Item -Force -LiteralPath (Join-Path $Server $f) -Destination (Join-Path $Runtime $f)
+}
+$patchSrc = Join-Path (Split-Path -Parent $Server) 'patches'
+Copy-Item -Force -LiteralPath (Join-Path $patchSrc 'apply-kernel-patches.js'), (Join-Path $patchSrc 'strip-creative-preset.ps1') -Destination $kp
+Copy-Item -Force -Path (Join-Path $patchSrc 'lib\*.js') -Destination (Join-Path $kp 'lib')
+$pinYml = Join-Path $Runtime 'dsh-kernel.yml'
+if (-not (Test-Path -LiteralPath $pinYml)) {
+  $pin = ((Get-Content -LiteralPath (Join-Path (Split-Path -Parent $Server) 'kernel.yml') | Where-Object { $_ -match '^id:' } | Select-Object -First 1) -replace '^id:\s*', '' -replace '[" ]', '').Trim()
+  [IO.File]::WriteAllText($pinYml, "id: $pin`npackage: `"@deepseek-ai/dsh`"`ncandidate: $pin`nrollback_id: `nrollback_prefix: `n", $Utf8NoBom)
+}
+Write-Output 'KERNEL_PAGE_TOOLS=1'
+
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'plant-client.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'plant-client-failed' }
 Write-Output ('DOWNLOAD=https://' + $lan + ':8443/')
