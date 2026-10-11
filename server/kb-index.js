@@ -21,6 +21,10 @@
 // is `pdf-no-text` and pictures are not looked at. Old binary formats (.doc .xls .ppt) are
 // counted as skipped. The status route reports all of it.
 //
+// Old binary Office files (.doc .xls .ppt and Kingsoft's .wps .et .dps) go through the same
+// queue to legacy-office.py (same venv). What a file is comes from its first bytes, not its
+// name: WPS saves .wps / .et as zip by default, and a renamed .docx is still a .docx.
+//
 // Shared verbatim by the public server (server/kb-index.js) and the office
 // (scripts/p-org-memory/kb-index.js). Keep the two copies identical.
 
@@ -32,7 +36,7 @@ const { spawn, spawnSync } = require('child_process');
 
 const TEXT_EXT = new Set(['.md', '.txt', '.csv', '.tsv']);
 const ZIP_EXT = new Set(['.docx', '.xlsx', '.pptx']);
-const SKIP_EXT = new Set(['.doc', '.xls', '.ppt', '.wps', '.et', '.dps']);
+const LEGACY_EXT = new Set(['.doc', '.xls', '.ppt', '.wps', '.et', '.dps']);
 const PDF_SCRIPT = path.join(__dirname, 'pdf-text.mjs');
 const MAX_PDF_BYTES = 60 << 20;
 const IMG_EXT = new Set(['.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff', '.webp']);
@@ -226,11 +230,22 @@ function cacheKey(full, st) {
   return crypto.createHash('sha1').update(CACHE_VERSION + '|' + full + '|' + st.mtimeMs + '|' + st.size).digest('hex');
 }
 
-// The OCR result for a file, if a job has finished: { pages: { '1': text } } or { error }.
-function ocrResult(ctx, key) {
+// A background job's result once it has finished: OCR { pages: { '1': text } }, legacy
+// { text }, either { error }.
+function jobResult(ctx, key, kind) {
   if (!ctx.cacheDir) return null;
-  try { return JSON.parse(fs.readFileSync(path.join(ctx.cacheDir, key + '.ocr.json'), 'utf8')); } catch (e) { return null; }
+  try { return JSON.parse(fs.readFileSync(path.join(ctx.cacheDir, key + '.' + kind + '.json'), 'utf8')); } catch (e) { return null; }
 }
+
+function head(full, n) {
+  const fd = fs.openSync(full, 'r');
+  try {
+    const b = Buffer.alloc(n);
+    return b.subarray(0, fs.readSync(fd, b, 0, n, 0));
+  } finally { fs.closeSync(fd); }
+}
+
+const OLE_MAGIC = Buffer.from('d0cf11e0a1b11ae1', 'hex');
 
 // Put OCR text into the pages pdf-text.mjs marked; list the pages still without any.
 function applyOcr(text, pages) {
@@ -277,7 +292,7 @@ function fileText(full, st, ctx) {
   }
   if (ext === '.pdf') {
     const key = cacheKey(full, st);
-    const res = ctx.ocr ? ocrResult(ctx, key) : null;
+    const res = ctx.ocr ? jobResult(ctx, key, 'ocr') : null;
     const got = applyOcr(pdfText(full, st, cacheDir), res && !res.error ? res.pages : (res ? {} : null));
     if (got.need.length && ctx.ocr) ctx.ocr.enqueue(full, got.need, key);
     if (!got.text.replace(/^## 第 \d+ 页$/gm, '').trim()) {
@@ -289,18 +304,35 @@ function fileText(full, st, ctx) {
     if (!ctx.ocr) throw skip(ext);
     if (size > MAX_IMG_BYTES) throw skip('too-large');
     const key = cacheKey(full, st);
-    const res = ocrResult(ctx, key);
+    const res = jobResult(ctx, key, 'ocr');
     if (!res) { ctx.ocr.enqueue(full, [1], key); throw skip('ocr-pending'); }
     if (res.error) throw skip('ocr-failed');
     const text = String((res.pages || {})['1'] || '').trim();
     if (!text) throw skip('ocr-no-text');
     return '## 图片\n' + text;
   }
-  if (ZIP_EXT.has(ext)) {
+  if (ZIP_EXT.has(ext) || LEGACY_EXT.has(ext)) {
     if (size > MAX_ZIP_BYTES) throw skip('too-large');
-    const z = zipMembers(fs.readFileSync(full));
-    const text = ext === '.docx' ? docxText(z) : ext === '.xlsx' ? xlsxText(z) : pptxText(z);
-    return text.slice(0, MAX_EXTRACT_CHARS);
+    const h = head(full, 8);
+    if (h[0] === 0x50 && h[1] === 0x4b) {
+      const z = zipMembers(fs.readFileSync(full));
+      const has = (n) => z.names.indexOf(n) >= 0;
+      const text = has('word/document.xml') ? docxText(z) : has('xl/workbook.xml') ? xlsxText(z)
+        : z.names.some((n) => /^ppt\/slides\//.test(n)) ? pptxText(z) : null;
+      if (text == null) throw skip('unknown-zip');
+      return text.slice(0, MAX_EXTRACT_CHARS);
+    }
+    if (h.equals(OLE_MAGIC)) {
+      if (!ctx.legacy) throw skip(ext);
+      const key = cacheKey(full, st);
+      const res = jobResult(ctx, key, 'legacy');
+      if (!res) { ctx.legacy.enqueue(full, key); throw skip('legacy-pending'); }
+      if (res.error) throw skip(/encrypted/i.test(res.error) ? 'encrypted' : 'legacy-failed');
+      const text = String(res.text || '');
+      if (!text.trim()) throw skip('no-text');
+      return text.slice(0, MAX_EXTRACT_CHARS);
+    }
+    throw skip('unknown-format');
   }
   throw skip(ext || 'no-extension');
 }
@@ -371,10 +403,12 @@ function createIndex(opts) {
   const cacheDir = o.cacheDir || '';
   // OCR needs somewhere to put results: { exe, args } runs `exe ...args --file --pages --out`.
   const ocrCfg = o.ocr && o.ocr.exe && cacheDir ? o.ocr : null;
+  // Old Office files: { exe, args } runs `exe ...args --file --out`.
+  const legacyCfg = o.legacy && o.legacy.exe && cacheDir ? o.legacy : null;
   const queue = [];
   const queued = new Set();
   let running = null;
-  const ocrDone = { done: 0, failed: 0 };
+  const finished = { ocr: { done: 0, failed: 0 }, legacy: { done: 0, failed: 0 } };
   const cache = new Map();
   const skipped = new Map();
 
@@ -395,10 +429,7 @@ function createIndex(opts) {
         const ext = path.extname(ent.name).toLowerCase();
         const img = IMG_EXT.has(ext);
         if (img && (!ocrCfg || ent.name.charAt(0) === '.')) continue;
-        if (!TEXT_EXT.has(ext) && !ZIP_EXT.has(ext) && ext !== '.pdf' && !img) {
-          if (SKIP_EXT.has(ext)) skipped.set(full, ext);
-          continue;
-        }
+        if (!TEXT_EXT.has(ext) && !ZIP_EXT.has(ext) && !LEGACY_EXT.has(ext) && ext !== '.pdf' && !img) continue;
         try {
           const st = fs.statSync(full);
           if (img && st.size < MIN_IMG_BYTES) continue;
@@ -409,12 +440,12 @@ function createIndex(opts) {
     }
   }
 
-  // One OCR job at a time, in the background. When it ends (well or not), the result file
-  // exists and the file is read again with its text.
-  function enqueue(full, pages, key) {
-    if (queued.has(key)) return;
-    queued.add(key);
-    queue.push({ full, pages, key });
+  // One background job at a time (OCR or an old Office file). When it ends, well or not,
+  // the result file exists and the file is read again with its text.
+  function enqueue(kind, full, pages, key) {
+    if (queued.has(kind + key)) return;
+    queued.add(kind + key);
+    queue.push({ kind, full, pages, key });
     pump();
   }
 
@@ -422,7 +453,9 @@ function createIndex(opts) {
     if (running || !queue.length) return;
     const job = queue.shift();
     running = job;
-    const out = path.join(cacheDir, job.key + '.ocr.json');
+    const out = path.join(cacheDir, job.key + '.' + job.kind + '.json');
+    const cfg = job.kind === 'ocr' ? ocrCfg : legacyCfg;
+    const extra = job.kind === 'ocr' ? ['--file', job.full, '--pages', job.pages.join(','), '--out', out] : ['--file', job.full, '--out', out];
     let ended = false;
     let timer = null;
     const end = (why) => {
@@ -434,10 +467,10 @@ function createIndex(opts) {
       }
       let ok = false;
       try { ok = !JSON.parse(fs.readFileSync(out, 'utf8')).error; } catch (e) { ok = false; }
-      ocrDone[ok ? 'done' : 'failed']++;
-      queued.delete(job.key);
+      finished[job.kind][ok ? 'done' : 'failed']++;
+      queued.delete(job.kind + job.key);
       running = null;
-      // Read the file again now, with its OCR text, so status and the next search are current.
+      // Read the file again now, with its text, so status and the next search are current.
       cache.delete(job.full);
       try { load(job.full, fs.statSync(job.full)); } catch (e) { skipped.delete(job.full); }
       setImmediate(pump);
@@ -445,8 +478,7 @@ function createIndex(opts) {
     let child;
     try {
       fs.mkdirSync(cacheDir, { recursive: true });
-      child = spawn(ocrCfg.exe, (ocrCfg.args || []).concat(['--file', job.full, '--pages', job.pages.join(','), '--out', out]),
-        { stdio: 'ignore', windowsHide: true });
+      child = spawn(cfg.exe, (cfg.args || []).concat(extra), { stdio: 'ignore', windowsHide: true });
     } catch (e) {
       end('spawn ' + e.message);
       return;
@@ -456,7 +488,11 @@ function createIndex(opts) {
     child.on('exit', (code) => end('exit ' + code));
   }
 
-  const ctx = { cacheDir, ocr: ocrCfg ? { enqueue } : null };
+  const ctx = {
+    cacheDir,
+    ocr: ocrCfg ? { enqueue: (full, pages, key) => enqueue('ocr', full, pages, key) } : null,
+    legacy: legacyCfg ? { enqueue: (full, key) => enqueue('legacy', full, [], key) } : null,
+  };
 
   function load(full, st) {
     const key = st.mtimeMs + ':' + st.size;
@@ -586,8 +622,11 @@ function createIndex(opts) {
     for (const v of cache.values()) if (v.doc) { files++; passages += v.doc.passages.length; }
     const byExt = {};
     for (const why of skipped.values()) byExt[why] = (byExt[why] || 0) + 1;
-    const ocr = ocrCfg ? { on: true, queued: queue.length, running: running ? 1 : 0, done: ocrDone.done, failed: ocrDone.failed } : { on: false };
-    return { files, passages, skipped: byExt, ocr };
+    // queued / running count every background job, OCR and old Office files alike.
+    const jobs = { queued: queue.length, running: running ? 1 : 0 };
+    const ocr = ocrCfg ? { on: true, ...jobs, ...finished.ocr } : { on: false };
+    const legacy = legacyCfg ? { on: true, ...jobs, ...finished.legacy } : { on: false };
+    return { files, passages, skipped: byExt, ocr, legacy };
   }
 
   return { search, preview, docs, stats, fileText: (full) => fileText(full, fs.statSync(full), ctx), idle: () => !running && !queue.length };

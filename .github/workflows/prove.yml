@@ -51,8 +51,15 @@ jobs:
         run: node scripts/prove-search-errors.js
       - name: Prove local OAuth credential recording and custom endpoints
         run: node scripts/prove-models.js
-      - name: Prove knowledge search answers only a live login token
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python readers for old Office files (the server's venv has the same pins)
+        run: python -m pip install --disable-pip-version-check olefile==0.47 xlrd==2.0.1
+      - name: Prove knowledge search (who sees what, ranking, PDF, OCR queue, old Office files)
         run: node scripts/prove-knowledge.js
+        env:
+          PROVE_PY: python
       - name: Prove the model gateway answers only a live login token
         run: node scripts/prove-gw-auth.js
       - name: Prove the TLS gateway switch and the /fetch guard

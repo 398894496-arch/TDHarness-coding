@@ -1,6 +1,9 @@
-# OCR for the knowledge search (server/ocr.py), installed into its own venv by
-# server/install-ocr.ps1. Pinned: RapidOCR (PaddleOCR models on ONNX Runtime, Apache-2.0,
-# models inside the wheel), pypdfium2 (PDFium, BSD-3/Apache-2.0) to turn PDF pages into images.
+# The knowledge search's Python side, installed into its own venv by server/install-ocr.ps1.
+# Pinned. OCR (server/ocr.py): RapidOCR (PaddleOCR models on ONNX Runtime, Apache-2.0, models
+# inside the wheel), pypdfium2 (PDFium, BSD-3/Apache-2.0) to turn PDF pages into images.
+# Old Office files (server/legacy-office.py): olefile (BSD-2), xlrd (BSD-3).
+olefile==0.47
+xlrd==2.0.1
 rapidocr-onnxruntime==1.4.4
 pypdfium2==4.30.1
 onnxruntime==1.20.1

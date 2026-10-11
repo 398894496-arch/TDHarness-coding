@@ -42,19 +42,21 @@ const LIMIT = 24;
 // Text already pulled out of PDFs, so a restart does not read them again. Safe to delete.
 const CACHE = process.env.TDH_KB_CACHE || path.join(ROOT, 'runtime', 'kb-cache');
 
-// OCR for scanned PDFs and pictures: on once server\install-ocr.ps1 has installed it and
-// written runtime\ocr.json (it does so only after reading a test image correctly).
-function ocrConfig() {
-  if (process.env.TDH_OCR_EXE) return { exe: process.env.TDH_OCR_EXE, args: JSON.parse(process.env.TDH_OCR_ARGS || '[]') };
+// OCR for scanned PDFs and pictures, and old Office files (.doc .xls .ppt .wps .et .dps):
+// on once server\install-ocr.ps1 has set up its venv and written runtime\ocr.json (it does
+// so only after reading a test image correctly). Both run from that venv.
+function venvTool(envExe, envArgs, script) {
+  if (process.env[envExe]) return { exe: process.env[envExe], args: JSON.parse(process.env[envArgs] || '[]') };
   const j = readJson(path.join(ROOT, 'runtime', 'ocr.json'));
-  if (j && j.python && fs.existsSync(j.python)) return { exe: j.python, args: ['-I', path.join(__dirname, 'ocr.py')] };
+  if (j && j.python && fs.existsSync(j.python)) return { exe: j.python, args: ['-I', path.join(__dirname, script)] };
   return null;
 }
 
 const index = createIndex({
   skipDir: (name) => name.charAt(0) === '.' || name === 'node_modules' || name === '90-system',
   cacheDir: CACHE,
-  ocr: ocrConfig(),
+  ocr: venvTool('TDH_OCR_EXE', 'TDH_OCR_ARGS', 'ocr.py'),
+  legacy: venvTool('TDH_LEGACY_EXE', 'TDH_LEGACY_ARGS', 'legacy-office.py'),
 });
 
 function readBody(req) {
