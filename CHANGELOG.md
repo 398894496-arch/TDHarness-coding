@@ -4,6 +4,18 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.12
+
+**Windows 工作台：对话跟人走的几处问题一起修好，`desk-lease.js` 两个平台合成一份**
+- 同步 Mac 上后来加的修复（`company-lease-catalog-follows-pin-v1`）：共享盘慢、本机又没拉到对话时，侧栏目录不再指到本机那份空副本。Windows 原来会这样，员工看到的就是空侧栏。同步后两份 `desk-lease.js` 逐字节相同，合并为 `desk/pack/common/desk-lease.js`。
+- 在真实 Windows 上跑 desk-lease 自检，又发现两处只在 Windows 上出问题的代码：
+  - **会话日志 zstd 改用 Node 解码**。原来改写会话日志里的 `cwd`、检查日志是否损坏，都调用外部 `zstd` 命令，Windows 上没有（大多数 Mac 上也没有）。结果是换电脑后，压缩的对话 `cwd` 没有改到新路径，坏文件也不会被清理。数对话轮数用的是 Node，但只解了第一帧；会话日志是多帧追加写的，所以轮数偏少，比较两份副本哪份更全时会判错，这一点两个平台都受影响。现在按 zstd 帧格式逐帧解码，不再依赖外部命令。用本机 399 个真实会话日志（其中 373 个是多帧）对比 `zstd -dc`，结果全部一致；截断的文件会报错，不会只返回一部分。
+  - **Windows 上复制文件没有 `cp` 命令**。共享盘慢时，「把目录和对话镜像到本机」在 Windows 上一次也没成功过。现在改用 Node 子进程复制，保留文件时间，到时限仍可被结束；Mac 照旧用 `cp`。
+- **自检本身也会碰真实数据**，这个问题是这次在 TDH 服务器上跑自检时暴露的：`roamRoot` 在 Windows 上会改用本机的 `D:\dsh\company`，自检里有一个用例因此读写了服务器上管理员真实的工作台目录。它把两个工作区和 48 个会话目录的路径改成了临时目录，会话头里的 `cwd` 也一起改了。
+  - 处理：先完整备份，再用工作台的 remap 按管理员记录的真实路径改回。核对结果：文件数前后一致（110）；工作区、会话目录、12 个会话日志都已改回原路径，并且都能完整解码。
+  - 自检现在把本机公司根目录换成一个不存在的临时路径，只在临时目录里单独验证 Windows 的服务器分支。在服务器上复跑时，自检前后对 `D:\dsh\company` 的快照完全一致。
+- desk-lease 自检进 CI，Linux 和 Windows 都跑；这也是它第一次在 Windows 上完整通过。
+
 ## 2026.10.11.11
 
 **工作台剩下的自有部分也进了仓库；去掉安装包里另一家公司的其余痕迹**

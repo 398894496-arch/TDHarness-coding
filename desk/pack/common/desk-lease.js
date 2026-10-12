@@ -246,12 +246,17 @@ function deskHome() {
   return arg('home') || process.env.DSH_HOME || path.join(rcDir(), 'desk-home');
 }
 
+// The company folder on the server's own disk: the server's desk works on it directly.
+// The selftest points this at a folder that does not exist, so it can never touch real
+// desks when run on a server (2026-10-12: it rewrote the admin desk's catalogue there).
+let localCompanyRoot = 'D:/dsh/company';
+
 function roamRoot(personal) {
   const n = norm(personal);
   if (process.platform === 'win32') {
     const rel = companyRel(n);
     if (rel != null) {
-      const local = path.join('D:/dsh/company', rel);
+      const local = path.join(localCompanyRoot, rel);
       if (fs.existsSync(local)) return path.join(norm(local), '.dsh-desk');
     }
   }
@@ -459,9 +464,12 @@ function harvestWorkspace(srcWs, dstWs) {
 }
 
 function zstdFileOk(file) {
-  const t = spawnSync('zstd', ['-t', file], { encoding: 'utf8', timeout: 5000 });
-  if (t.error && t.error.code === 'ENOENT') return true;
-  return t.status === 0;
+  try {
+    zstdDecodeAll(fs.readFileSync(file));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sweepBadLocalZstd(home) {
@@ -603,16 +611,27 @@ function officeViaDerp() {
   return false;
 }
 
+const COPY_KEEP_TIMES = "const fs=require('fs');const [s,d]=process.argv.slice(1);"
+  + "fs.copyFileSync(s,d);const st=fs.statSync(s);fs.utimesSync(d,st.atime,st.mtime);";
+
 function copyTimed(src, dst, ms) {
   if (!src || !dst || !fs.existsSync(src)) return 0;
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   const part = dst + '.part';
   try { if (fs.existsSync(part)) fs.unlinkSync(part); } catch { /* */ }
-  const r = spawnSync('cp', ['-p', src, part], {
-    encoding: 'utf8',
-    timeout: ms || 8000,
-    killSignal: 'SIGKILL',
-  });
+  // company-copy-timed-win-v1: Windows has no cp. A Node child does the same copy (times
+  // kept) and can still be killed at the deadline; Macs keep the cp they were tuned with.
+  const r = process.platform === 'win32'
+    ? spawnSync(process.execPath, ['-e', COPY_KEEP_TIMES, src, part], {
+      encoding: 'utf8',
+      timeout: ms || 8000,
+      windowsHide: true,
+    })
+    : spawnSync('cp', ['-p', src, part], {
+      encoding: 'utf8',
+      timeout: ms || 8000,
+      killSignal: 'SIGKILL',
+    });
   if (r.status !== 0) {
     try { if (fs.existsSync(part)) fs.unlinkSync(part); } catch { /* */ }
     return 0;
@@ -748,9 +767,52 @@ function mapPath(oldPath, personal, org) {
   return '';
 }
 
+// company-zstd-all-frames-v1
+// Session logs are zstd frames appended one after another. Node's zlib decodes only the
+// first frame of a buffer, so split the frames (RFC 8878 frame layout) and decode each.
+// No zstd CLI needed: Windows desks and most Macs do not have one.
+function zstdFrames(buf) {
+  const out = [];
+  let off = 0;
+  while (off < buf.length) {
+    if (off + 4 > buf.length) throw new Error('zstd-truncated');
+    const magic = buf.readUInt32LE(off);
+    if (((magic & 0xfffffff0) >>> 0) === 0x184d2a50) {
+      if (off + 8 > buf.length) throw new Error('zstd-truncated');
+      off += 8 + buf.readUInt32LE(off + 4);
+      if (off > buf.length) throw new Error('zstd-truncated');
+      continue;
+    }
+    if (magic !== 0xfd2fb528) throw new Error('zstd-bad-magic');
+    if (off + 5 > buf.length) throw new Error('zstd-truncated');
+    const fhd = buf[off + 4];
+    if (fhd & 0x08) throw new Error('zstd-reserved-bit');
+    const single = (fhd >> 5) & 1;
+    let p = off + 5 + (single ? 0 : 1) + [0, 1, 2, 4][fhd & 3] + [single, 2, 4, 8][fhd >> 6];
+    for (;;) {
+      if (p + 3 > buf.length) throw new Error('zstd-truncated');
+      const h = buf[p] | (buf[p + 1] << 8) | (buf[p + 2] << 16);
+      const type = (h >> 1) & 3;
+      if (type === 3) throw new Error('zstd-reserved-block');
+      p += 3 + (type === 1 ? 1 : h >>> 3);
+      if (p > buf.length) throw new Error('zstd-truncated');
+      if (h & 1) break;
+    }
+    if ((fhd >> 2) & 1) p += 4;
+    if (p > buf.length) throw new Error('zstd-truncated');
+    out.push(buf.subarray(off, p));
+    off = p;
+  }
+  return out;
+}
+
+function zstdDecodeAll(buf) {
+  return Buffer.concat(zstdFrames(buf).map((f) => zlib.zstdDecompressSync(f))).toString('utf8');
+}
+
 function readSessionLog(file) {
   const buf = fs.readFileSync(file);
-  if (file.endsWith('.zstd')) return zlib.zstdDecompressSync(buf).toString('utf8');
+  if (file.endsWith('.zstd')) return zstdDecodeAll(buf);
   return buf.toString('utf8');
 }
 
@@ -783,10 +845,9 @@ function writeShareText(file, text) {
 }
 
 function peekSessionFirstLine(file) {
-  // Header only. Official zstd logs are multi-frame; Node
-  // zlib.zstdDecompressSync is first-frame only — that is enough
-  // for cwd. Never treat that as the full body (rewrite would
-  // wipe the chat).
+  // Header only: the first frame of the first 64 KB is enough for cwd.
+  // Never treat that as the full body (rewrite would wipe the chat);
+  // the full body is zstdDecodeAll.
   if (file.endsWith('.zstd')) {
     const fd = fs.openSync(file, 'r');
     try {
@@ -814,12 +875,7 @@ function peekSessionFirstLine(file) {
 
 function decodeSessionLogFull(file) {
   if (!file.endsWith('.zstd')) return fs.readFileSync(file, 'utf8');
-  const r = spawnSync('zstd', ['-d', '-c', '--', file], {
-    encoding: 'buffer',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (r.status !== 0) throw new Error('zstd-decode-fail');
-  return r.stdout.toString('utf8');
+  return zstdDecodeAll(fs.readFileSync(file));
 }
 
 function writeSessionLogFull(file, text) {
@@ -827,13 +883,9 @@ function writeSessionLogFull(file, text) {
     writeShareText(file, text.endsWith('\n') ? text : text + '\n');
     return;
   }
-  const r = spawnSync('zstd', ['-c', '-q'], {
-    input: Buffer.from(text),
-    encoding: 'buffer',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (r.status !== 0 || !r.stdout || !r.stdout.length) throw new Error('zstd-encode-fail');
-  fs.writeFileSync(file, r.stdout);
+  const out = zlib.zstdCompressSync(Buffer.from(text));
+  if (zstdDecodeAll(out) !== text) throw new Error('zstd-encode-fail');
+  fs.writeFileSync(file, out);
 }
 
 function remapSessionLogs(sessDir, rewrite) {
@@ -1652,6 +1704,20 @@ async function cmdWatch() {
 }
 
 function cmdSelftest() {
+  const realRoot = localCompanyRoot;
+  localCompanyRoot = path.join(os.tmpdir(), 'dsh-selftest-no-local-company-' + process.pid);
+  if (fs.existsSync(localCompanyRoot)) throw new Error('selftest-local-root-exists');
+  if (process.platform === 'win32') {
+    // The server branch, in a temp folder standing in for D:\dsh\company.
+    const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-local-company-'));
+    fs.mkdirSync(path.join(fake, '_office'));
+    localCompanyRoot = fake;
+    if (norm(roamRoot('\\\\host\\dsh-company\\_office')) !== norm(path.join(fake, '_office', '.dsh-desk'))) throw new Error('selftest-roam-local');
+    if (norm(roamRoot('\\\\host\\dsh-company\\emp-x')) !== norm('//host/dsh-company/emp-x/.dsh-desk')) throw new Error('selftest-roam-share');
+    fs.rmSync(fake, { recursive: true, force: true });
+    localCompanyRoot = path.join(os.tmpdir(), 'dsh-selftest-no-local-company-' + process.pid);
+  }
+  if (realRoot !== 'D:/dsh/company') throw new Error('selftest-real-root');
   const a = '/Users/x/company/content/emp-alice';
   const b = '\\\\10.9.8.7\\dsh-company\\content\\emp-alice';
   if (companyRel(a) !== 'content/emp-alice') throw new Error('rel-mac');
@@ -1696,7 +1762,10 @@ function cmdSelftest() {
   const rawLog = JSON.stringify({
     type: 'session', version: 2, id: sid, createdAt: 1, cwd: a, delegationDepth: 0,
   }) + '\n{"type":"user","text":"keep"}\n';
-  fs.writeFileSync(path.join(winPers, '.dsh-desk', 'sessions', macSlug, sid, 'session.jsonl.zstd'), zlib.zstdCompressSync(Buffer.from(rawLog)));
+  // Appended frames, as the kernel writes them: the second frame must survive the cwd rewrite.
+  const tailLog = '{"type":"assistant","text":"second frame"}\n';
+  fs.writeFileSync(path.join(winPers, '.dsh-desk', 'sessions', macSlug, sid, 'session.jsonl.zstd'),
+    Buffer.concat([zlib.zstdCompressSync(Buffer.from(rawLog)), zlib.zstdCompressSync(Buffer.from(tailLog))]));
   remapDesk(winPers, winOrg);
   const wsWin = JSON.parse(fs.readFileSync(path.join(winPers, '.dsh-desk', 'storages', 'workspace.json'), 'utf8'));
   if (norm(wsWin.tables.workspaces.w1.path) !== norm(livePath(winPers))) throw new Error('selftest-win-path');
@@ -1706,6 +1775,14 @@ function cmdSelftest() {
   if (fs.existsSync(path.join(winPers, '.dsh-desk', 'sessions', macSlug))) throw new Error('selftest-win-old-slug');
   const hdr = JSON.parse(readSessionLog(moved).split('\n')[0]);
   if (norm(hdr.cwd) !== norm(livePath(winPers))) throw new Error('selftest-win-cwd');
+  if (readSessionLog(moved).indexOf('second frame') < 0) throw new Error('selftest-zstd-frames-lost');
+  if (sessionLogTurns(moved) !== 2) throw new Error('selftest-zstd-turns');
+  if (!zstdFileOk(moved)) throw new Error('selftest-zstd-ok');
+  const cut = path.join(path.dirname(moved), 'cut.jsonl.zstd');
+  const whole = fs.readFileSync(moved);
+  fs.writeFileSync(cut, whole.subarray(0, whole.length - 3));
+  if (zstdFileOk(cut)) throw new Error('selftest-zstd-truncated');
+  fs.unlinkSync(cut);
   fs.rmSync(boxWin, { recursive: true, force: true });
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-wipe-'));
   fs.mkdirSync(path.join(home, 'sessions', 'x'), { recursive: true });
