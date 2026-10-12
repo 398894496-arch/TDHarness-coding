@@ -23,7 +23,7 @@ The source of the desk's own parts: everything in a desk pack that this project 
 | --- | --- |
 | `start.ps1`, `start-app.ps1`, `CompanyDesk.vbs` / `start.command` | start the desk: share, sign-in, local runtime, window |
 | `sync-desk-home.*`, `sync-skills.js` | copy the desk's home and the company skills into place before the window opens |
-| `desk-lease.js` | one person, one desk at a time; moves the person's conversations with them (`node desk-lease.js selftest`) |
+| `desk-lease.js` | one person, one desk at a time; moves the person's conversations with them (`node desk-lease.js selftest`, CI on Linux and Windows) |
 | `tree-check.js`, `tree-restore.*`, `pack-update-check.js` | check the desk's own files against `BUILD.json` on launch, repair, offer updates |
 | `win-client-mount.ps1`, `win-junction-shim.cjs` / `mac-*.js`, `mac-mount-company.sh` | the company share and the Mac login |
 | `skills/` | the company skills the agent sees (a site's own `_skills` on the share wins when it has any) |
@@ -37,4 +37,4 @@ The source of the desk's own parts: everything in a desk pack that this project 
 
 **Not here.** The desk programs: Windows `TDHarness.exe` is compiled on the server from `server/AppHost.cs`; the Mac launcher `TDHarness` is a compiled Swift program whose source is still only in the maintainer's private repository. Third-party plugins and the extension in the templates: [dsh-artifact](https://github.com/Jannchie/dsh-artifact) 0.7.0, [DSH-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar) 0.24.1 and the dsh-browser Chrome side-panel extension (all MIT).
 
-**History.** First published here on 2026-10-11, taken from the templates as they shipped; the history before that is in the maintainer's private repository. Files kept per platform where the templates differ: most by nature (start scripts, `overlay.yml`, `company-desktop`, `tree-check.js`'s file list). One by drift: the Mac `desk-lease.js` has a later fix (`company-lease-catalog-follows-pin-v1`: the workspace catalogue only moves to the local copy when the conversations are actually pinned there) that the Windows copy does not; it ships as the templates had it until it is tested on a Windows desk.
+**History.** First published here on 2026-10-11, taken from the templates as they shipped; the history before that is in the maintainer's private repository. Files kept per platform only where they differ by nature (start scripts, `overlay.yml`, `company-desktop`, `tree-check.js`'s file list). `desk-lease.js` was two copies that had drifted apart; since 2026.10.11.12 it is one file in `common/`, and its selftest runs in CI on Linux and Windows.

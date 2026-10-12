@@ -68,8 +68,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prove-secure-folders-ci.ps1
-      - name: Prove the desk plugins' source (parses, nothing of one company, site patches apply, overlay)
+      - name: Prove the desk source (parses, nothing of one company, site patches apply, overlay)
         run: python scripts/prove-desk-source.py
+      - name: Desk lease selftest (one desk per person, conversations move with them; zstd logs, copies)
+        working-directory: desk/pack/common
+        run: node desk-lease.js selftest
       - name: Prove knowledge-search recall (right page first, off-topic refused, synonyms)
         run: node scripts/prove-kb-recall.js
       - name: Prove people management, including removing an account for good
