@@ -67,8 +67,9 @@ def main():
     # 1. Parses.
     checked = 0
     for p in files + pfiles:
+        # Shell scripts on Linux and macOS only: on a Windows runner "bash" may be the WSL stub.
         cmd = ["node", "--check", str(p)] if p.suffix in (".js", ".cjs") else (
-            ["bash", "-n", str(p)] if p.suffix in (".sh", ".command") else None)
+            ["bash", "-n", str(p)] if p.suffix in (".sh", ".command") and os.name != "nt" else None)
         if cmd:
             r = subprocess.run(cmd, capture_output=True, text=True)
             if r.returncode:
