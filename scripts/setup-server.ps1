@@ -283,6 +283,9 @@ function Place-Client([string]$Name, [int]$MinBytes) {
   & $py $sitePy --site $SiteYml rewrite-zip --src $from --out $to | Out-Null
   if ($LASTEXITCODE -ne 0) { throw ('rewrite-failed-' + $Name) }
   if (-not (Test-Path -LiteralPath $to)) { throw ('rewrite-missing-' + $Name) }
+  # The desk plugins come from this repository (desk\plugins), not from the template.
+  & $py $sitePy --site $SiteYml overlay-zip --src $to --plugins (Join-Path $Repo 'desk\plugins') | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw ('overlay-failed-' + $Name) }
   return 1
 }
 $winZip = Place-Client 'CompanyDesk-win.zip' 20MB

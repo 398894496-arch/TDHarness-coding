@@ -13,6 +13,8 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 printf 'host: boot-check.local\nshare: dsh-company\nlogin_port: 8443\ngateway_port: 8450\ncompany_path: D:/dsh/company\n' > "$T/site.yml"
 node "$ROOT/server/pack-sign.js" keygen --dir "$T/sign" >/dev/null
 python3 "$ROOT/server/site-cs.py" --site "$T/site.yml" rewrite-zip --src "$ZIP" --out "$T/mac.zip" >/dev/null
+# The desk plugins from this repository, as setup and publish put them in.
+python3 "$ROOT/server/site-cs.py" --site "$T/site.yml" overlay-zip --src "$T/mac.zip" --plugins "$ROOT/desk/plugins" >/dev/null
 python3 "$ROOT/server/site-patches/apply_site_patches.py" --zip "$T/mac.zip" --patches "$ROOT/server/site-patches" --pub "$T/sign/pack-sign.pub" >/dev/null
 # unzip keeps the exec bits and symlinks (node/bin/node, npm links); Python's extractall does not.
 mkdir -p "$T/x" && unzip -q "$T/mac.zip" -d "$T/x"

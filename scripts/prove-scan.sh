@@ -33,6 +33,9 @@ while IFS= read -r f; do
     *.zip|*.dmg|*.exe|*.ico|*.msi) continue ;;
   esac
   for n in "${needles[@]}"; do
+    # The desk's home folder on every site's PCs is ~/.dsh-company-rc8 (the templates'
+    # start scripts create it); the desk plugins have to name it. Elsewhere it is a leak.
+    case "$f|$n" in desk/plugins/*'|dsh-company-rc8') continue ;; esac
     if grep -E -n "$n" "$f" >/dev/null 2>&1; then
       echo "SCAN_HIT=$f|$n"
       bad=1

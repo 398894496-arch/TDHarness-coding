@@ -405,6 +405,56 @@ def rewrite_zip(src: Path, dst: Path, host: str) -> int:
     return n
 
 
+# Where a pack keeps each plugin: the plugin tree and the web profile's copy.
+PLUGIN_HOMES = ("CompanyDesk/plugins/", "CompanyDesk/home/profiles/web/node_modules/")
+
+
+def overlay_zip(src: Path, plugins: Path, host: str) -> int:
+    """Replace the pack's copy of every plugin in `plugins` (desk/plugins in this repository)
+    with that source, in both places a pack keeps it, and give the new files the same site
+    rewrites as rewrite_zip (address, seed people, Mac login, tree check). The desk source in
+    the repository is what sites run; the LFS template's copy is only the fallback."""
+    import zipfile
+
+    mark = b"{{TDH_HOST}}"
+    host_b = host.encode("ascii")
+    names = sorted(d.name for d in plugins.iterdir() if (d / "package.json").is_file())
+    if not names:
+        raise SystemExit("overlay-no-plugins:" + str(plugins))
+    tmp = src.with_suffix(src.suffix + ".tmp")
+    n = 0
+    with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w") as zout:
+        present = set()
+        for item in zin.infolist():
+            name = item.filename.replace("\\", "/")
+            hit = next(((h, nm) for h in PLUGIN_HOMES for nm in names if name.startswith(h + nm + "/")), None)
+            if hit:
+                present.add(hit)
+                continue
+            zout.writestr(item, zin.read(item.filename))
+        for home, nm in sorted(present):
+            root = plugins / nm
+            for f in sorted(root.rglob("*")):
+                if not f.is_file() or f.name.startswith("._") or f.name == ".DS_Store":
+                    continue
+                name = home + nm + "/" + f.relative_to(root).as_posix()
+                data = f.read_bytes()
+                if mark in data:
+                    data = data.replace(mark, host_b)
+                data, _ = patch_company_shell(name, data, host)
+                data, _ = patch_mac_login(name, data)
+                zi = zipfile.ZipInfo(name, date_time=(2026, 10, 11, 0, 0, 0))
+                zi.compress_type = zipfile.ZIP_DEFLATED
+                zi.external_attr = 0o644 << 16
+                zout.writestr(zi, data)
+                n += 1
+        missing = [nm for nm in names if not any((h, nm) in present for h in PLUGIN_HOMES)]
+        if missing:
+            raise SystemExit("overlay-plugin-not-in-pack:" + ",".join(missing))
+    tmp.replace(src)
+    return n
+
+
 def retarget_zip(src: Path, dst: Path, old: str, new: str) -> int:
     import re
     import zipfile
@@ -470,7 +520,7 @@ def main() -> None:
     ap.add_argument("--site", required=True)
     ap.add_argument(
         "cmd",
-        choices=("emit-cs", "emit-caddy", "emit-stamp", "print", "print-mark", "rewrite-zip", "retarget-zip", "reseal-zip", "extract-zip", "replace-zip"),
+        choices=("emit-cs", "emit-caddy", "emit-stamp", "print", "print-mark", "rewrite-zip", "overlay-zip", "retarget-zip", "reseal-zip", "extract-zip", "replace-zip"),
     )
     ap.add_argument("--out")
     ap.add_argument("--src")
@@ -478,6 +528,7 @@ def main() -> None:
     ap.add_argument("--name")
     ap.add_argument("--file")
     ap.add_argument("--old")
+    ap.add_argument("--plugins")
     args = ap.parse_args()
     site = load_site(Path(args.site))
     if args.cmd == "print":
@@ -494,6 +545,12 @@ def main() -> None:
             raise SystemExit("rewrite-zip needs --src and --out")
         n = rewrite_zip(Path(args.src), Path(args.out), site["host"])
         sys.stdout.write("REWRITE_HITS=%s\n" % n)
+        return
+    if args.cmd == "overlay-zip":
+        if not args.src or not args.plugins:
+            raise SystemExit("overlay-zip needs --src and --plugins")
+        n = overlay_zip(Path(args.src), Path(args.plugins), site["host"])
+        sys.stdout.write("OVERLAY_FILES=%s\n" % n)
         return
     if args.cmd == "retarget-zip":
         if not args.src or not args.out or not args.old:

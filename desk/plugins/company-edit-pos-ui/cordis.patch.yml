@@ -1,0 +1,5 @@
+# Client: sample the right-hand editor and POST /company/edit-pos.
+# No Slot takeover. No browser storage. Host owns the sidecar files.
+- insert:
+    - id: company-edit-pos-ui
+      name: company-edit-pos-ui

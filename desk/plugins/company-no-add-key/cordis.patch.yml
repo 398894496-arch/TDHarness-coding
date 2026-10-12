@@ -1,0 +1,5 @@
+# CLIENT plugin: hide official API-key fields with CSS.
+# Never occupy settings.onboarding.
+- insert:
+    - id: company-no-add-key
+      name: company-no-add-key

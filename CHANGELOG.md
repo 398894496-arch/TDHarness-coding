@@ -4,6 +4,22 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.10
+
+**桌面插件的源码进了仓库**
+- `desk/plugins/`：工作台自己的 11 个插件（`company-shell`、联网搜索、生图生视频、浏览器桥、桌面控制和几个小修正），都是不用编译的 ES 模块，仓库里的就是员工在跑的。第一次提交原样取自安装包模板；模板里的两个第三方插件（dsh-artifact、DSH-better-sidebar，MIT）没有收进来；更早的历史在维护者的私有仓库里。说明见 `desk/README.md`。
+- 仓库里的源码现在是正本：装机和每次发版都先用 `site-cs.py overlay-zip` 把它放进安装包（一个插件在包里有两份，两处都换），写入本站地址，再打站点补丁。以后改插件只要改源码再发版，不用重打 400MB 的模板。
+- **去掉了只属于一家公司的内容**。之前每家公司的工作台里都带着维护者自己公司的东西：
+  - 侧栏和首页的三个品牌位显示 THE DIVA 的标识；
+  - 人员列表打开的一瞬间先显示那家公司的人（后来被真实名单替换）；
+  - 公司地图里写着那家公司的名字和品牌；
+  - 两处别名里有那家公司的登录名；
+  - Mac 上的维护按钮写死了某个人的目录。
+
+  现在品牌位改成站点可配置：站点补丁填 `SITE_BRAND_*` 就显示站点自己的标识，不填则显示文字「TDHarness」。示例名单清空，装机时 `site-cs.py` 照旧写入本站的种子管理员。公司地图只留产品词。维护按钮改为读 `TDH_MAINTAINER_REPO`。
+- 新增 `scripts/prove-desk-source.py`（进 CI）检查四件事：每个文件都能解析；源码里没有任何一家公司的名字、品牌、内网或 Tailscale 地址、维护者路径、登录名或密钥；每个站点补丁在源码里都还找得到锚点，而且重复打不会再改；`overlay-zip` 换掉了两处的旧文件、写进了站点地址、没有动别的东西。故意加回「THE DIVA」、改坏一个补丁锚点，都会让检查失败。
+- 实测：用这份源码替换插件后的 Mac 安装包在本机试启动通过（页面 200，165 个插件全部加载）。截图确认品牌位显示文字「TDHarness」。第一版用文字代替图片时出现过黑块（原来的样式是用背景色配图片蒙版），已改用单独的标记。
+
 ## 2026.10.11.9
 
 **全新安装的内核页能用了**

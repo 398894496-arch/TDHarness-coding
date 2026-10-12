@@ -1,0 +1,4 @@
+# Mount the Grok Fast (service_tier=priority) toggle. Additive Slot only.
+- insert:
+    - id: grok-fast-mode
+      name: grok-fast-mode

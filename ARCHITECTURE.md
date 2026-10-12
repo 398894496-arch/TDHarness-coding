@@ -84,7 +84,7 @@ Set by `server/secure-folders.ps1` from the roster and each person's account; ch
 
 ## The desk
 
-`client/CompanyDesk-{win,mac}.zip` are templates: the pinned kernel `@deepseek-ai/dsh` (see `kernel.yml`), Node, the desk plugins (`plugins/company-*`), OpenCLI, Windows-MCP or Peekaboo. Setup and `publish-site-update.ps1` turn them into this site's packages: `server/site-patches/*.py` patch them (each patch carries an `@@mark` and is a no-op the second time), `site-cs.py` writes the site's address and seals `BUILD.json`, `pack-sign.js` signs `version.json`, `pack-delta.py` builds delta packs. The desk checks the signature before an update and its own files on every launch.
+`client/CompanyDesk-{win,mac}.zip` are templates: the pinned kernel `@deepseek-ai/dsh` (see `kernel.yml`), Node, OpenCLI, Windows-MCP or Peekaboo, and an older copy of the desk plugins. Setup and `publish-site-update.ps1` turn them into this site's packages: `site-cs.py overlay-zip` replaces the plugins with the source in [desk/plugins](desk/README.md), `server/site-patches/*.py` patch them (each patch carries an `@@mark` and is a no-op the second time), `site-cs.py` writes the site's address and seals `BUILD.json`, `pack-sign.js` signs `version.json`, `pack-delta.py` builds delta packs. The desk checks the signature before an update and its own files on every launch.
 
 The kernel itself is patched by `patches/apply-kernel-patches.js` (anchors that must match exactly once; a missing anchor fails; a patch whose anchors are all gone in a newer kernel is reported as moved). The full set is what the desk packages run; `--only` picks the subset the kernel-only CLI uses. CI applies the full set to the pinned version on every change; `upstream-canary` applies it to the newest published version every night.
 
@@ -100,6 +100,7 @@ The kernel itself is patched by `patches/apply-kernel-patches.js` (anchors that 
 | `scripts/prove-knowledge.js` | who finds what, ranking, PDF / OCR / old Office files, the background queue | CI |
 | `scripts/prove-kb-recall.js` | right page first, off-topic refused, synonyms | CI |
 | `scripts/prove-secure-folders-ci.ps1` | share rights on throwaway accounts; fails if the share opens again | CI (Windows) |
+| `scripts/prove-desk-source.py` | desk plugin source parses, names no particular company, every site patch still applies, overlay into a pack | CI |
 | `scripts/prove-patches.js` | kernel patches apply to the pinned kernel | CI; nightly on the newest kernel |
 | `server/prove-secure-folders.ps1` | share rights on the real server, account by account | on the server |
 

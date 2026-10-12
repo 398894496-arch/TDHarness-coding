@@ -49,9 +49,16 @@ if ($LASTEXITCODE -ne 0) { throw 'delta-remember-failed' }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'export-ca.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'export-ca-failed' }
 $Ca = 'D:\dsh\runtime\company-ca.crt'
+$DeskPlugins = Join-Path (Split-Path -Parent $Server) 'desk\plugins'
 foreach ($name in 'CompanyDesk-win.zip', 'CompanyDesk-mac.zip') {
   $zip = Join-Path $Dist $name
   if (-not (Test-Path -LiteralPath $zip)) { continue }
+  # The desk plugins from this repository (desk\plugins) replace the pack's copy first, so a
+  # change to a plugin's source reaches the desks with this publish.
+  if (Test-Path -LiteralPath $DeskPlugins) {
+    & $py $SitePy --site $SiteYml overlay-zip --src $zip --plugins $DeskPlugins
+    if ($LASTEXITCODE -ne 0) { throw ('overlay-failed-' + $name) }
+  }
   $a = @((Join-Path $Patches 'apply_site_patches.py'), '--zip', $zip, '--patches', $Patches, '--pub', $Pub)
   if (Test-Path -LiteralPath $Ca) { $a += @('--ca', $Ca) }
   if ($BumpMark) { $a += '--bump-mark' }

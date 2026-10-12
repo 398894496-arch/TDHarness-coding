@@ -1,0 +1,7 @@
+# Already-open Chrome/Edge on this machine. Cookie stays here. Not 8450.
+# No Chrome extension. Client attaches via CDP (may bounce Chrome once).
+- insert:
+    - id: company-open-browser
+      name: company-open-browser
+      config:
+        port: 9222

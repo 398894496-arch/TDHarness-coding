@@ -1,0 +1,6 @@
+# Keep better-sidebar (right workbench). This row only mounts the
+# CLIENT plugin that hides the bottom panel. Do not add a second
+# workspace list — official sidebar.workspaces stays the only tree.
+- insert:
+    - id: hide-bottom-panel
+      name: hide-bottom-panel

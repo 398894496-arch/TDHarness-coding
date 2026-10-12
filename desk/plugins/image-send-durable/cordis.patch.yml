@@ -1,0 +1,7 @@
+# Persist image sends as describe-image markdown so the dialog can
+# preview the picture, while session logs never contain native image
+# blocks. Host half also masks describe_image so text models answer
+# that they cannot see, instead of calling a vision sidecar.
+- insert:
+    - id: image-send-durable
+      name: image-send-durable
