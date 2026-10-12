@@ -1,0 +1,44 @@
+- id: llm-pi-ai
+  config:
+    providers:
+      office:
+        displayName: Grok
+        apiKeyEnv: GROK_API_KEY
+        api: openai-completions
+        baseURL: http://{{TDH_HOST}}:8450/v1
+        # Official ModelSelect injects a "Default" row when the model has no
+        # defaultEffort. That field is only advertised when this profile-level
+        # `reasoning` is a level the model actually offers.
+        reasoning: high
+        compat:
+          supportsStore: false
+          supportsDeveloperRole: false
+          supportsReasoningEffort: true
+          supportsUsageInStreaming: true
+        models:
+          - id: grok-4.6
+            name: grok-4.6
+            contextWindow: 256000
+            input: [text]
+            reasoningEfforts:
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+          - id: grok-4.7
+            name: grok-4.7
+            contextWindow: 256000
+            input: [text]
+            reasoningEfforts:
+              low: low
+              medium: medium
+              high: high
+              xhigh: xhigh
+# No permission-rules row here on purpose. dsh-permission-rules is not bundled
+# in the client zip (package.json and both pack-runtime scripts ship only the
+# four local plugins), so a `config: enforce: true` row was an orphan: it read
+# like the client was blocking tool calls when nothing was loaded to block them.
+# The real boundary for the company tree is the per-person SMB account plus the
+# per-dept NTFS ACL (D17). Bundling the plugin here would be a second, weaker
+# copy of that check. If it is ever added back, add the dependency first and
+# make a pack gate assert the module is present.

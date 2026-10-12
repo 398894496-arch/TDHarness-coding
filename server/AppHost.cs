@@ -14,8 +14,8 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 [assembly: AssemblyTitle("TDHarness")]
-[assembly: AssemblyDescription("The Diva local Agent")]
-[assembly: AssemblyCompany("The Diva")]
+[assembly: AssemblyDescription("TDHarness company desk")]
+[assembly: AssemblyCompany("TDHarness")]
 [assembly: AssemblyProduct("TDHarness")]
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]

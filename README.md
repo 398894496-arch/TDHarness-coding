@@ -4,7 +4,7 @@
 [![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness-coding?label=release)](https://github.com/398894496-arch/TDHarness-coding/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**当前版本 / Version: 2026.10.11.10** · [更新说明 / Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Architecture](ARCHITECTURE.md)
+**当前版本 / Version: 2026.10.11.11** · [更新说明 / Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Architecture](ARCHITECTURE.md)
 
 **TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share, the roster and the knowledge base; employees run a desktop client (Windows or Mac) whose agent works on their own computer (files, commands, browser, desktop apps); its model calls and web search go only through that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘、花名册和知识库；员工电脑装桌面客户端，AI 在员工自己的电脑上干活，模型调用和联网搜索只经过这台服务器。
 
@@ -73,7 +73,7 @@ They combine: a Dify or RAGFlow instance can sit next to TDH for large-scale doc
 - The agent has the employee's own rights on their computer. TDH does not pretend to stop the employee; it controls keys, quotas, the company disk and who sees what ([SECURITY.md](SECURITY.md)).
 - The server's own administrators can open everything on the server.
 - The kernel is an alpha upstream; this repo pins it, patches it and fails hard when a patch no longer applies.
-- The two desk templates (`client/*.zip`: kernel, Node and the bundled tools) are built by the maintainer and CI does not rebuild them ([NOTICE.md](NOTICE.md#what-ships-as-binaries-and-where-it-comes-from)). The desk's own plugins are source in [desk/plugins](desk/README.md) and replace the templates' copy at every install and publish.
+- The two desk templates (`client/*.zip`: kernel, Node and the bundled tools) are built by the maintainer and CI does not rebuild them ([NOTICE.md](NOTICE.md#what-ships-as-binaries-and-where-it-comes-from)). The desk's own parts (plugins, start and update scripts, skills, profile) are source in [desk/](desk/README.md) and replace the templates' copy at every install and publish; the Mac launcher binary is the one part of ours whose source is not here yet.
 
 ## Delivery is a one-click install / 交付就是一键安装
 

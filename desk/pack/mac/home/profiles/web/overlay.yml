@@ -1,0 +1,133 @@
+# Employee portable overlay. Wire is company 8450 only. No upstream, no sk-.
+# Official DeepSeek search stays off. web_search / web_fetch go through
+# company-web-search to the same door as chat.
+- id: web-search-deepseek
+  disabled: true
+- id: web
+  config:
+    searchProvider: company
+    fetchProvider: company
+- id: tool-web
+  config:
+    fetch: true
+    searchTimeoutMs: 170000
+    fetchTimeoutMs: 20000
+    searchMaxQueries: 1
+- id: company-web-search
+  config:
+    baseURL: http://{{TDH_HOST}}:8450
+# company-click-one-hand-v1 — OpenCLI only. Boot must not re-enable these.
+- id: bridge-browser
+  disabled: true
+  config:
+    sessionWorkspacePath: ""
+    deferSessionCreate: true
+- id: ego-browser
+  name: ego-browser
+  disabled: true
+- id: company-open-browser
+  disabled: true
+- id: company-grok-media
+  config:
+    baseURL: http://{{TDH_HOST}}:8450
+- id: agent-presets
+  config:
+    default: standard
+    includeUserRoot: false
+- id: ui-settings-plugin-inventory
+  disabled: true
+- id: ui-settings-plugins
+  disabled: true
+- id: session-log-download
+  disabled: true
+# Instruction chain stays on the company share. Official default markers are
+# [.git]; this Mac home has ~/.git, so the loader walked to $HOME/AGENTS.md
+# and $HOME/CLAUDE.md. config: is a wholesale replace -- maxBytes must be
+# restated or the desk dies (official required value 65536).
+- id: agent-instructions
+  config:
+    maxBytes: 65536
+    projectRootMarkers:
+      - .company-root
+- id: skill-filesystem
+  config:
+    includeDefaultRoots: false
+    # customSkillDirs is outside the employee workspace. The kernel patch
+    # company-skill-custom-trusted-v1 reads it via Node fs (trustedHost),
+    # not ctx.fs. Watch is off: chokidar on UNC is noisy and list() already
+    # rediscovers on each skill tool call.
+    watch: false
+    # Local copy shipped in the client. bundledSkillDir is already
+    # trustedHost in upstream. AppHost / start.ps1 rewrite the token
+    # to <install>/skills.
+    bundledSkillDir: __DESK_SKILLS__
+    customSkillDirs:
+      - __DESK_SKILLS__
+    # Session reads a local cache only. start.command / start.ps1 / AppHost
+    # sync company _skills onto that cache at boot. Do not point the live
+    # catalog at the share or at cwd/_skills (that personal copy goes stale).
+- id: llm-subscriptions
+  disabled: true
+# Fast plugin ships in the same tree. Factory stays off. desk-lease
+# pinRoleUi turns this on only for login.role=admin. Employees never
+# load the settings row.
+- id: grok-fast-mode
+  disabled: true
+# Do not disable the directory-picker row. It publishes the directoryPicker
+# host service and dsh-host-apiproxy waits on it, so disabling it makes the
+# whole plugin tree fail to activate and the desk exits at boot. The
+# "add workspace" entry point is hidden in the company shell instead.
+- id: permission
+  config:
+    # Company Full Access: this OS user may write the client machine and
+    # their personal chair. Shared trees stay read-only (ACL + rules).
+    # Employees must not rewrite this row. Network workspaces cannot use
+    # workspace-write (SMB EPERM / no shell). Skills live on the share.
+    defaultPreset: danger-full-access # @@DESK_DEFAULT_PRESET
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: never
+      # Overriding `presets` replaces the plugin's built-in table, so this row
+      # has to be spelled out here or danger-full-access is not a selectable
+      # preset and the rewrite above has nothing to point at.
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+# dsh-artifact defaults to $DSH_HOME/artifacts. Pin to the session cwd
+# (that person's share folder). Do not add DSH_HOME to the workspace list.
+- id: artifact
+  config:
+    root: artifacts
+- id: system-prompt
+  config:
+    persona: "You are the company employee-desk agent on model {{model}} in {{cwd}}. Think and reply in Simplified Chinese. Company map only: chair / ticket handbook. Public policy and GitHub: web_search once, do not company_knowledge. HTML/canvas: artifact. Do not call the skill tool."
+# The official sidebar browser, off by default outside the official
+# desktop app. Pages open in a sandboxed frame; a site that refuses frames
+# offers "open outside", which goes to the system browser.
+- id: ui-sidebar-browser
+  disabled: false
+# company-desktop-mac-v1
+# Mac desktop control: Peekaboo in <install>/peekaboo behind mcp-filter.cjs.
+- insert:
+    - id: mcp-mac
+      name: '@deepseek-ai/dsh-mcp-client'
+      disabled: !!js process.platform !== 'darwin'
+      config:
+        serverName: mac
+        transport: stdio
+        command: !!js process.execPath
+        args:
+          - !!js process.execPath.replace(/[\\/]node[\\/](?:bin[\\/])?[^\\/]+$/, '/peekaboo/mcp-filter.cjs')
+          - --hide
+          - agent,analyze,browser
+          - --
+          - !!js process.execPath.replace(/[\\/]node[\\/](?:bin[\\/])?[^\\/]+$/, '/peekaboo/peekaboo')
+          - mcp
+          - serve
+          - --allow-foreground
+        failOnStartupError: false
+# DSHWM1:a2ace91e2760ff6dc5a941e0dde9531c

@@ -4,6 +4,31 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.11.11
+
+**工作台剩下的自有部分也进了仓库；去掉安装包里另一家公司的其余痕迹**
+- `desk/pack/`：包根目录里我们自己写的文件也成了源码——启动脚本、共享盘挂载、`desk-lease.js`（一人一桌、对话跟人走）、自检/修复/更新检查、Mac 登录、公司技能（`skills/`）、工作台 profile（agent 人设、工具、桌面控制）、Mac preset。分 `common/`、`win/`、`mac/` 三处，取自模板原文；Windows 脚本保持原来的 CRLF。`overlay-zip` 把它们和插件一起放进安装包，技能目录整体替换（模板里嵌套的旧副本 `skills/skills/` 随之去掉），沿用模板原有的文件权限。
+- 用真实模板逐文件比较：覆盖后与覆盖前相比，插件之外只有下面这些有意改动的文件不同，其余逐字节相同，权限位没有变化。
+- **还在每个站点上的另一家公司的东西**，这次都去掉了：
+  - 员工 agent 的人设里写着「Company map only: 橙池 / TheDiva」；
+  - `company-knowledge` 技能的触发词里有「橙池, orangecity」；
+  - 两个技能里写着维护者本人的「fe1 本机 Obsidian」，还有「分层和老板个人第二大脑一样」；
+  - `desk-lease.js` 的自检用例用维护者的路径和登录名（改成 `/Users/x/`、`emp-alice`，两个平台的自检都通过）；
+  - `kernel-watch.js` 里还有一处写成分开参数的开发机路径，上一版的检查没抓到，现在也读 `TDH_MAINTAINER_REPO`；
+  - 办公室服务器的主机名写死在两处：`desk-lease.js` 判断 Mac 是否走 Tailscale 中继，`mac-mount-company.sh` 判断是否在公司 tailnet 上。这不只是露了名字，在其他站点这两个判断永远不成立。现在按本站地址认服务器：Tailscale IP、MagicDNS 名或主机名（7 个用例）；
+  - 测试数据里有办公室真实员工的登录名（`desk-lease.js` 和 `server/desk_lease.py` 的自检），已换成 alice / bob；
+  - 安装程序 `TDHarness-Setup.exe` 和 `TDHarness.exe` 的文件属性写着 "The Diva"，图标是那家公司的。改为 TDHarness，换了中性的「TDH」图标（`server/tdharness.ico`）。新建的快捷方式直接用 exe 自带的图标。老安装的快捷方式仍指向 `the-diva.ico`，所以包里保留这个文件名，内容换成产品图标。安装程序升到 1.0.16。
+- `dsh-bridge-browser` 其实是 [dsh-browser](https://github.com/omdsh-dev/dsh-browser) 的 bridge 包（MIT），只加了我们的 `ensure-extension.js`；已补上它的许可证并注明来源。NOTICE 补上了模板里另外三个第三方组件（dsh-artifact、DSH-better-sidebar、dsh-browser 扩展，均为 MIT）。
+- `prove-desk-source.py` 现在也检查 `desk/pack`：
+  - 语法：JS 用 `node --check`，shell 用 `bash -n`；
+  - 两种安装包的覆盖；
+  - 站点补丁在源码里命中 17 个文件（原来 5 个）。
+
+  另外对全仓库检查这家公司的名字和品牌，唯一放行的是兼容用的图标文件名。故意加回「橙池」、把 exe 属性改回 "The Diva"、写坏 `start.command`，检查都会失败。
+- `prove-client-boot.sh` 补上了发版时的封条步骤和工作台自己的 tree-check，原来少这一步，tree-check 在本地没法通过。实测：用新源码做出的 Mac 安装包解压、准备 home、tree-check 都通过；kernel 试启动页面返回 200，165 个插件全部加载。
+- **每晚的内核 canary 之前一次都没跑成**：`upstream-canary.yml` 的一个步骤名里带了冒号，整个文件 YAML 解析失败。GitHub 不执行它，只在每次 push 时留下一个红叉。已修复，CI 增加「所有 workflow 文件都能解析」这一步。
+- 仍不在仓库里的自有部分：Mac 启动器 `TDHarness`（编译好的 Swift 程序）。办公室仓库里的两份 Swift 源码都对不上这个二进制，没法证明哪份是它的源码，所以这次不收。
+
 ## 2026.10.11.10
 
 **桌面插件的源码进了仓库**

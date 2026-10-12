@@ -1,0 +1,15 @@
+permissionPresets:
+  defaultPreset: danger-full-access
+ui-conversation:
+  busyEnter: steer
+locale:
+  preference: zh
+dsh-better-sidebar:
+  openByDefault: false
+  bottomPanelAutoTerminal: false
+  agentTerminalTools: true
+  agentOpenTools: true
+  openFilesOnOpen: false
+  tabsEnabled:
+    editor: true
+    terminal: true

@@ -11,12 +11,12 @@ using System.Threading;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("TDHarness Setup")]
-[assembly: AssemblyDescription("The Diva local Agent setup")]
-[assembly: AssemblyCompany("The Diva")]
+[assembly: AssemblyDescription("TDHarness company desk setup")]
+[assembly: AssemblyCompany("TDHarness")]
 [assembly: AssemblyProduct("TDHarness")]
-[assembly: AssemblyCopyright("Copyright The Diva")]
-[assembly: AssemblyVersion("1.0.15.0")]
-[assembly: AssemblyFileVersion("1.0.15.0")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 TDHarness-coding contributors")]
+[assembly: AssemblyVersion("1.0.16.0")]
+[assembly: AssemblyFileVersion("1.0.16.0")]
 
 internal static class Setup
 {
@@ -656,9 +656,9 @@ internal static class Setup
             var st = sc.GetType();
             st.InvokeMember("TargetPath", BindingFlags.SetProperty, null, sc, new object[] { app });
             st.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, sc, new object[] { dest });
-            var ico = Path.Combine(dest, "the-diva.ico");
-            if (File.Exists(ico))
-                st.InvokeMember("IconLocation", BindingFlags.SetProperty, null, sc, new object[] { ico + ",0" });
+            // The icon compiled into TDHarness.exe; no separate .ico to keep in the pack.
+            if (File.Exists(app))
+                st.InvokeMember("IconLocation", BindingFlags.SetProperty, null, sc, new object[] { app + ",0" });
             st.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
             if (!File.Exists(lnk))
             {
@@ -679,10 +679,9 @@ internal static class Setup
     {
         try
         {
-            var ico = Path.Combine(dest, "the-diva.ico");
             var body = "[InternetShortcut]\r\nURL=file:///" + app.Replace('\\', '/') + "\r\n";
-            if (File.Exists(ico))
-                body += "IconFile=" + ico + "\r\nIconIndex=0\r\n";
+            if (File.Exists(app))
+                body += "IconFile=" + app + "\r\nIconIndex=0\r\n";
             File.WriteAllText(urlPath, body, Encoding.ASCII);
             Log("shortcut-url " + urlPath);
         }

@@ -227,10 +227,12 @@ def emit_stamp(build_json: Path) -> str:
     )
 
 
-def replace_zip_member(src: Path, dst: Path, name: str, data: bytes) -> int:
+def replace_zip_member(src: Path, dst: Path, name: str, data: bytes, extra=None) -> int:
+    """Replace one member that must exist; `extra` ({name: bytes}) are replaced only where present."""
     import zipfile
 
     name = name.replace("\\", "/")
+    extra = {k.replace("\\", "/"): v for k, v in (extra or {}).items()}
     tmp = dst.with_suffix(dst.suffix + ".tmp")
     n = 0
     with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w") as zout:
@@ -239,6 +241,8 @@ def replace_zip_member(src: Path, dst: Path, name: str, data: bytes) -> int:
             if cur == name:
                 zout.writestr(item, data)
                 n += 1
+            elif cur in extra:
+                zout.writestr(item, extra[cur])
             else:
                 zout.writestr(item, zin.read(item.filename))
     if n != 1:
@@ -391,45 +395,103 @@ def rewrite_zip(src: Path, dst: Path, host: str) -> int:
             data = zin.read(item.filename)
             shell = "company-shell/" in name
             if "node_modules" not in name or shell:
-                if mark in data:
-                    data = data.replace(mark, host_b)
-                    n += 1
-                data, skipped = skip_open_tree_check(name, data)
-                n += skipped
-                data, patched = patch_company_shell(name, data, host)
-                n += patched
-                data, mac_login = patch_mac_login(name, data)
-                n += mac_login
+                data, k = site_rewrite(name, data, host)
+                n += k
             zout.writestr(item, data)
     tmp.replace(dst)
     return n
+
+
+def site_rewrite(name: str, data: bytes, host: str) -> tuple[bytes, int]:
+    """The per-site rewrites of one pack member: address, tree check, seed people, Mac login."""
+    n = 0
+    mark = b"{{TDH_HOST}}"
+    if mark in data:
+        data = data.replace(mark, host.encode("ascii"))
+        n += 1
+    for fn in (skip_open_tree_check, lambda nm, d: patch_company_shell(nm, d, host), patch_mac_login):
+        data, k = fn(name, data)
+        n += k
+    return data, n
 
 
 # Where a pack keeps each plugin: the plugin tree and the web profile's copy.
 PLUGIN_HOMES = ("CompanyDesk/plugins/", "CompanyDesk/home/profiles/web/node_modules/")
 
 
+def pack_platform(names) -> str:
+    if "CompanyDesk/start.ps1" in names:
+        return "win"
+    if "CompanyDesk/start.command" in names:
+        return "mac"
+    raise SystemExit("overlay-unknown-pack")
+
+
+def pack_sources(pack: Path, plat: str) -> dict:
+    """desk/pack: {member name: file}. common/ first, then the platform's own files."""
+    out = {}
+    for sub in ("common", plat):
+        root = pack / sub
+        if not root.is_dir():
+            continue
+        for f in sorted(root.rglob("*")):
+            if f.is_file() and not f.name.startswith("._") and f.name != ".DS_Store":
+                out["CompanyDesk/" + f.relative_to(root).as_posix()] = f
+    return out
+
+
 def overlay_zip(src: Path, plugins: Path, host: str) -> int:
-    """Replace the pack's copy of every plugin in `plugins` (desk/plugins in this repository)
-    with that source, in both places a pack keeps it, and give the new files the same site
-    rewrites as rewrite_zip (address, seed people, Mac login, tree check). The desk source in
-    the repository is what sites run; the LFS template's copy is only the fallback."""
+    """Put this repository's desk source into a pack: every plugin in `plugins` (desk/plugins)
+    replaces the pack's copy in both places a pack keeps it, and every file in the sibling
+    desk/pack (common/ plus win/ or mac/) replaces or adds that file. The skills folder is
+    owned whole: template skills the source no longer has are dropped. New files get the same
+    site rewrites as rewrite_zip. The repository is what sites run; the LFS template supplies
+    the kernel, runtimes and bundled tools."""
     import zipfile
 
-    mark = b"{{TDH_HOST}}"
-    host_b = host.encode("ascii")
     names = sorted(d.name for d in plugins.iterdir() if (d / "package.json").is_file())
     if not names:
         raise SystemExit("overlay-no-plugins:" + str(plugins))
+    pack = plugins.parent / "pack"
     tmp = src.with_suffix(src.suffix + ".tmp")
     n = 0
+
+    was = {}  # template entries the source replaces: keep their mode bits (start.command runs)
+
+    def put(zout, name, data):
+        data, _ = site_rewrite(name, data, host)
+        zi = zipfile.ZipInfo(name, date_time=(2026, 10, 11, 0, 0, 0))
+        zi.compress_type = zipfile.ZIP_DEFLATED
+        old = was.get(name)
+        if old is not None:
+            zi.external_attr, zi.create_system = old.external_attr, old.create_system
+        else:
+            zi.external_attr = (0o755 if name.endswith((".sh", ".command")) else 0o644) << 16
+        zout.writestr(zi, data)
+
     with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w") as zout:
+        members = [i.filename.replace("\\", "/") for i in zin.infolist()]
+        files = pack_sources(pack, pack_platform(set(members))) if pack.is_dir() else {}
+        owned_skills = any(k.startswith("CompanyDesk/skills/") for k in files)
+        # Folder entries stay where the source still has files under them.
+        keep_dirs = set()
+        for k in list(files) + [h + nm + "/" + f.relative_to(plugins / nm).as_posix()
+                                for h in PLUGIN_HOMES for nm in names for f in (plugins / nm).rglob("*") if f.is_file()]:
+            parts = k.split("/")[:-1]
+            keep_dirs.update("/".join(parts[:i]) + "/" for i in range(1, len(parts) + 1))
         present = set()
         for item in zin.infolist():
             name = item.filename.replace("\\", "/")
+            if name.endswith("/") and name in keep_dirs:
+                zout.writestr(item, b"")
+                continue
             hit = next(((h, nm) for h in PLUGIN_HOMES for nm in names if name.startswith(h + nm + "/")), None)
             if hit:
                 present.add(hit)
+                was[name] = item
+                continue
+            if name in files or (owned_skills and name.startswith("CompanyDesk/skills/")):
+                was[name] = item
                 continue
             zout.writestr(item, zin.read(item.filename))
         for home, nm in sorted(present):
@@ -437,17 +499,11 @@ def overlay_zip(src: Path, plugins: Path, host: str) -> int:
             for f in sorted(root.rglob("*")):
                 if not f.is_file() or f.name.startswith("._") or f.name == ".DS_Store":
                     continue
-                name = home + nm + "/" + f.relative_to(root).as_posix()
-                data = f.read_bytes()
-                if mark in data:
-                    data = data.replace(mark, host_b)
-                data, _ = patch_company_shell(name, data, host)
-                data, _ = patch_mac_login(name, data)
-                zi = zipfile.ZipInfo(name, date_time=(2026, 10, 11, 0, 0, 0))
-                zi.compress_type = zipfile.ZIP_DEFLATED
-                zi.external_attr = 0o644 << 16
-                zout.writestr(zi, data)
+                put(zout, home + nm + "/" + f.relative_to(root).as_posix(), f.read_bytes())
                 n += 1
+        for name, f in sorted(files.items()):
+            put(zout, name, f.read_bytes())
+            n += 1
         missing = [nm for nm in names if not any((h, nm) in present for h in PLUGIN_HOMES)]
         if missing:
             raise SystemExit("overlay-plugin-not-in-pack:" + ",".join(missing))
@@ -529,6 +585,8 @@ def main() -> None:
     ap.add_argument("--file")
     ap.add_argument("--old")
     ap.add_argument("--plugins")
+    ap.add_argument("--if-present", action="append", default=[], metavar="NAME=FILE",
+                    help="replace-zip: also replace NAME with FILE when the pack has it")
     args = ap.parse_args()
     site = load_site(Path(args.site))
     if args.cmd == "print":
@@ -573,7 +631,11 @@ def main() -> None:
     if args.cmd == "replace-zip":
         if not args.src or not args.out or not args.name or not args.file:
             raise SystemExit("replace-zip needs --src --out --name --file")
-        n = replace_zip_member(Path(args.src), Path(args.out), args.name, Path(args.file).read_bytes())
+        extra = {}
+        for pair in args.if_present:
+            k, _, v = pair.partition("=")
+            extra[k] = Path(v).read_bytes()
+        n = replace_zip_member(Path(args.src), Path(args.out), args.name, Path(args.file).read_bytes(), extra)
         sys.stdout.write("REPLACE=%s\n" % n)
         return
     if args.cmd == "emit-cs":

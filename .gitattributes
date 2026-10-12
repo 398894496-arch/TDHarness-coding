@@ -9,3 +9,11 @@
 **/CompanyDesk-mac.zip filter=lfs diff=lfs merge=lfs -text
 *.dmg filter=lfs diff=lfs merge=lfs -text
 server/caddy.exe filter=lfs diff=lfs merge=lfs -text
+# Desk files that ship with CRLF in the packs: keep them byte for byte.
+desk/pack/win/start.ps1 text eol=crlf
+desk/pack/win/start-app.ps1 text eol=crlf
+desk/pack/win/tree-restore.ps1 text eol=crlf
+desk/pack/win/win-client-mount.ps1 text eol=crlf
+desk/pack/win/NOTICE.txt text eol=crlf
+desk/pack/common/home/settings.yaml text eol=crlf
+desk/pack/common/home/profiles/web/cordis.patch.yml text eol=crlf
