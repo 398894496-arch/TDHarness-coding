@@ -1,0 +1,9 @@
+CompanyDesk portable runtime
+Includes:
+- Node.js v22 (bundled)
+- Company DSH kernel 0.1.1-rc.2 (bundled)
+- Company overlay (8450 only)
+- Noto Sans CJK SC Regular (SIL Open Font License)
+Does not include official API keys or grok.com login.
+This PC must reach {{TDH_HOST}}:8450 (office LAN or Tailscale).
+The agent runs on THIS computer. Double-click CompanyDesk.exe. Login in the app. The 192 download page has no login.

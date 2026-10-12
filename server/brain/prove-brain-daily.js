@@ -7,7 +7,7 @@ const lib = require('./lib');
 const daily = require('./brain-daily');
 
 const TARGET = '2026-08-18';
-const FP = 'ops.thediva.publish';
+const FP = 'ops.example.publish';
 
 function writeZstd(home, id, text) {
   const t = Date.parse(TARGET + 'T10:00:00+08:00');

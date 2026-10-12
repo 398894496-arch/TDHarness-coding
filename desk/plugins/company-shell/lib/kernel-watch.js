@@ -29,7 +29,7 @@ function pinYmlPaths() {
 		process.env.DSH_KERNEL_YML,
 		path.join("D:", "dsh", "runtime", "dsh-kernel.yml"),
 		path.join(os.homedir(), "dsh-kernel.yml"),
-		path.join(os.homedir(), "Cursor", "dsh-saas", "scripts", "p-product-base", "dsh-kernel.yml"),
+		path.join(maintainerRepo(), "scripts", "p-product-base", "dsh-kernel.yml"),
 	].filter(Boolean);
 }
 

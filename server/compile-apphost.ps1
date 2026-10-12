@@ -10,7 +10,7 @@ $Dist = 'D:\dsh\client-dist'
 $SiteYml = if ($env:TDH_SITE) { $env:TDH_SITE } else { 'D:\dsh\site.yml' }
 $Zip = Join-Path $Dist 'CompanyDesk-win.zip'
 $AppCs = Join-Path $Server 'AppHost.cs'
-$Ico = Join-Path $Server 'the-diva.ico'
+$Ico = Join-Path $Server 'tdharness.ico'
 $SitePy = Join-Path $Server 'site-cs.py'
 $Utf8NoBom = [Text.UTF8Encoding]::new($false)
 
@@ -72,7 +72,10 @@ $ErrorActionPreference = $prev
 if ($rc -ne 0 -or -not (Test-Path -LiteralPath $AppExe)) { throw 'apphost-csc-failed' }
 if ((Get-Item -LiteralPath $AppExe).Length -lt 20KB) { throw 'apphost-exe-too-small' }
 
-& $py $SitePy --site $SiteYml replace-zip --src $Zip --out $Zip --name 'CompanyDesk/TDHarness.exe' --file $AppExe
+# Shortcuts made by Setup before 1.0.16 point at CompanyDesk\the-diva.ico in the install folder:
+# the file keeps its old name so they keep an icon, with the product icon in it. New shortcuts
+# use the icon compiled into the exe.
+& $py $SitePy --site $SiteYml replace-zip --src $Zip --out $Zip --name 'CompanyDesk/TDHarness.exe' --file $AppExe --if-present ('CompanyDesk/the-diva.ico=' + $Ico)
 if ($LASTEXITCODE -ne 0) { throw 'zip-replace-exe-failed' }
 
 $hostName = ''

@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Newest published kernel (by version, not by tag: upstream's "latest" lags behind)
+      - name: 'Newest published kernel (by version, not by tag: upstream''s "latest" lags behind)'
         id: v
         run: |
           NEWEST="$(npm view @deepseek-ai/dsh versions --json | node -e 'const v=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log([].concat(v).pop())')"

@@ -216,7 +216,7 @@ def lease_path(login: str, root: Path | None = None) -> Path:
 def selftest() -> int:
     now = 1_700_000_000
     a, b = "dev-aaaa1111", "dev-bbbb2222"
-    lease = empty_lease("bosshome")
+    lease = empty_lease("alice")
     st, name = apply_action(lease, a, "acquire", now)
     assert st == 200 and name == "granted", (st, name)
     st, name = apply_action(lease, a, "heartbeat", now + 5)
@@ -231,13 +231,13 @@ def selftest() -> int:
     st, name = apply_action(lease, b, "heartbeat", now + 9)
     assert st == 200 and name == "held", (st, name)
 
-    lease2 = empty_lease("bosshome")
+    lease2 = empty_lease("alice")
     apply_action(lease2, a, "acquire", now)
     apply_action(lease2, b, "acquire", now + 1)
     expire(lease2, now + 1 + KICK_TIMEOUT)
     assert lease2["holder"] == b and lease2["dirty"] is True
 
-    lease3 = empty_lease("bosshome")
+    lease3 = empty_lease("alice")
     apply_action(lease3, a, "acquire", now)
     expire(lease3, now + HEARTBEAT_STALE + 1)
     assert lease3["state"] == "free"
@@ -245,7 +245,7 @@ def selftest() -> int:
     assert st == 200 and name == "held", (st, name)
     assert lease3["holder"] == a and lease3["state"] == "held"
 
-    lease4 = empty_lease("bosshome")
+    lease4 = empty_lease("alice")
     apply_action(lease4, a, "acquire", now)
     apply_action(lease4, b, "acquire", now + 1)
     expire(lease4, now + 1 + KICK_TIMEOUT)
@@ -255,14 +255,14 @@ def selftest() -> int:
 
     box = Path(tempfile.mkdtemp(prefix="dsh-lease-pres-"))
     try:
-        live = empty_lease("quan")
+        live = empty_lease("bob")
         apply_action(live, a, "acquire", now)
-        save_lease(lease_path("quan", box), live)
+        save_lease(lease_path("bob", box), live)
         stale = empty_lease("boss")
         apply_action(stale, b, "acquire", now - HEARTBEAT_STALE - 5)
         save_lease(lease_path("boss", box), stale)
         rows = {r["login"]: r for r in list_presence(now, box)}
-        assert rows["quan"]["online"] is True, rows
+        assert rows["bob"]["online"] is True, rows
         assert rows["boss"]["online"] is False, rows
     finally:
         for p in box.glob("*"):

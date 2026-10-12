@@ -1,0 +1,40 @@
+{
+  "name": "dsh-profile-web",
+  "private": true,
+  "dependencies": {
+    "company-no-add-key": "link:../../../plugins/company-no-add-key",
+    "company-shell": "link:../../../plugins/company-shell",
+    "company-web-search": "link:../../../plugins/company-web-search",
+    "dsh-bridge-browser": "link:../../../plugins/dsh-bridge-browser",
+    "company-open-browser": "link:../../../plugins/company-open-browser",
+    "company-grok-media": "link:../../../plugins/company-grok-media",
+    "hide-bottom-panel": "link:../../../plugins/hide-bottom-panel",
+    "image-send-durable": "link:../../../plugins/image-send-durable",
+    "dsh-better-sidebar": "link:../../../plugins/dsh-better-sidebar",
+    "dsh-artifact": "link:../../../plugins/dsh-artifact",
+    "company-edit-pos-ui": "link:../../../plugins/company-edit-pos-ui",
+    "company-edit-pos": "link:../../../plugins/company-edit-pos",
+    "grok-fast-mode": "link:../../../plugins/grok-fast-mode"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "company-no-add-key",
+        "company-shell",
+        "company-web-search",
+        "dsh-bridge-browser",
+        "company-open-browser",
+        "company-grok-media",
+        "hide-bottom-panel",
+        "image-send-durable",
+        "dsh-better-sidebar",
+        "dsh-artifact",
+        "company-edit-pos-ui",
+        "company-edit-pos",
+        "grok-fast-mode"
+      ]
+    }
+  }
+}
