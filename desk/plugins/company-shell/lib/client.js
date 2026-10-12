@@ -572,6 +572,9 @@ window.__ModuleLoader__.load({
 			".pXSMma_headline:has([data-company-shell=\"brand-wordmark\"]) .pXSMma_previewBadge {",
 			"  display: none !important;",
 			"}",
+			".pXSMma_headline:has([data-company-shell=\"brand-text\"]) {",
+			"  grid-template-columns: auto auto !important;",
+			"}",
 			"[data-company-shell=\"brand-wordmark\"], [data-company-shell=\"brand-mark\"] {",
 			"  display: inline-block; flex: none; vertical-align: middle;",
 			"  background: var(--dsw-alias-label-primary);",
@@ -4376,7 +4379,8 @@ window.__ModuleLoader__.load({
 			if (!src) {
 				return React.createElement("span", {
 					className: props.className,
-					"data-company-shell": compact ? "brand-mark" : "brand-wordmark",
+					// Not brand-mark / brand-wordmark: those paint a background through an image mask.
+					"data-company-shell": "brand-text",
 					role: "img",
 					"aria-label": SITE_BRAND_LABEL,
 					style: {
