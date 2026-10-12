@@ -19,6 +19,7 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
   现在品牌位改成站点可配置：站点补丁填 `SITE_BRAND_*` 就显示站点自己的标识，不填则显示文字「TDHarness」。示例名单清空，装机时 `site-cs.py` 照旧写入本站的种子管理员。公司地图只留产品词。维护按钮改为读 `TDH_MAINTAINER_REPO`。
 - 新增 `scripts/prove-desk-source.py`（进 CI）检查四件事：每个文件都能解析；源码里没有任何一家公司的名字、品牌、内网或 Tailscale 地址、维护者路径、登录名或密钥；每个站点补丁在源码里都还找得到锚点，而且重复打不会再改；`overlay-zip` 换掉了两处的旧文件、写进了站点地址、没有动别的东西。故意加回「THE DIVA」、改坏一个补丁锚点，都会让检查失败。
 - 实测：用这份源码替换插件后的 Mac 安装包在本机试启动通过（页面 200，165 个插件全部加载）。截图确认品牌位显示文字「TDHarness」。第一版用文字代替图片时出现过黑块（原来的样式是用背景色配图片蒙版），已改用单独的标记。
+- **每晚的内核 canary 之前一次都没跑成**：`upstream-canary.yml` 的一个步骤名里带了冒号，整个文件 YAML 解析失败，GitHub 不执行它，只在每次 push 时留下一个红叉。已修复，CI 增加「所有 workflow 文件都能解析」这一步。
 
 ## 2026.10.11.9
 

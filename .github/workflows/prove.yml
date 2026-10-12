@@ -112,6 +112,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Every workflow file parses (a broken one never runs and only shows a red X on push)
+        run: python3 -c "import glob,yaml; [yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml')]; print('WORKFLOWS_PARSE_OK=1')"
       - name: Office-fingerprint and tracked-secret scan
         run: bash scripts/prove-scan.sh
       - name: Prove the scan rejects synthetic secrets and every office needle
