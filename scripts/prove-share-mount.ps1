@@ -144,10 +144,10 @@ try {
 
   Drop-All
   # 1. Stale connections as A: IPC$ (Explorer browsing the server) and a drive letter.
-  & net.exe use ('\\' + $Host_ + '\IPC$') /user:($Host_ + '\' + $userA) $pwA /persistent:no | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'stale-ipc-failed' }
-  & net.exe use Y: $unc /user:($Host_ + '\' + $userA) $pwA /persistent:no | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'stale-drive-failed' }
+  $o = & net.exe use ('\\' + $Host_ + '\IPC$') ('/user:' + $Host_ + '\' + $userA) $pwA /persistent:no 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) { Write-Output $o; throw 'stale-ipc-failed' }
+  $o = & net.exe use Y: $unc ('/user:' + $Host_ + '\' + $userA) $pwA /persistent:no 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) { Write-Output $o; throw 'stale-drive-failed' }
 
   # 2. The old mount must reproduce the failure.
   $old = & $exe old $unc ($Host_ + '\' + $userB) $passB $mineUnc | Out-String
@@ -156,7 +156,7 @@ try {
   if ((Field $old 'mine') -ne 'False') { throw 'old-mount-opened-b-folder (the case did not reproduce)' }
 
   # 3. ShareMount: own account, own folder.
-  & net.exe use ('\\' + $Host_ + '\IPC$') /user:($Host_ + '\' + $userA) $pwA /persistent:no 2>$null | Out-Null
+  & net.exe use ('\\' + $Host_ + '\IPC$') ('/user:' + $Host_ + '\' + $userA) $pwA /persistent:no 2>$null | Out-Null
   $new = & $exe mount $unc ($Host_ + '\' + $userB) $passB $mineUnc | Out-String
   Write-Output $new.Trim()
   if ((Field $new 'rc') -ne '0') { throw 'new-mount-net-use-failed' }
