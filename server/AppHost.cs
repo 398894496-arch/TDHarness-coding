@@ -416,15 +416,32 @@ internal static class AppHost
                 if (string.IsNullOrEmpty(user)) user = Site.Host + "\\" + Site.SmbUserFallback;
             }
         }
-        DropDrive();
-        DropShare();
-        RunNetUse(Site.ShareUnc, user, pass);
+        var r = ShareMount.Mount(Site.ShareUnc, user, pass, ShareDrive, Log);
+        LastShareError = r.Rc == 0 ? 0 : (r.SysErr != 0 ? r.SysErr : -1);
         if (Directory.Exists(Site.ShareUnc))
         {
-            Log("share-ok unc");
+            // net use 没成功但根目录能开：还是别的账号的旧连接，个人目录要看那个账号有没有权限。
+            Log(r.Rc == 0 ? "share-ok unc" : "share-ok old-connection err=" + LastShareError);
             return;
         }
-        throw new Exception("company-disk-not-mounted");
+        throw new Exception("company-disk-not-mounted" + (r.SysErr > 0 ? " net-" + r.SysErr : ""));
+    }
+
+    // 最近一次挂盘时 net use 的结果：0 成功，系统错误号，或 -1（失败但没报错号）。
+    internal static int LastShareError;
+
+    // 挂盘没用上自己的账号时，给「打不开个人目录 / 公司盘」补一句员工能照做的话。
+    internal static string WithShareHint(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return message;
+        if (message.IndexOf("workspace-missing", StringComparison.Ordinal) < 0
+            && message.IndexOf("disk-not-mounted", StringComparison.Ordinal) < 0)
+            return message;
+        if (LastShareError == ShareMount.ErrOtherCredentials)
+            return message + "（这台电脑还用旧账号连着公司盘：关掉打开公司盘的窗口，注销 Windows 再登录）";
+        if (LastShareError > 0)
+            return message + "（挂公司盘失败 net-" + LastShareError + "）";
+        return message;
     }
 
     private static bool TcpUp(string host, int port, int ms)
@@ -438,82 +455,6 @@ internal static class AppHost
             }
         }
         catch { return false; }
-    }
-
-    private static void DropShare()
-    {
-        RunNetUseDelete(Site.ShareUnc);
-    }
-
-    private static void DropDrive()
-    {
-        RunNetUseDelete(ShareDrive);
-    }
-
-    private static void RunNetUseDrive(string drive, string unc, string user, string pass)
-    {
-        var psi = new ProcessStartInfo();
-        psi.FileName = Path.Combine(Environment.SystemDirectory, "net.exe");
-        if (string.IsNullOrEmpty(user))
-            psi.Arguments = "use " + drive + " \"" + unc + "\" /persistent:yes";
-        else
-            psi.Arguments = "use " + drive + " \"" + unc + "\" /user:" + user + " " + pass + " /persistent:yes";
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
-        try
-        {
-            using (var p = Process.Start(psi))
-            {
-                if (p == null) return;
-                p.WaitForExit(20000);
-            }
-        }
-        catch { }
-    }
-
-    private static void RunNetUseDelete(string unc)
-    {
-        var psi = new ProcessStartInfo();
-        psi.FileName = Path.Combine(Environment.SystemDirectory, "net.exe");
-        psi.Arguments = "use \"" + unc + "\" /delete /y";
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
-        try
-        {
-            using (var p = Process.Start(psi))
-            {
-                if (p == null) return;
-                p.WaitForExit(8000);
-            }
-        }
-        catch { }
-    }
-
-    private static void RunNetUse(string unc, string user, string pass)
-    {
-        var psi = new ProcessStartInfo();
-        psi.FileName = Path.Combine(Environment.SystemDirectory, "net.exe");
-        if (string.IsNullOrEmpty(user))
-            psi.Arguments = "use \"" + unc + "\" /persistent:yes";
-        else
-            psi.Arguments = "use \"" + unc + "\" /user:" + user + " " + pass + " /persistent:yes";
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
-        try
-        {
-            using (var p = Process.Start(psi))
-            {
-                if (p == null) return;
-                p.WaitForExit(20000);
-            }
-        }
-        catch { }
     }
 
     internal static LoginHit CheckLogin(string user, string pass)
@@ -1977,7 +1918,7 @@ internal sealed class ShellForm : Form
         }
         catch (Exception ex)
         {
-            _err.Text = "打不开本机 Agent：" + ex.Message;
+            _err.Text = "打不开本机 Agent：" + AppHost.WithShareHint(ex.Message);
             AppHost.Log(ex.ToString());
         }
         finally

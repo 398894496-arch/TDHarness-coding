@@ -68,6 +68,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prove-secure-folders-ci.ps1
+      - name: Prove the desk mounts the share with its own account over a stale connection (throwaway accounts)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prove-share-mount.ps1
       - name: Prove the desk source (parses, nothing of one company, site patches apply, overlay)
         run: python scripts/prove-desk-source.py
       - name: Desk lease selftest (one desk per person, conversations move with them; zstd logs, copies)

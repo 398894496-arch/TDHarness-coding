@@ -10,6 +10,7 @@ $Dist = 'D:\dsh\client-dist'
 $SiteYml = if ($env:TDH_SITE) { $env:TDH_SITE } else { 'D:\dsh\site.yml' }
 $Zip = Join-Path $Dist 'CompanyDesk-win.zip'
 $AppCs = Join-Path $Server 'AppHost.cs'
+$MountCs = Join-Path $Server 'ShareMount.cs'
 $Ico = Join-Path $Server 'tdharness.ico'
 $SitePy = Join-Path $Server 'site-cs.py'
 $Utf8NoBom = [Text.UTF8Encoding]::new($false)
@@ -18,6 +19,7 @@ $Csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $Csc)) { $Csc = 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 if (-not (Test-Path -LiteralPath $Csc)) { throw 'csc-missing' }
 if (-not (Test-Path -LiteralPath $AppCs)) { throw 'apphost-cs-missing' }
+if (-not (Test-Path -LiteralPath $MountCs)) { throw 'sharemount-cs-missing' }
 if (-not (Test-Path -LiteralPath $Ico)) { throw 'ico-missing' }
 if (-not (Test-Path -LiteralPath $SiteYml)) { throw 'site-yml-missing' }
 if (-not (Test-Path -LiteralPath $Zip)) { throw 'client-zip-missing' }
@@ -66,7 +68,7 @@ $drawing = Join-Path $fw 'System.Drawing.dll'
 $AppExe = Join-Path $stage 'TDHarness.exe'
 $prev = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
-& $Csc /nologo /platform:x64 /target:winexe /out:$AppExe /win32icon:$Ico /r:$winforms /r:$drawing /r:$coreDll /r:$formsDll $AppCs $StampCs $SiteCs
+& $Csc /nologo /platform:x64 /target:winexe /out:$AppExe /win32icon:$Ico /r:$winforms /r:$drawing /r:$coreDll /r:$formsDll $AppCs $MountCs $StampCs $SiteCs
 $rc = $LASTEXITCODE
 $ErrorActionPreference = $prev
 if ($rc -ne 0 -or -not (Test-Path -LiteralPath $AppExe)) { throw 'apphost-csc-failed' }

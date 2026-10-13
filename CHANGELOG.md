@@ -4,6 +4,19 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.12
+
+**Windows 登录：电脑上还连着旧的共享盘账号时，不再挂错账号**
+- TDH 现场实测：一名员工的电脑在 Windows 里还留着一条用公共账号 `dshshare` 连服务器的连接（资源管理器浏览服务器时留下的 IPC$ 一类）。他登录时服务器给了个人账号 `smb-<login>`，个人目录随即只授权给这个账号；客户端用个人账号 `net use` 时，Windows 因为「同一台服务器只能用一套账号」直接报系统错误 1219，根本没去服务器认证（服务器上这个个人账号的登录记录是空的）。原来的代码不看 `net use` 的结果，旧连接能打开共享盘根目录就当挂好了，个人目录打不开，员工看到 `company-workspace-missing`，或者赶上权限刚切换时看到 `desk-lease-acquire company-workspace-missing`；资源管理器里打开个人目录提示没有权限。
+- 挂盘逻辑移到 `server/ShareMount.cs`（和 `AppHost.cs` 一起编进 `TDHarness.exe`）：
+  - 挂之前列出本会话里连到这台服务器的所有连接（盘符、IPC$、别的共享），全部拆掉，不再只拆 `Z:` 和共享盘本身；
+  - 看 `net use` 的退出码和系统错误号。遇到 1219（资源管理器开着窗口会马上连回去）就再拆一次重试，最多 3 次；密码错、账号停用、网络不通不重试；
+  - 关掉 `net.exe` 的标准输入：缺密码时它会停下来等输入，原来要白等 20 秒；
+  - 密码不进日志，日志只记 `share-netuse try= rc= err= dropped=`。
+- 还是没挂上自己的账号时，登录页在原错误码后面补一句能照做的话：1219 提示关掉打开公司盘的窗口、注销 Windows 再登录；其他错误带上 `net-<错误号>`。错误码本身不变，维护手册里的条目照旧能查。
+- 新增 `scripts/prove-share-mount.ps1`（进 Windows CI）：用服务器同一个 .NET 4 `csc` 编译 `ShareMount.cs`；检查中英文 `net use` 列表和错误号的解析；再用临时共享和两个临时本地账号 A、B 复现现场：先以 A 连着服务器（IPC$ 和一个盘符），旧挂法以 B 挂盘必须报 1219、打不开 B 的目录（证明能复现），新挂法必须挂上 B、打开 B 的目录、A 的旧连接全部拆掉；密码错只试一次、报自己的错误号。`-ParseOnly` 只编译和解析，可在正式服务器上跑。
+- 服务器端无改动，不用重跑安装。发布：在服务器上更新仓库文件后运行 `server\publish-site-update.ps1 -BumpMark`，员工下次打开时按提示更新。
+
 ## 2026.10.11.12
 
 **Windows 工作台：对话跟人走的几处问题一起修好，`desk-lease.js` 两个平台合成一份**
