@@ -121,10 +121,11 @@ function New-Account([string]$name) {
   return $f
 }
 function Drop-All {
-  $list = (& net.exe use) 2>$null | Out-String
+  $list = ''
+  try { $list = & net.exe use 2>&1 | Out-String } catch { }
   foreach ($line in ($list -split "`r?`n")) {
-    if ($line -match '(?:^|\s)([A-Za-z]:)\s+\\\\' + [regex]::Escape($Host_) + '\\') { & net.exe use $Matches[1] /delete /y 2>$null | Out-Null }
-    elseif ($line -match '(\\\\' + [regex]::Escape($Host_) + '\\\S+)') { & net.exe use $Matches[1] /delete /y 2>$null | Out-Null }
+    if ($line -match '(?:^|\s)([A-Za-z]:)\s+\\\\' + [regex]::Escape($Host_) + '\\') { try { & net.exe use $Matches[1] /delete /y 2>&1 | Out-Null } catch { } }
+    elseif ($line -match '(\\\\' + [regex]::Escape($Host_) + '\\\S+)') { try { & net.exe use $Matches[1] /delete /y 2>&1 | Out-Null } catch { } }
   }
 }
 function Field([string]$out, [string]$name) { return ([regex]::Match($out, '\b' + $name + '=(\S+)')).Groups[1].Value }
@@ -156,7 +157,9 @@ try {
   if ((Field $old 'mine') -ne 'False') { throw 'old-mount-opened-b-folder (the case did not reproduce)' }
 
   # 3. ShareMount: own account, own folder.
-  & net.exe use ('\\' + $Host_ + '\IPC$') ('/user:' + $Host_ + '\' + $userA) $pwA /persistent:no 2>$null | Out-Null
+  # Windows PowerShell turns native stderr into a terminating error under Stop; the line may
+  # report that A is still connected, which is the point.
+  try { & net.exe use ('\\' + $Host_ + '\IPC$') ('/user:' + $Host_ + '\' + $userA) $pwA /persistent:no 2>&1 | Out-Null } catch { }
   $new = & $exe mount $unc ($Host_ + '\' + $userB) $passB $mineUnc | Out-String
   Write-Output $new.Trim()
   if ((Field $new 'rc') -ne '0') { throw 'new-mount-net-use-failed' }
