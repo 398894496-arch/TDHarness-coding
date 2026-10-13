@@ -9,9 +9,12 @@
 # server uses, then on a throwaway share and two throwaway local accounts A and B:
 #   0. parsing: `net use` listings (English and Chinese), system error numbers
 #   1. a stale connection as A to the server name (IPC$ plus a drive letter)
-#   2. the old mount (drop Z: and the share UNC, net use as B, ignore the result) must FAIL
-#      to open B's folder: the case reproduces
+#   2. the old mount (drop Z: and the share UNC, net use as B, ignore the result) must hit
+#      1219 while the share root still opens: the case reproduces
 #   3. ShareMount.Mount as B: net use succeeds, B's folder opens, A's stale connections are gone
+# The share is this machine's own (loopback), and Windows authorizes a loopback connection with
+# the caller's token, not A's, so "A cannot open B's folder" is not testable here; the TDH server
+# showed it for real (smb-<login> never authenticated while the dshshare connection lived).
 #   4. a wrong password fails at once with its own error, without the 1219 retries
 # Removes its share, folders and accounts at the end. Prints SHARE_MOUNT_PROVE_OK=1.
 # -ParseOnly compiles and checks parsing only (for a live server: no accounts, no share).
@@ -154,7 +157,8 @@ try {
   $old = & $exe old $unc ($Host_ + '\' + $userB) $passB $mineUnc | Out-String
   Write-Output $old.Trim()
   if ((Field $old 'err') -ne '1219') { throw 'old-mount-did-not-hit-1219 (the case did not reproduce)' }
-  if ((Field $old 'mine') -ne 'False') { throw 'old-mount-opened-b-folder (the case did not reproduce)' }
+  # What made the desk go on with the wrong account: net use failed and the root still opened.
+  if ((Field $old 'root') -ne 'True') { throw 'old-mount-root-closed (the case did not reproduce)' }
 
   # 3. ShareMount: own account, own folder.
   # Windows PowerShell turns native stderr into a terminating error under Stop; the line may

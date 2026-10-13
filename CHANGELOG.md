@@ -14,7 +14,7 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
   - 关掉 `net.exe` 的标准输入：缺密码时它会停下来等输入，原来要白等 20 秒；
   - 密码不进日志，日志只记 `share-netuse try= rc= err= dropped=`。
 - 还是没挂上自己的账号时，登录页在原错误码后面补一句能照做的话：1219 提示关掉打开公司盘的窗口、注销 Windows 再登录；其他错误带上 `net-<错误号>`。错误码本身不变，维护手册里的条目照旧能查。
-- 新增 `scripts/prove-share-mount.ps1`（进 Windows CI）：用服务器同一个 .NET 4 `csc` 编译 `ShareMount.cs`；检查中英文 `net use` 列表和错误号的解析；再用临时共享和两个临时本地账号 A、B 复现现场：先以 A 连着服务器（IPC$ 和一个盘符），旧挂法以 B 挂盘必须报 1219、打不开 B 的目录（证明能复现），新挂法必须挂上 B、打开 B 的目录、A 的旧连接全部拆掉；密码错只试一次、报自己的错误号。`-ParseOnly` 只编译和解析，可在正式服务器上跑。
+- 新增 `scripts/prove-share-mount.ps1`（进 Windows CI）：用服务器同一个 .NET 4 `csc` 编译 `ShareMount.cs`；检查中英文 `net use` 列表和错误号的解析；再用临时共享和两个临时本地账号 A、B 复现现场：先以 A 连着服务器（IPC$ 和一个盘符），旧挂法以 B 挂盘必须报 1219、而共享盘根目录照样能开（旧代码就是因此当成挂好了，证明能复现），新挂法必须 `net use` 成功、打开 B 的目录、A 的旧连接全部拆掉。测试用的是本机共享，Windows 对本机回环连接按当前用户授权，不按 A，所以「A 打不开 B 的目录」这一步在这里测不了，TDH 服务器上的实际记录已经证明（旧连接在的时候个人账号一次都没认证过）；密码错只试一次、报自己的错误号。`-ParseOnly` 只编译和解析，可在正式服务器上跑。
 - 服务器端无改动，不用重跑安装。发布：在服务器上更新仓库文件后运行 `server\publish-site-update.ps1 -BumpMark`，员工下次打开时按提示更新。
 
 ## 2026.10.11.12
