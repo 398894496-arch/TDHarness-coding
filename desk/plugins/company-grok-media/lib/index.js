@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join, basename, extname } from "node:path";
 
 export const name = "company-grok-media";
-export const inject = ["tools"];
+export const inject = ["tools", "webServer"];
 
 function doorOf(config) {
   const raw = (config && config.baseURL) || process.env.DEEPSEEK_BASE_URL || "";
@@ -86,8 +86,105 @@ function writeFiles(files, stem) {
   return paths;
 }
 
+// 局部修改（标注画布，client.js）。xAI 的改图接口没有蒙版参数：画布在浏览器里把标注区域
+// 连同一圈留边裁成标准比例送来，这里转给网关改图，结果交回画布按标注形状贴回原图，
+// 标注以外的像素不动。只收 data: 图片，不读也不写工作区以外的路径。
+const REGION_MAX_BYTES = 30 * 1024 * 1024;
+const REGION_RATIOS = ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "2:1", "1:2"];
+
+function readJsonBody(req, limit) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new Error("too-large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")); } catch (e) { reject(new Error("bad-json")); }
+    });
+    req.on("error", reject);
+  });
+}
+
+function sendJson(res, status, body) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  res.end(JSON.stringify(body));
+}
+
+function imageDataUrl(s) {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(s || ""));
+  return m ? { mime: m[1], b64: m[2] } : null;
+}
+
+// 只改标注的地方：把员工的话包一层，告诉模型保持构图、透视和光影。
+function regionPrompt(text) {
+  return "Edit this image: " + text + "\nKeep the framing, perspective, lighting, colors and every other detail exactly as they are; change only what is asked.";
+}
+
+async function regionEdit(door, body) {
+  const text = String(body.prompt || "").trim();
+  if (!text) return { status: 400, body: { ok: false, error: "请写上要改成什么" } };
+  if (text.length > 2000) return { status: 400, body: { ok: false, error: "说明太长了（2000 字以内）" } };
+  const img = imageDataUrl(body.image);
+  if (!img) return { status: 400, body: { ok: false, error: "image-missing" } };
+  const payload = {
+    prompt: regionPrompt(text),
+    n: 1,
+    resolution: body.resolution === "2k" ? "2k" : "1k",
+    image: { url: "data:" + img.mime + ";base64," + img.b64 }
+  };
+  if (REGION_RATIOS.indexOf(body.aspect_ratio) >= 0) payload.aspect_ratio = body.aspect_ratio;
+  const out = await postMedia(door, "/images", payload, 170000);
+  const f = Array.isArray(out.files) ? out.files[0] : null;
+  if (!f || !f.b64) return { status: 502, body: { ok: false, error: "company-media-empty" } };
+  return { status: 200, body: { ok: true, mime: f.mime || "image/png", b64: f.b64 } };
+}
+
+function regionSave(body) {
+  const img = imageDataUrl(body.image);
+  if (!img || img.mime !== "image/png") return { status: 400, body: { ok: false, error: "image-missing" } };
+  // 名字只留字母数字和 - _：不带点、不带路径符号，文件只会落在 artifacts/ 里。
+  const stem = String(body.name || "").replace(/\.(png|jpe?g|webp)$/i, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "image";
+  const rel = join("artifacts", stem + "-edit-" + stamp() + ".png");
+  const abs = join(process.cwd(), rel);
+  mkdirSync(join(process.cwd(), "artifacts"), { recursive: true });
+  writeFileSync(abs, Buffer.from(img.b64, "base64"));
+  return { status: 200, body: { ok: true, path: abs } };
+}
+
+function registerRegionRoutes(ctx, door) {
+  const web = typeof ctx.get === "function" ? ctx.get("webServer") : null;
+  if (web == null || typeof web.register !== "function") return;
+  const route = (path, run) => ctx.effect(() => web.register({
+    kind: "exact",
+    path,
+    handler: async (req, res) => {
+      if (String(req.method || "").toUpperCase() !== "POST") return sendJson(res, 405, { ok: false, error: "method" });
+      let body;
+      try { body = await readJsonBody(req, REGION_MAX_BYTES); } catch (e) {
+        return sendJson(res, e && e.message === "too-large" ? 413 : 400, { ok: false, error: (e && e.message) || "bad-json" });
+      }
+      try {
+        const out = await run(body || {});
+        sendJson(res, out.status, out.body);
+      } catch (e) {
+        sendJson(res, 502, { ok: false, error: String((e && e.message) || e).slice(0, 300) });
+      }
+    }
+  }));
+  route("/company/media/region-edit", (body) => regionEdit(door, body));
+  route("/company/media/region-save", async (body) => regionSave(body));
+}
+
 function apply(ctx, config) {
   const door = doorOf(config);
+  registerRegionRoutes(ctx, door);
   ctx.tools.register({
     name: "generate_image",
     description: "Generate an image through the company Grok Imagine door. Writes PNG/JPEG under artifacts/ and returns those workspace-relative paths. Optional image_path edits an existing workspace image. Do not call xAI yourself.",

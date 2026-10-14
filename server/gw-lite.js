@@ -93,6 +93,14 @@ const XAI_BASE = (process.env.TDH_XAI_BASE || 'https://api.x.ai').replace(/\/$/,
 // Renew this long before expiry so a chat that starts now does not die mid-stream.
 const XAI_PREEMPT_MS = 5 * 60 * 1000;
 let xaiRenewing = null;
+let xaiRenewError = null;
+
+// 绑了 Grok 订阅但令牌过期又续不上时给员工看的话；没绑返回 ''。
+function xaiDownMessage() {
+  if (!readXai()) return '';
+  const why = xaiRenewError ? xaiRenewError.why : '原因未知';
+  return 'Grok 订阅登录已过期，服务器续期没成功（' + why + '）。多半是服务器连不上 x.ai（代理或网络），网络恢复后会自动续上，不用重新绑定。';
+}
 
 function readXai() {
   try {
@@ -153,8 +161,8 @@ function postForm(url, form) {
         resolve({ status: r.statusCode || 502, obj: obj });
       });
     });
-    req.on('error', () => resolve({ status: 0, obj: null }));
-    req.on('timeout', () => { req.destroy(); resolve({ status: 0, obj: null }); });
+    req.on('error', (e) => resolve({ status: 0, obj: null, err: String((e && (e.code || e.message)) || 'error') }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0, obj: null, err: 'timeout' }); });
     req.end(raw);
   });
 }
@@ -166,7 +174,15 @@ async function renewXai(j) {
     refresh_token: j.refresh_token
   });
   const t = up.obj;
-  if (up.status !== 200 || !t || typeof t.access_token !== 'string' || t.access_token.length < 20) return null;
+  if (up.status !== 200 || !t || typeof t.access_token !== 'string' || t.access_token.length < 20) {
+    // 2026-10-14 TDH：服务器重启后代理只放行 github，auth.x.ai 被重置（ECONNRESET），续期一直失败，
+    // 员工看到的却是「没有 Grok key」。原因记下来，日志和员工看到的报错都说清楚。
+    const why = up.status ? 'auth.x.ai ' + up.status + (t && t.error ? ' ' + t.error : '') : '连不上 auth.x.ai ' + (up.err || '');
+    xaiRenewError = { at: Date.now(), why: why.trim() };
+    console.log('GW_XAI_RENEW_FAIL ' + xaiRenewError.why);
+    return null;
+  }
+  xaiRenewError = null;
   // The refresh token rotates. Write the new one before anything can fail, or
   // the next renewal presents a token the vendor has already retired.
   const now = Date.now();
@@ -998,7 +1014,7 @@ const server = http.createServer(async (req, res) => {
       note: (line) => { try { console.log(line); } catch (e) { /* log only */ } },
       hasGrok: () => xaiBound(),
       grokUp: () => XAI_BASE,
-      grokBearer: async () => { const x = await loadXai(); if (!x) throw new Error('grok-not-bound'); return x.access_token; }
+      grokBearer: async () => { const x = await loadXai(); if (!x) throw new Error(xaiDownMessage() || 'grok-not-bound'); return x.access_token; }
     };
     if (url === '/search') await gwSearch.handleSearch(res, body, ctx);
     else await gwSearch.handleFetch(res, body, ctx);
@@ -1010,7 +1026,7 @@ const server = http.createServer(async (req, res) => {
       upFetch: (u, init) => fetch(u, init),
       note: (line) => { try { console.log(line); } catch (e) { /* log only */ } },
       caller: callerOf(req) || 'desk',
-      grokBearer: async () => { const x = await loadXai(); if (!x) throw new Error('grok-not-bound'); return x.access_token; },
+      grokBearer: async () => { const x = await loadXai(); if (!x) throw new Error(xaiDownMessage() || 'grok-not-bound'); return x.access_token; },
       grokUp: () => XAI_BASE
     };
     try {
@@ -1028,6 +1044,11 @@ const server = http.createServer(async (req, res) => {
   // too large to send inline is uploaded there and then named in the question.
   const route = await routeFor(model, url, env);
   if (!route || route.missing !== undefined) {
+    const down = model.indexOf('grok') === 0 ? xaiDownMessage() : '';
+    if (down) {
+      send(res, 503, { error: { message: down, type: 'gateway_grok_renew_failed' } });
+      return;
+    }
     const who = route && route.missing ? route.missing + ' ' : '';
     send(res, 503, {
       error: {
