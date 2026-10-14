@@ -110,6 +110,59 @@ function provePatch() {
   console.log('GW_TOKEN_PATCH_OK=1');
 }
 
+// Grok 订阅令牌过期且续不上（2026-10-14 TDH：服务器代理坏了，auth.x.ai 连不上）：员工看到的
+// 必须是「续期失败」和原因，不是「服务器没有 Grok key」；令牌端点答错误时带上它的错误码。
+async function proveGrokRenewFailure(root) {
+  // 自己的人和令牌：前面的用例会停用别人、吊销别人的令牌。
+  const token = tok();
+  const rf = path.join(root, 'roster.json');
+  const rj = JSON.parse(fs.readFileSync(rf, 'utf8'));
+  rj.people.push({ pid: 'p9', login: 'renew', role: 'employee', status: 'active' });
+  fs.writeFileSync(rf, JSON.stringify(rj));
+  const tf = path.join(root, 'gw-tokens.json');
+  const tj = JSON.parse(fs.readFileSync(tf, 'utf8'));
+  tj.tokens.push({ pid: 'p9', token, revoked_at: '' });
+  fs.writeFileSync(tf, JSON.stringify(tj));
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const login = path.join(root, 'xai-expired.json');
+  fs.writeFileSync(login, JSON.stringify({
+    access_token: 'x'.repeat(40),
+    refresh_token: 'refresh-stand-in',
+    id_token: b64({ alg: 'none' }) + '.' + b64({ aud: 'client-stand-in' }) + '.sig',
+    expired: '2026-01-01T00:00:00Z'
+  }));
+  const ask = (port, model) => call(port, 'POST', '/v1/chat/completions', { authorization: 'Bearer ' + token }, { model, messages: [{ role: 'user', content: 'hi' }] });
+  const dead = await freePort();
+  let port = await freePort();
+  let gw = await startGateway(root, port, { TDH_XAI_OAUTH: login, TDH_XAI_TOKEN_URL: 'http://127.0.0.1:' + dead + '/oauth2/token' });
+  try {
+    let r = await ask(port, 'grok-4.7');
+    assert.equal(r.status, 503, JSON.stringify(r.obj));
+    assert.equal(r.obj.error.type, 'gateway_grok_renew_failed', JSON.stringify(r.obj));
+    assert.ok(/续期没成功/.test(r.obj.error.message) && /连不上 auth\.x\.ai ECONNREFUSED/.test(r.obj.error.message), r.obj.error.message);
+    r = await call(port, 'POST', '/images', { authorization: 'Bearer ' + token }, { prompt: 'x' });
+    assert.ok(r.status >= 500 && /续期没成功/.test(r.obj.error.message), 'image door says why: ' + JSON.stringify(r.obj));
+    r = await ask(port, 'deepseek-chat');
+    assert.equal(r.status, 200, 'other vendors are not affected');
+  } finally {
+    gw.kill();
+  }
+  const auth = await listen((req, res) => {
+    req.resume();
+    req.on('end', () => { res.writeHead(400, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'invalid_grant' })); });
+  });
+  port = await freePort();
+  gw = await startGateway(root, port, { TDH_XAI_OAUTH: login, TDH_XAI_TOKEN_URL: 'http://127.0.0.1:' + auth.address().port + '/oauth2/token' });
+  try {
+    const r = await ask(port, 'grok-4.7');
+    assert.ok(r.status === 503 && /auth\.x\.ai 400 invalid_grant/.test(r.obj.error.message), r.obj.error.message);
+  } finally {
+    gw.kill();
+    auth.close();
+  }
+  console.log('GW_GROK_RENEW_FAIL_OK=1');
+}
+
 async function main() {
   provePatch();
 
@@ -308,6 +361,7 @@ async function main() {
       console.log('GW_LISTEN_LOCAL_OK=1');
     }
 
+    await proveGrokRenewFailure(root);
     console.log('GW_AUTH_PROVE_OK=1');
   } finally {
     gw.kill();

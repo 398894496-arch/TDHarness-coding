@@ -8,7 +8,7 @@ The source of the desk's own parts: everything in a desk pack that this project 
 | --- | --- |
 | `company-shell` | sidebar, sign-in, people, tasks, account and kernel pages, company knowledge and memory tools, model sync |
 | `company-web-search` | `web_search` / `web_fetch` through the gateway |
-| `company-grok-media` | image and video generation through the gateway, shown in the conversation |
+| `company-grok-media` | image and video generation through the gateway, shown in the conversation; 局部修改: a marking canvas on any picture in the conversation that edits only the marked part (`scripts/prove-region-edit.js`) |
 | `company-open-browser` | opens links in the person's own browser |
 | `dsh-bridge-browser` | the browser bridge: [dsh-browser](https://github.com/omdsh-dev/dsh-browser)'s `packages/browser/bridge-browser` at `122de0e`, built (MIT, `LICENSE` in the folder), plus `ensure-extension.js` (ours: installs the side-panel extension) |
 | `company-edit-pos`, `company-edit-pos-ui` | keeps the message being edited where it is |
