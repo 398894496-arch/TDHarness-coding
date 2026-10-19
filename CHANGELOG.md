@@ -4,6 +4,15 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.19
+
+**员工端模型配置坏了会自己修好（`no adapter registered for provider "office"`）**
+- TDH 现场：两名员工（从 10-13、10-14 起）每一轮都报 `no adapter registered for provider "office"`，选择器显示 `office/grok-4.7` 和「没有可用的模型」。另一名员工用同一版客户端、连同一个网关一切正常；其中一人今天重装了最新客户端仍然报错。
+- 原因（本机复现）：员工电脑本机的模型配置（`desk-home\profiles\web\cordis.patch.yml`）里 `llm-pi-ai` 写进了内核不认的内容，例如模型档位写成 `none: none`（xAI 新模型 grok-4.3 有 `none` 档，内核只认 `off`）。整份配置校验失败，`llm-pi-ai` 启动不起来，一个路由都注册不了。设置服务只能修改运行中的插件，所以员工端每次启动做的模型同步都被拒绝（异常被吞掉了），自己永远好不了；重装客户端会保留这份配置。
+- 现在 company-shell 启动后会检查公司模型路由。没注册上时：从网关重新取模型列表，把配置文件里的 `llm-pi-ai` 改成只有 `office`（xAI 的 `none` 写成 `off: none`，其他行原样保留），旧文件存成 `cordis.patch.yml.broken-<时间>`（最多留 3 份），再对一个正常运行的条目做一次空编辑，让内核按文件重新加载所有插件。不用重启，员工打开就能用。结果记在同目录的 `model-heal.log`；改完仍然不行时如实记 `healed=false`，不再做别的改动。
+- 实测（本机工作台连客户真实网关）：放进 `none: none` 后复现出完全相同的报错，选择器也显示 `office/grok-4.7`；装上修复后启动约 8 秒自动修好，会话标题和回复都正常；正常的工作台重启后不做任何改动。
+- 新增 `scripts/prove-model-heal.js`（进 CI，两个平台）：正常时不动、坏了能修好并保留其他行、修了还不好时如实上报、没模型或没有 llm 服务时不动、备份最多 3 份，管理员「应用」那条路照旧保留其他路由。
+
 ## 2026.10.14
 
 **生成的图可以「局部修改」：在图上涂出要改的地方，只改那一块**

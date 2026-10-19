@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import https from "node:https";
 import http from "node:http";
 import os from "node:os";
@@ -143,9 +143,11 @@ function grokProviderLines(models, baseURL) {
 
 /**
  * Rewrite the user patch so the Grok provider lists exactly `models`.
- * Other rows, and other providers under the same row, are kept as written.
+ * Other rows, and other providers under the same row, are kept as written,
+ * unless `opts.only`: then office is the row's only provider (the heal below).
  */
-export function applyGrokModels(text, models, baseURL) {
+export function applyGrokModels(text, models, baseURL, opts) {
+	const only = !!(opts && opts.only);
 	const nl = text.indexOf("\r\n") >= 0 ? "\r\n" : "\n";
 	const lines = text.length ? text.split(/\r?\n/) : [];
 	while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
@@ -177,7 +179,7 @@ export function applyGrokModels(text, models, baseURL) {
 			const line = block[after];
 			if (line.trim() !== "" && !/^ {6}/.test(line)) break;
 			const key = /^ {6}([^\s#:][^:]*):/.exec(line);
-			if (key) keep = key[1].trim() !== "office";
+			if (key) keep = !only && key[1].trim() !== "office";
 			if (keep) kept.push(line);
 		}
 	}
@@ -270,6 +272,83 @@ async function writeGrokModels(ctx, models) {
 		return { ok: true, written: 1, count: models.length, live: true };
 	}
 	return writeGrokModelsFile(models);
+}
+
+// The provider keys under llm-pi-ai in a user patch, for the heal's log.
+export function piAiProviderKeys(text) {
+	const lines = String(text || "").split(/\r?\n/);
+	const keys = [];
+	let inRow = false;
+	let inProviders = false;
+	for (const line of lines) {
+		if (/^- /.test(line)) { inRow = /^- id: llm-pi-ai\s*$/.test(line); inProviders = false; continue; }
+		if (!inRow) continue;
+		if (/^    providers:/.test(line)) { inProviders = true; continue; }
+		if (inProviders && line.trim() !== "" && !/^ {6}/.test(line)) inProviders = false;
+		const key = inProviders ? /^ {6}([^\s#:][^:]*):/.exec(line) : null;
+		if (key) keys.push(key[1].trim());
+	}
+	return keys;
+}
+
+// 公司模型路由（office）没注册上时自修复。@@model-heal
+// 2026-10-19 TDH：两台员工电脑本机配置里的 llm-pi-ai 写进了内核不认的内容（复现：模型档位写成
+// `none: none`），整个插件启动失败，每轮都是 NO_ADAPTER，选择器「没有可用的模型」。设置服务只改得了
+// 运行中的插件，启动时的模型同步也就一直被拒，重装客户端会保留这份配置，所以自己永远好不了。
+// 这里直接把配置文件里的 llm-pi-ai 改成只有网关下发的 office（旧文件留一份 .broken-时间），再借
+// configEditor 对一个正常运行的条目做一次空编辑：它会先按文件重新对齐全部插件，llm-pi-ai 随之用新
+// 配置重新加载，员工不用重启。改完还没好就说明不是这份配置的问题，只记日志，不再动。
+export async function healOfficeRoute(ctx, deps) {
+	const d = deps || {};
+	const get = (k) => { try { return typeof ctx.get === "function" ? ctx.get(k) : undefined; } catch { return undefined; } };
+	const llm = get("llm");
+	if (!llm || typeof llm.listProviders !== "function") return { ok: false, why: "no-llm" };
+	const hasOffice = () => { try { return llm.listProviders().some((p) => p && p.id === "office"); } catch { return false; } };
+	if (hasOffice()) return { ok: true, healthy: true };
+	const file = d.file || userPatchFile();
+	if (!file || !existsSync(file)) return { ok: false, why: "no-user-patch" };
+	const fetchModels = d.fetchModels || (async () => {
+		const out = await proxyGw("/v1/company-models", "GET", Buffer.alloc(0));
+		if (!out || out.status !== 200) return [];
+		let j = null;
+		try { j = JSON.parse(out.body.toString("utf8")); } catch { return []; }
+		return (j && Array.isArray(j.models) ? j.models : []).map((m) => ({
+			id: m && m.id, efforts: m && m.efforts, image: !!(m && m.image), context: m && m.context, fast: false,
+		}));
+	});
+	const models = cleanModelPicks(await fetchModels());
+	if (!models.length) return { ok: false, why: "no-models" };
+	const text = readFileSync(file, "utf8");
+	const next = applyGrokModels(text, models, d.baseURL || gwBase() + "/v1", { only: true });
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23);
+	const backup = file + ".broken-" + stamp;
+	writeFileSync(backup, text);
+	// 修了还不好时每次启动都会再备份一份：只留最近 3 份。
+	try {
+		const base = path.basename(file) + ".broken-";
+		const olds = readdirSync(path.dirname(file)).filter((n) => n.indexOf(base) === 0).sort();
+		for (const n of olds.slice(0, Math.max(0, olds.length - 3))) unlinkSync(path.join(path.dirname(file), n));
+	} catch {}
+	const tmp = file + ".tmp";
+	writeFileSync(tmp, next);
+	renameSync(tmp, file);
+	const dropped = piAiProviderKeys(text).filter((k) => k !== "office");
+	let reload = "none";
+	const editor = get("configEditor");
+	if (editor && typeof editor.entries === "function" && typeof editor.edit === "function") {
+		const live = editor.entries().filter((e) => e && e.fiber && e.fiber.state === 2 && e.options && e.options.id !== "llm-pi-ai");
+		const entry = live.find((e) => e.options.id === "agent-default-model") || live[0];
+		if (entry) {
+			try { await editor.edit(entry, (current) => current); reload = "reconciled"; } catch (e) { reload = "edit-failed " + String((e && e.message) || e).slice(0, 160); }
+		}
+	}
+	const wait = d.waitMs === undefined ? 5000 : d.waitMs;
+	for (let t = 0; t < wait && !hasOffice(); t += 250) await new Promise((r) => setTimeout(r, 250));
+	const healed = hasOffice();
+	const line = new Date().toISOString() + " MODEL_HEAL healed=" + healed + " reload=" + reload + " models=" + models.length + " dropped=" + (dropped.join(",") || "-") + " backup=" + path.basename(backup);
+	try { writeFileSync(path.join(path.dirname(file), "model-heal.log"), line + "\n", { flag: "a" }); } catch {}
+	try { console.log(line); } catch {}
+	return { ok: healed, healed, reload, backup, dropped };
 }
 
 function writeGrokModelsFile(models) {
@@ -2011,6 +2090,13 @@ export function apply(ctx) {
 	wrapSkillOnce(tools);
 	wrapWebCompanyName(tools);
 	wrapDumpScan(tools);
+	// 启动时的模型同步（站点补丁，3 秒）之后检查一次公司模型路由。失败不影响启动。
+	if (typeof ctx.effect === "function") {
+		ctx.effect(() => {
+			const t = setTimeout(() => { healOfficeRoute(ctx).catch(() => {}); }, 8000);
+			return () => clearTimeout(t);
+		});
+	}
 	registerKnowledgeTool(ctx);
 	registerPriorWorkTool(ctx);
 	registerMemoryWriteTool(ctx);

@@ -72,6 +72,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prove-share-mount.ps1
+      - name: Prove the desk heals a company model route its own config broke (NO_ADAPTER)
+        run: node scripts/prove-model-heal.js
       - name: Prove the region-edit canvas (crop geometry, tone, both doors against a stand-in gateway)
         run: node scripts/prove-region-edit.js
       - name: Prove the desk source (parses, nothing of one company, site patches apply, overlay)
