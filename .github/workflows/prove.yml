@@ -68,6 +68,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prove-secure-folders-ci.ps1
+      - name: Prove the tailnet DNS answers only the site name
+        run: node scripts/prove-tailnet-dns.js
+      - name: Prove the company-tailnet join logic (facts, on-tailnet check, never rejoin)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prove-tailnet-join.ps1
       - name: Prove the desk mounts the share with its own account over a stale connection (throwaway accounts)
         if: runner.os == 'Windows'
         shell: powershell

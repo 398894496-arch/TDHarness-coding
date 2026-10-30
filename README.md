@@ -4,7 +4,7 @@
 [![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness-coding?label=release)](https://github.com/398894496-arch/TDHarness-coding/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**当前版本 / Version: 2026.10.19** · [更新说明 / Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Architecture](ARCHITECTURE.md)
+**当前版本 / Version: 2026.10.30** · [更新说明 / Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Architecture](ARCHITECTURE.md)
 
 **TDH (TDHarness) is a self-hosted AI workbench for a company LAN.** One Windows server holds the model keys and subscriptions, the company share, the roster and the knowledge base; employees run a desktop client (Windows or Mac) whose agent works on their own computer (files, commands, browser, desktop apps); its model calls and web search go only through that server. It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), patched for a company setting. 中文：一台 Windows 服务器管模型钥匙、公司盘、花名册和知识库；员工电脑装桌面客户端，AI 在员工自己的电脑上干活，模型调用和联网搜索只经过这台服务器。
 

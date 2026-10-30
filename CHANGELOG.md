@@ -4,6 +4,23 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.10.30
+
+**员工在家也能用 TDH：客户端更新后自动加入公司的加密网络；新员工有「远程版」安装包**
+- 每个站点有自己的 Tailscale 网络（tailnet），员工电脑在外面通过它连回服务器，用的还是公司里那个站点名（如 `tdh.local`）。对话、共享盘路径和证书都不用变。站点名靠 tailnet 的分域 DNS 解析到服务器：后台只为这一个名字设一条规则，指向服务器上的新服务 `server/tailnet-dns.js`。这个服务只回答站点名，其他名字一律返回「不存在」，不做转发。设置步骤见 docs/SERVER.md「Remote use」。
+- **已经装好的客户端**：照常更新。下次启动时如果不在公司网络里，客户端会先用一句话说明原因，再请 Windows 给一次管理员权限，然后自动安装 Tailscale 并入网。员工在公司里点了「否」，7 天内不再问；在外面每次启动都会问，因为不入网就没法用。登录会等入网做完，不会抢先去连服务器。
+- **新员工在外面**：发布时会多出一个 `TDHarness-Setup-remote.exe`（约 40MB），里面带着 Tailscale 官方安装包、员工入网密钥和服务器的 tailnet 地址。连不上服务器时它先入网，再通过加密网络下载程序包。下载改成断点续传，网络断了从断点接着下，最多 30 次。`--quiet` 是无人值守模式：不弹提示框，装完不打开程序，用退出码报告结果。
+- **已经在公司网络里的电脑不会被重新入网**（重新入网会换掉它的地址，服务器自己也跑着同样的客户端）。客户端和安装器在入网前都先检查一遍。
+- 删掉了客户端里写死的一个办公室地址：原来用它判断「是否在公司网络」，换到别的站点就永远不成立。现在按本站服务器的 tailnet 地址判断。
+- 发布：服务器上放好员工入网密钥 `D:\dsh\runtime\tailscale\desk.key`（可复用、预批准，最长 90 天）后，`publish-site-update.ps1` 新增的 2b 步（`server/tailnet-site.ps1`）会把三样东西放进 Windows 包的 `vendor\`：密钥、从服务器自己的 `tailscale status` 读到的地址、Tailscale 安装包（只收 Windows 确认是 Tailscale Inc. 签名的），同时编出远程版安装器。没有这个密钥就跳过，和原来一样。`site-cs.py` 新增 `put-zip`，往包里新增或替换整个目录的文件。
+- 证明：
+  - `scripts/prove-tailnet-join.ps1`（Windows CI）：入网逻辑，不联网。重点是判断「在公司网络里」：后端必须在运行，并且服务器地址要完全匹配，`100.x.y.7` 不算 `100.x.y.78`。
+  - `scripts/prove-tailnet-dns.js`（CI）：DNS 服务只回答站点名。
+  - workflow `tailnet-e2e` / `scripts/e2e-remote-setup.ps1`：在一台全新的、不在客户公司的 Windows 机器上，用临时入网密钥跑通整条链路。
+- 实测：
+  - 端到端：一台在美国的 GitHub Windows 机器，远程版安装器 38.8MB，安装 Tailscale、入网，再通过加密网络下载 405MB 程序包并装好，全程 264 秒。`tdh.local` 解析到服务器，访问服务器返回 200，开始走中转、几十秒后变成直连，约 3.9MB/s。第二次入网被保护拦下，地址不变。
+  - 服务器上：客户端和安装器的 `--ts-join` 遇到本机时都识别为「已在公司网络」，什么都不做；换成别的地址时在入网前就停下。服务器的地址前后不变。
+
 ## 2026.10.19
 
 **员工端模型配置坏了会自己修好（`no adapter registered for provider "office"`）**
