@@ -74,6 +74,12 @@ internal static class AppHost
     [STAThread]
     private static int Main()
     {
+        var argv = Environment.GetCommandLineArgs();
+        if (argv.Length > 1 && argv[1] == "--ts-join")
+        {
+            try { return TsJoinElevated(); }
+            catch (Exception ex) { Log("ts-join " + ex.Message); return 9; }
+        }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         try
@@ -1223,68 +1229,90 @@ internal static class AppHost
         Rpc("workspace.rename", "{\"workspaceId\":\"" + JsonEscape(id) + "\",\"title\":\"" + JsonEscape(title) + "\"}");
     }
 
-    internal static string ResolveTsAuth(string fromLogin)
+    // 公司加密网络（TailnetJoin.cs）。站点文件在 vendor\：company-tailnet.txt、employee.auth、tailscale-setup.msi。
+    // 不在公司 tailnet 里就先说一句、弹一次 Windows 管理员确认、以 --ts-join 提权入网；在局域网里员工点了「否」，
+    // 7 天内不再问（在家时必须入网，每次都问）。已经在公司 tailnet 的电脑什么都不做。
+    internal static string VendorPath(string name)
     {
-        if (!string.IsNullOrEmpty(fromLogin) && fromLogin.IndexOf(("ts" + "key-")) == 0)
-            return fromLogin;
-        try
-        {
-            var p = Path.Combine(Root, "vendor", "employee.auth");
-            if (!File.Exists(p)) return "";
-            var line = File.ReadAllText(p).Trim();
-            var nl = line.IndexOf('\n');
-            if (nl >= 0) line = line.Substring(0, nl).Trim();
-            if (line.IndexOf(("ts" + "key-")) == 0) return line;
-        }
-        catch { }
-        return "";
+        return Path.Combine(Root, "vendor", name);
     }
 
-    internal static void JoinOffLan(string authKey)
+    internal static TailnetJoin.Facts CompanyTailnet()
     {
-        authKey = ResolveTsAuth(authKey);
-        if (string.IsNullOrEmpty(authKey) || authKey.IndexOf(("ts" + "key-")) != 0)
-        {
-            Log("ts-skip-no-auth");
-            return;
-        }
-        var ts = FindTailscale();
-        if (ts == null) ts = InstallTailscale();
-        if (ts == null)
-        {
-            Log("ts-missing");
-            return;
-        }
-        if (TailscaleOnCompany(ts))
-        {
-            Log("ts-already-company");
-            return;
-        }
-        var keyFile = Path.Combine(Path.GetTempPath(), "td-ts.auth");
-        try
-        {
-            File.WriteAllText(keyFile, authKey);
-            RunHidden(ts, "up --auth-key=file:" + keyFile + " --accept-routes --reset --unattended", 90000);
-            Log("ts-up");
-        }
-        finally
-        {
-            try { if (File.Exists(keyFile)) File.Delete(keyFile); } catch { }
-        }
+        return TailnetJoin.ReadFacts(VendorPath("company-tailnet.txt"));
     }
 
-    // company-ts-join-before-login-v1
-    // Off-LAN boxes must be on 100.x before CheckLogin hits the office login URL.
-    // Guangzhou office / warehouse on 192.168.1.0/24 already reach Site.Host.
-    // Do not force Tailscale there: data follows the account, not the PC.
+    private static bool _tsTried;
+    private static readonly object _tsLock = new object();
+
+    // 启动线程和登录按钮都会调；后到的一方等前一方做完（登录不会在入网途中抢先去连服务器）。
     internal static void EnsureCompanyNet()
     {
-        if (OnOfficeLan())
+        lock (_tsLock)
         {
-            Log("ts-skip-office-lan");
+            if (_tsTried) return;
+            _tsTried = true;
+            EnsureCompanyNetOnce();
+        }
+    }
+
+    private static void EnsureCompanyNetOnce()
+    {
+        var facts = CompanyTailnet();
+        if (!facts.Valid || TailnetJoin.ReadKey(VendorPath("employee.auth")).Length == 0)
+        {
+            Log("ts-skip no-site-tailnet");
             return;
         }
-        JoinOffLan("");
+        var ts = TailnetJoin.FindTailscale();
+        if (ts != null && TailnetJoin.OnCompany(ts, facts))
+        {
+            Log("ts-on-company");
+            return;
+        }
+        var onLan = OnOfficeLan();
+        var skip = Path.Combine(Rc8Dir(), "ts-join.declined");
+        if (onLan)
+        {
+            try
+            {
+                if (File.Exists(skip) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(skip)).TotalDays < 7)
+                {
+                    Log("ts-skip declined-recently");
+                    return;
+                }
+            }
+            catch { }
+        }
+        var ask = onLan
+            ? "为了在家里也能用 TDH，这台电脑要加入公司的加密网络（Tailscale），只需要一次。\n\n接下来 Windows 会问「是否允许此应用对你的设备进行更改」，请点「是」。"
+            : "现在不在公司网络里。要在这里用 TDH，这台电脑需要加入公司的加密网络（Tailscale），只需要一次。\n\n接下来 Windows 会问「是否允许此应用对你的设备进行更改」，请点「是」。";
+        MessageBox.Show(ask, "TDHarness", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        var rc = TailnetJoin.RunElevated(Application.ExecutablePath, "--ts-join", 360000, Log);
+        Log("ts-join-result " + rc);
+        if (rc == 0)
+        {
+            try { if (File.Exists(skip)) File.Delete(skip); } catch { }
+            // 刚入网时分域 DNS 要几秒才生效
+            for (var i = 0; i < 20 && !OnOfficeLan(); i++) Thread.Sleep(1000);
+            return;
+        }
+        try
+        {
+            Directory.CreateDirectory(Rc8Dir());
+            File.WriteAllText(skip, DateTime.UtcNow.ToString("o"));
+        }
+        catch { }
+        if (!onLan)
+            MessageBox.Show(rc == -1223
+                ? "没有加入公司网络（刚才选了「否」）。下次打开 TDHarness 会再问一次。"
+                : "没能加入公司网络（" + rc + "）。请把这句话截图发给管理员；这台电脑可能没有管理员权限。", "TDHarness");
+    }
+
+    // --ts-join：由 EnsureCompanyNet 以管理员身份启动，只做入网，不开窗口。
+    internal static int TsJoinElevated()
+    {
+        return TailnetJoin.Join(VendorPath("tailscale-setup.msi"), VendorPath("employee.auth"), CompanyTailnet(), Log);
     }
 
     internal static bool OnOfficeLan()
@@ -1327,90 +1355,8 @@ internal static class AppHost
     internal static bool OnCompanyNet()
     {
         if (OnOfficeLan()) return true;
-        var ts = FindTailscale();
-        if (ts == null) return false;
-        return TailscaleOnCompany(ts);
-    }
-
-    private static bool TailscaleOnCompany(string ts)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo();
-            psi.FileName = ts;
-            psi.Arguments = "status --json";
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
-            psi.RedirectStandardOutput = true;
-            psi.RedirectStandardError = true;
-            using (var p = Process.Start(psi))
-            {
-                if (p == null) return false;
-                var text = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(8000);
-                if (text.IndexOf(("100.68." + "88.100"), StringComparison.Ordinal) >= 0) return true;
-                if (text.IndexOf(("desktop-" + "2698418"), StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                return false;
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool TailscaleRunning(string ts)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo();
-            psi.FileName = ts;
-            psi.Arguments = "status --json";
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
-            psi.RedirectStandardOutput = true;
-            psi.RedirectStandardError = true;
-            using (var p = Process.Start(psi))
-            {
-                if (p == null) return false;
-                var text = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(8000);
-                return text.IndexOf("\"BackendState\":\"Running\"", StringComparison.Ordinal) >= 0
-                    || text.IndexOf("\"BackendState\": \"Running\"", StringComparison.Ordinal) >= 0;
-            }
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static string FindTailscale()
-    {
-        var a = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Tailscale", "tailscale.exe");
-        var b = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Tailscale", "tailscale.exe");
-        if (File.Exists(a)) return a;
-        if (File.Exists(b)) return b;
-        return null;
-    }
-
-    private static string InstallTailscale()
-    {
-        try
-        {
-            var msi = Path.Combine(Root, "vendor", "tailscale-setup.msi");
-            if (!File.Exists(msi))
-            {
-                Log("ts-msi-missing");
-                return FindTailscale();
-            }
-            RunHidden(Path.Combine(Environment.SystemDirectory, "msiexec.exe"), "/i \"" + msi + "\" /qn /norestart TS_NOLAUNCH=yes TS_UNATTENDEDMODE=always", 180000);
-        }
-        catch (Exception ex)
-        {
-            Log("ts-install " + ex.Message);
-        }
-        return FindTailscale();
+        var ts = TailnetJoin.FindTailscale();
+        return ts != null && TailnetJoin.OnCompany(ts, CompanyTailnet());
     }
 
     // Sessions live on the person's share ($personal/.dsh-desk). Do not POST
@@ -1863,11 +1809,6 @@ internal sealed class ShellForm : Form
             {
                 _err.Text = "账号或密码不对";
                 return;
-            }
-            if (!AppHost.OnOfficeLan() && !AppHost.OnCompanyNet())
-            {
-                try { AppHost.JoinOffLan(hit.TsAuth); }
-                catch (Exception tsEx) { AppHost.Log("ts " + tsEx.Message); }
             }
             _err.Text = "正在挂入公司盘…";
             Application.DoEvents();
