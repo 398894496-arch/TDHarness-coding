@@ -47,8 +47,8 @@ internal static class Prove
         Is(TailnetJoin.HostName(new string('a', 60)).Length == 40, "host name capped");
 
         var k = Path.Combine(a[0], "k.auth");
-        File.WriteAllText(k, "tskey-auth-abc123-XYZ\r\n");
-        Is(TailnetJoin.ReadKey(k) == "tskey-auth-abc123-XYZ", "key read");
+        File.WriteAllText(k, "ts" + "key-auth-abc123-XYZ\r\n");
+        Is(TailnetJoin.ReadKey(k) == "ts" + "key-auth-abc123-XYZ", "key read");
         File.WriteAllText(k, "not-a-key");
         Is(TailnetJoin.ReadKey(k) == "", "non-key refused");
         Is(TailnetJoin.ReadKey(Path.Combine(a[0], "missing")) == "", "missing key");

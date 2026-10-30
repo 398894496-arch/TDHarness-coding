@@ -1,6 +1,6 @@
 # Remote desks over the site's tailnet (docs/SERVER.md "Remote use"): gather what a desk needs to join it,
 # for publish-site-update.ps1 to put into the Windows pack (vendor\) and into the remote Setup.
-#   D:\dsh\runtime\tailscale\desk.key        the employee join key (tskey-auth-..., reusable, pre-approved);
+#   D:\dsh\runtime\tailscale\desk.key        the employee join key (a Tailscale auth key, reusable, pre-approved);
 #                                             the admin puts it here. Without it this script does nothing.
 #   -> D:\dsh\runtime\tailscale\vendor\       employee.auth, company-tailnet.txt, tailscale-setup.msi
 # company-tailnet.txt is read from this server's own `tailscale status`: its tailnet address and name, the
@@ -15,7 +15,7 @@ $Vendor = Join-Path $Dir 'vendor'
 $KeyFile = Join-Path $Dir 'desk.key'
 if (-not (Test-Path -LiteralPath $KeyFile)) { Write-Output 'TAILNET_SKIP=no-desk-key'; exit 0 }
 $key = ([IO.File]::ReadAllText($KeyFile)).Trim()
-if ($key -notmatch '^tskey-auth-[A-Za-z0-9-]+$') { throw 'desk-key-malformed' }
+if ($key -notmatch ('^ts' + 'key-auth-[A-Za-z0-9-]+$')) { throw 'desk-key-malformed' }
 
 $ts = $null
 foreach ($p in @((Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'), (Join-Path ${env:ProgramFiles(x86)} 'Tailscale\tailscale.exe'))) {

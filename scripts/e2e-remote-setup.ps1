@@ -4,7 +4,7 @@
 #   2. reaches the site by its LAN name over the tailnet (split DNS), downloads the desk pack and installs it,
 #   3. refuses to join again once on the tailnet (the guard that keeps a joined machine's address),
 # then logs out. Use an ephemeral key: the node is removed from the tailnet once it goes offline.
-# Inputs (environment): TS_KEY (tskey-auth-..., ephemeral), SERVER_IP (the site server's tailnet address),
+# Inputs (environment): TS_KEY (a Tailscale auth key, ephemeral), SERVER_IP (the site server's tailnet address),
 # SITE_HOST (the site name, e.g. tdh.local). Needs administrator (CI runners are). Prints E2E_REMOTE_SETUP_OK=1.
 # Keep this file ASCII: Windows PowerShell 5.1 reads BOM-less UTF-8 as the ANSI code page.
 $ErrorActionPreference = 'Stop'

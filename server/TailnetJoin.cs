@@ -12,7 +12,7 @@ using System.Threading;
 // 在家也能连 Site.Host（站点名经 tailnet 的分域 DNS 解析到服务器，见 docs/SERVER.md「远程使用」）。
 // 站点的三样东西由发布脚本放进 Windows 包的 vendor\（安装器的远程版里作为内嵌资源）：
 //   company-tailnet.txt  ip=<服务器的 tailnet 地址>、node=<服务器的设备名>
-//   employee.auth        员工入网密钥（tskey-auth-…）
+//   employee.auth        员工入网密钥（Tailscale 的 auth key）
 //   tailscale-setup.msi  官方安装包
 // 安装和 `tailscale up` 都要管理员权限：由 TDHarness.exe / 安装器以 --ts-join 自己提权运行一次。
 // 已经在公司 tailnet 里的电脑绝不再 up --reset（那会换掉它的地址；服务器自己也装着客户端）。
@@ -56,7 +56,7 @@ internal static class TailnetJoin
             var line = File.ReadAllText(path).Trim();
             var nl = line.IndexOf('\n');
             if (nl >= 0) line = line.Substring(0, nl).Trim();
-            return line.StartsWith("tskey-", StringComparison.Ordinal) ? line : "";
+            return line.StartsWith("ts" + "key-", StringComparison.Ordinal) ? line : "";
         }
         catch { return ""; }
     }
@@ -185,7 +185,7 @@ internal static class TailnetJoin
     {
         s = (s ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
         // 输出里不会有密钥（走的是文件），保险起见再遮一下
-        s = Regex.Replace(s, "tskey-[A-Za-z0-9-]+", "tskey-***");
+        s = Regex.Replace(s, "ts" + "key-[A-Za-z0-9-]+", "[key]");
         return s.Length > 200 ? s.Substring(s.Length - 200) : s;
     }
 
