@@ -7,6 +7,8 @@
 #   root, _skills, _control, content    everyone reads, admins change
 #   _handbook (and _handbook\_company)  everyone reads, admins change
 #   _handbook\<dept>                    that department reads, its director and admins change
+#   _handbook\_private (private layer)  the people on the roster's "kb_private" list read,
+#                                       admins change; nobody else sees it (empty = admins)
 #   _shared (company memory)            everyone reads, admins and directors change
 #   _office                             admins
 #   each person's folder (personal) and content\emp-<login>: the person changes, the
@@ -75,7 +77,9 @@ if (-not $ServerOnly) {
   $staff = @($seat.Values | Where-Object { $_ } | Select-Object -Unique)
   $admins = @($people | Where-Object { $_.role -eq 'admin' } | ForEach-Object { $own[[string]$_.login] } | Where-Object { $_ } | Select-Object -Unique)
   $directors = @($people | Where-Object { $_.role -eq 'director' } | ForEach-Object { $own[[string]$_.login] } | Where-Object { $_ } | Select-Object -Unique)
-  $depts = @(@($roster.depts | ForEach-Object { [string]$_.id }) + @($people | ForEach-Object { [string]$_.dept }) | Where-Object { $_ -and $_ -ne 'company' -and $_ -ne '*' -and $_ -match '^[A-Za-z0-9._-]+$' } | Select-Object -Unique)
+  # A department never names a handbook folder starting with "_" (_company, _private).
+  $depts = @(@($roster.depts | ForEach-Object { [string]$_.id }) + @($people | ForEach-Object { [string]$_.dept }) | Where-Object { $_ -and $_ -ne 'company' -and $_ -ne '*' -and $_ -match '^[A-Za-z0-9.-][A-Za-z0-9._-]*$' } | Select-Object -Unique)
+  $privateList = @($roster.kb_private | Where-Object { $_ } | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() })
   Write-Output ('PEOPLE=' + $people.Count + ' OWN_ACCOUNT=' + ($people.Count - $missing.Count) + ' VIA_DSHSHARE=' + ($missing -join ','))
 
   # ---- what ----
@@ -95,6 +99,15 @@ if (-not $ServerOnly) {
     }
     foreach ($s in $admins) { Grant $hb $s 'M' }
   }
+  # The private layer: the listed people with their own account (dshshare never stands in for
+  # a list, as it never does for a role), admins change. Created when missing.
+  $private = Join-Path $Company '_handbook\_private'
+  foreach ($p in $people) {
+    if ($privateList -contains ([string]$p.login).ToLowerInvariant()) { Grant $private $own[[string]$p.login] 'R' }
+  }
+  foreach ($s in $admins) { Grant $private $s 'M' }
+  if (-not $rules.Contains([IO.Path]::GetFullPath($private).TrimEnd('\'))) { $rules[[IO.Path]::GetFullPath($private).TrimEnd('\')] = @{} }
+  Write-Output ('KB_PRIVATE=' + ($privateList -join ','))
   $companyFull = [IO.Path]::GetFullPath($Company).TrimEnd('\')
   foreach ($p in $people) {
     $login = [string]$p.login

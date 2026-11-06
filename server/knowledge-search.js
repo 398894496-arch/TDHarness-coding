@@ -19,6 +19,9 @@
 //              their own personal _memory and their own daily pages (11-l1, 10-logs)
 //   department company/_handbook/<dept>, brain/20-l2/<dept>
 //   director   + the daily pages and inbox of their department
+//   private    company/_handbook/_private: admins, and the people an admin put on the list
+//              (roster.json "kb_private", edited in 设置 → 人员 → 知识库私密层). Empty list =
+//              admins only. Not a role: being a director or in some department gives nothing
 //   admin      every handbook, every daily page and lesson, the boss inbox
 // Raw conversations (brain/10-l0) never come up in a search; they are read one
 // file at a time by path (evidence), by their owner, the director of that
@@ -94,7 +97,10 @@ function personOf(token) {
   const dept = String(who.dept || '');
   // The brain files admins (and anyone without a department) under "boss" (homes-from-share.js).
   const bdept = role === 'admin' || !dept || dept === '*' || dept === 'company' ? 'boss' : dept;
-  return { login, role, dept, bdept };
+  // Read with the roster on every question, so a change to the list counts from the next one.
+  const list = roster && Array.isArray(roster.kb_private) ? roster.kb_private.map((s) => String(s || '').trim().toLowerCase()) : [];
+  const kbPrivate = role === 'admin' || list.indexOf(login.toLowerCase()) >= 0;
+  return { login, role, dept, bdept, kbPrivate };
 }
 
 function audit(login, route, hits) {
@@ -105,6 +111,10 @@ function audit(login, route, hits) {
 }
 
 const safe = (s) => String(s || '').replace(/[^A-Za-z0-9._-]/g, '');
+// The private layer. A department id never names a folder starting with "_" (_company,
+// _private), so no department can be handed this one by its name.
+const PRIVATE = '_private';
+const deptDir = (d) => { const x = safe(d); return x && x.charAt(0) !== '_' ? x : ''; };
 const B = (...p) => path.join(BRAIN, ...p);
 const C = (...p) => path.join(COMPANY, ...p);
 
@@ -130,9 +140,10 @@ function roots(person) {
   if (person.role === 'admin') {
     return out.concat([C('_handbook'), B('20-l2'), B('11-l1'), B('10-logs'), B('_inbox')]);
   }
-  const d = safe(person.dept);
+  const d = deptDir(person.dept);
   const bd = safe(person.bdept);
   if (d) out.push(C('_handbook', d));
+  if (person.kbPrivate) out.push(C('_handbook', PRIVATE));
   if (bd) out.push(B('20-l2', bd));
   if (person.role === 'director' && bd) out.push(B('11-l1', bd), B('10-logs', bd), B('_inbox', 'director', bd));
   return out;
@@ -177,6 +188,7 @@ function relName(full) {
 function layerOf(full) {
   const r = relName(full);
   if (/^10-l0\//.test(r)) return 'evidence';
+  if (/^company\/_handbook\/_private\//.test(r)) return 'private';
   if (/^company\/_handbook\//.test(r)) return 'handbook';
   if (/\/_memory\//.test(r)) return 'memory';
   if (/^(11-l1|10-logs)\//.test(r)) return 'daily';
@@ -232,7 +244,9 @@ function search(person, body) {
   }
   if (!query) return { ok: false, status: 'bad-request', ...who, hits: [] };
   // The company's synonyms, and the department's own (同义词.txt in its handbook).
-  const syn = index.synonyms([C('_handbook', '_company')].concat(person.dept && person.role !== 'admin' ? [C('_handbook', safe(person.dept))] : []));
+  const syn = index.synonyms([C('_handbook', '_company')]
+    .concat(deptDir(person.dept) && person.role !== 'admin' ? [C('_handbook', deptDir(person.dept))] : [])
+    .concat(person.kbPrivate ? [C('_handbook', PRIVATE)] : []));
   const found = index.search(roots(person), [query], { limit: LIMIT, perFile: 3, allow: (full, fm) => fmAllows(person, fm), synonyms: syn });
   return { ok: true, status: found.length ? 'ok' : 'not-found', ...who, layer: 'lookup', hits: found.map(hit) };
 }

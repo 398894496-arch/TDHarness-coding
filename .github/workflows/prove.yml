@@ -86,6 +86,11 @@ jobs:
       - name: Prove people management, including removing an account for good
         if: runner.os == 'Linux'
         run: python3 scripts/prove-people.py
+      - name: Prove the knowledge base private layer (listed find it, the rest never, admins keep the list)
+        if: runner.os == 'Linux'
+        run: node scripts/prove-kb-private.js
+        env:
+          PROVE_PY: python3
   release-notes:
     runs-on: ubuntu-latest
     steps:
