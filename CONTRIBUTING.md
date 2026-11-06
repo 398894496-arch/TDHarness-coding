@@ -33,6 +33,8 @@ Run `node scripts/prove-privilege-patches.js` for the C3 DACL/trusted-root behav
 
 Run `node scripts/prove-search-errors.js` (requires `rg`, or `TDH_TEST_RG` pointing to its executable) to verify the C8 error matrix and a real missing-path diagnostic. It needs no kernel prefix. Both Linux and Windows CI run it.
 
+Run `node scripts/prove-kb-private.js` → `KB_PRIVATE_PROVE_OK=1` after touching who may search what (`server/knowledge-search.js`, the people API). It starts both services on a throwaway root; needs Python 3.
+
 Run `node scripts/prove-linux-cifs.js` for C2b (no kernel prefix). Linux additionally checks native statfs on local paths. Optional `TDH_TEST_CIFS_ROOT` requires refusal of an existing CIFS root without changing mounts. See [the coverage limits](docs/LINUX-CIFS.md).
 
 Run `node scripts/prove-models.js` for C9 (no kernel prefix). Mock token endpoints only; it does not open a browser or contact a vendor.

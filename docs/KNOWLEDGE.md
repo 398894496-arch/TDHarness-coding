@@ -9,7 +9,7 @@ What the company's AI knows beyond one conversation: the distilled record of eve
 | Source | How | Where |
 | --- | --- | --- |
 | Everyone's conversations with the agent | Task `TDH-Brain-Daily` (00:15) reads the day's sessions where the desk keeps them, writes an evidence layer and one distilled page per person per day through the gateway, collects corrections | `D:\dsh\brain` |
-| Company documents | Dropped in a folder; read on the next search, no rebuild | `company\_handbook\_company` (everyone), `company\_handbook\<dept>` (that department) |
+| Company documents | Dropped in a folder; read on the next search, no rebuild | `company\_handbook\_company` (everyone), `company\_handbook\<dept>` (that department), `company\_handbook\_private` (the private layer: admins and the people on its list) |
 | Company memory | Admins and directors ask their agent to remember (`company_memory_write`) | `company\_shared\_memory` |
 | Personal memory | Anyone asks their agent to remember | their own `_memory` |
 
@@ -37,9 +37,12 @@ Every search needs the login token a person got at sign-in: no token, a revoked 
 | Everyone | company handbook, company memory, corrections, their own memory and daily pages |
 | A department | its handbook and its adopted lessons |
 | A director | plus the daily pages of their department |
-| An admin | all of it |
+| Someone on the private layer's list | plus the private layer, `company\_handbook\_private` |
+| An admin | all of it, the private layer included |
 
-Raw conversations never come up in a search. They are opened one file at a time by path, by their owner, that department's director or an admin. A note's `visibility` (`self`, `dept`, `boss`) can only narrow what its folder allows, never widen it.
+**The private layer.** Documents only management and a few named people may see go in `company\_handbook\_private`. `server\secure-folders.ps1` creates it already closed (setup, every people change and the nightly task run it), so it never inherits the handbook's open read even for a moment; on a server installed earlier it appears after the next people change or that night. Who besides admins may search it is a list an admin keeps in **Settings → 人员 → 知识库私密层**: open 可查看名单, tick the colleagues, **保存名单**; **改成只有管理员** (or no ticks) leaves it to admins. It is not a role and not a department: making someone a director does not open it, and nobody has to be made an admin for it. The list is `kb_private` (login names) in `runtime\roster.json`, changed only by an admin through the people API (`kb-private-set`, roster logins only) and never shown in the open people list. The search reads it with the roster on every question, so a change counts from the next one. Off the list, nothing in the layer comes up under any wording, its own synonyms (`同义词.txt` in the layer) or its file name; its words do not even count towards ranking or refusing, which only look at what the asker may search. A disabled person gets `401`; a removed person leaves the list. On the share, only the listed people (with their own share account, never through `dshshare`) can open the folder and admins change it; access-based enumeration hides it from everyone else, and people-api redoes the rights after every change to the list.
+
+Raw conversations never come up in a search. They are opened one file at a time by path, by their owner, that department's director or an admin. A note's `visibility` (`self`, `dept`, `boss`) can only narrow what its folder allows, never widen it: `visibility: boss` in the private layer stays admins-only, `visibility: company` there opens it to nobody off the list.
 
 The files themselves agree with the search: `server\secure-folders.ps1` sets the company share's NTFS rights from the roster (a person's folder opens for them, their director and admins; the handbook and company memory are changed only by admins and directors), so nobody reads around the search or writes into the handbook every agent trusts. See [SERVER.md](SERVER.md#who-opens-which-folder).
 
@@ -48,4 +51,5 @@ Every desk's account page tells the person what is kept and who can see it (知�
 ## Proofs
 
 - `node scripts/prove-knowledge.js`: five people (employee, colleague in the same department, director, someone from another department, admin) against one brain and company folder: who finds what, raw conversations by path only, ranking and snippets, Office / PDF / OCR / old Office files, the background queue not blocking a search, no server paths in answers. Runs in CI on Windows and Linux.
-- `server\prove-secure-folders.ps1` (on the server): asks Windows, account by account, what each person can actually open and change.
+- `node scripts/prove-kb-private.js`: the private layer through the real people API and search: empty list admins only, only admins change the list, listed people find it under several wordings and its synonyms, everyone else finds nothing (by wording or by path), frontmatter still only narrows, changes count at once, disabled and removed people drop out (`KB_PRIVATE_PROVE_OK=1`). Runs in CI on Linux.
+- `server\prove-secure-folders.ps1` (on the server): asks Windows, account by account, what each person can actually open and change, the private layer included. CI runs it on throwaway accounts and changes the list twice.

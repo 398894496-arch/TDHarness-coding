@@ -4,6 +4,17 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
 
+## 2026.11.06
+
+**知识库加「私密层」：管理员在后台维护可查看名单**
+- 场景：客户的知识库分两层，共享层全公司可见，私密层只给授权的管理层和个别人员。之前只能按角色和部门划分，非管理员要看私密资料只能临时设成管理员，权限给多了。
+- 私密层文件夹：公司盘 `company\_handbook\_private`（`secure-folders.ps1` 会建好）。放进去的资料只给管理员和名单上的人检索、打开。
+- 名单在 设置 → 人员 →「知识库私密层」：打开「可查看名单」，勾上同事，点「保存名单」。一个都不勾（或点「改成只有管理员」）= 只有管理员能看。名单存在服务器 `runtime\roster.json` 的 `kb_private`（登录名），只有管理员能读能改，只收花名册里有的登录名；公开的人员列表不带它。
+- 检索（`server/knowledge-search.js`）：名单上的人搜索范围加上私密层；名单外的人（总监、同部门的人也一样）换什么问法、用私密层自己的同义词、直接点名文件路径都搜不到，私密层的词也不参与他们的排序和拒答判断。frontmatter 照旧只能收窄：私密层里 `visibility: boss` 的仍只给管理员，`visibility: company` 也不会对名单外的人放开。名单每次提问都重读，改完下一句就生效；停用的人 401，删除账号会顺带移出名单。部门 id 不能以 `_` 开头，避免哪个部门的手册目录正好叫 `_private`。
+- 共享盘权限（`server/secure-folders.ps1`）：`_handbook\_private` 只给名单上的人读（必须是自己的共享账号，`dshshare` 不代任何人进私密层）、管理员改，其他人靠 access-based enumeration 连文件夹都看不到。名单一改，people-api 照现有方式在后台跑一次 `-Apply`。
+- 新增 `scripts/prove-kb-private.js`（CI，Linux）：真实起 people-api 和知识库检索，空名单只有管理员、只有管理员能改名单、名单内多种问法和同义词都能搜到、名单外各种问法和点名路径都搜不到、frontmatter 只收窄、改名单立即生效、停用和删除的人出名单、清空后只剩管理员。另做了反向检查：把名单判断改成全员放行，这个证明会失败。
+- `scripts/prove-secure-folders-ci.ps1`（CI，Windows，临时账号）和 `server/prove-secure-folders.ps1` 加上私密层：名单上有自己账号的人能读、管理员能改、其他人和 `dshshare` 打不开；名单换人、清空后各 `-Apply` 一次，权限跟着变。这部分没在本机跑过（本机是 macOS），只靠 Windows CI。人员页的名单面板没在真实员工端上点过。
+
 ## 2026.10.19
 
 **员工端模型配置坏了会自己修好（`no adapter registered for provider "office"`）**

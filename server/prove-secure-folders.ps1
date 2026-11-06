@@ -9,6 +9,8 @@
 #     colleague's folder (raw conversations, memory, deliverables) or _office
 #   director: changes company memory; reads the folders of their own department only
 #   admin: changes everything on the share
+#   private layer (_handbook\_private): read by the people on the roster's kb_private list
+#     with their own account, changed by admins, closed to everyone else (directors included)
 #   dshshare: cannot open the folder of anyone who has an own account, nor runtime / brain
 # Prints a line per failure and SECURE_FOLDERS_PROVE_OK=1 when there is none.
 # Keep this file ASCII: Windows PowerShell 5.1 reads BOM-less UTF-8 as the ANSI code page.
@@ -54,6 +56,8 @@ public static class TdhEffective {
 $Company = Join-Path $Root 'company'
 $roster = Get-Content -LiteralPath (Join-Path $Root 'runtime\roster.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $people = @($roster.people | Where-Object { $_ -and $_.login -and ((-not $_.status) -or $_.status -eq 'active') })
+$privateList = @($roster.kb_private | Where-Object { $_ } | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() })
+$privateDir = Join-Path $Company '_handbook\_private'
 function Sid-Of([string]$n) { $u = Get-LocalUser -Name $n -ErrorAction SilentlyContinue; if ($u -and $u.Enabled) { $u.SID.Value } }
 function Folder($p) {
   $personal = [string]$p.personal
@@ -88,6 +92,9 @@ foreach ($p in $withOwn) {
   Expect $who $sid (Join-Path $Company '_skills') 'write' $admin
   Expect $who $sid (Folder $p) 'write' $true
   Expect $who $sid (Join-Path $Company '_office') 'read' $admin
+  $listed = $privateList -contains ([string]$p.login).ToLowerInvariant()
+  Expect $who $sid $privateDir 'read' ($admin -or $listed)
+  Expect $who $sid $privateDir 'write' $admin
   Expect $who $sid (Join-Path $Root 'runtime') 'read' $false
   Expect $who $sid (Join-Path $Root 'runtime\gateway.env') 'read' $false
   Expect $who $sid (Join-Path $Root 'brain') 'read' $false
@@ -141,6 +148,7 @@ if ($ds) {
   Expect 'dshshare' $ds (Join-Path $Company '_handbook') 'read' $stillOn
   Expect 'dshshare' $ds $Company 'read' $stillOn
   Expect 'dshshare' $ds (Join-Path $Root 'runtime') 'read' $false
+  Expect 'dshshare' $ds $privateDir 'read' $false
   Expect 'dshshare' $ds (Join-Path $Root 'brain') 'read' $false
   Expect 'dshshare' $ds $Company 'write' $false
   Expect 'dshshare' $ds (Join-Path $Company '_handbook') 'write' $false

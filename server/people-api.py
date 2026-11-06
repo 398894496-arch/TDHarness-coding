@@ -114,6 +114,25 @@ NAME_MAX = 20
 AVATAR_RE = re.compile(r"^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$")
 AVATAR_MAX = 60000
 ROLES = ("employee", "director", "admin")
+# The knowledge base's private layer, company/_handbook/_private: who besides admins may
+# search and open it, as login names in the roster's top-level "kb_private". Empty = admins
+# only. Kept in the roster so a change runs secure-folders.ps1 like any people change, and the
+# knowledge search (which reads the roster on every question) follows it at once.
+KB_PRIVATE = "kb_private"
+
+
+def kb_private_of(data: dict) -> list:
+    rows = data.get(KB_PRIVATE)
+    if not isinstance(rows, list):
+        return []
+    out: list = []
+    for v in rows:
+        login = str(v or "").strip().lower()
+        if login and login not in out:
+            out.append(login)
+    return out
+
+
 # Readable defaults for department ids that already exist on older rosters.
 DEPT_NAMES = {"company": "公司", "ops": "运营", "visual": "视觉", "wms": "仓储", "live": "直播", "content": "内容"}
 
@@ -952,6 +971,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             revoked = revoke_tokens(str(row.get("pid") or ""))
             data["people"] = [p for p in data.get("people") or [] if not (isinstance(p, dict) and p.get("login") == login)]
+            if login in kb_private_of(data):
+                data[KB_PRIVATE] = [x for x in kb_private_of(data) if x != login]
             data.setdefault("retired", []).append({
                 "login": login,
                 "pid": row.get("pid"),
@@ -967,6 +988,32 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
             done({"removed": login, "revoked": revoked, "password_dropped": dropped})
+            return
+
+        # The private layer's list. Read and changed by admins only; never in the open GET.
+        if action == "kb-private":
+            self._send(*json_bytes({"ok": True, KB_PRIVATE: kb_private_of(data), "people": public_people(), "depts": public_depts()}))
+            return
+        if action == "kb-private-set":
+            want = payload.get("allow")
+            if not isinstance(want, list):
+                fail("kb-private-bad")
+                return
+            known = {str((p or {}).get("login") or "").lower() for p in data.get("people") or [] if isinstance(p, dict)}
+            allow: list = []
+            unknown: list = []
+            for v in want:
+                who = str(v or "").strip().lower()
+                if not who or who in allow:
+                    continue
+                (allow if who in known else unknown).append(who)
+            if unknown:
+                self._send(*json_bytes({"ok": False, "error": "kb-private-unknown", "unknown": unknown}, 400))
+                return
+            data[KB_PRIVATE] = allow
+            sys.stdout.write("KB_PRIVATE by %s -> %s\n" % (actor.get("login"), ",".join(allow) or "admins-only"))
+            sys.stdout.flush()
+            done({KB_PRIVATE: allow})
             return
 
         if action == "dept-add":
