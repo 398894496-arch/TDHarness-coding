@@ -37,6 +37,8 @@ Run `node scripts/prove-linux-cifs.js` for C2b (no kernel prefix). Linux additio
 
 Run `node scripts/prove-models.js` for C9 (no kernel prefix). Mock token endpoints only; it does not open a browser or contact a vendor.
 
+Run `node scripts/prove-model-allow.js` → `MODEL_ALLOW_PROVE_OK=1` after touching who may use a model channel in `server/gw-lite.js` (stand-in upstreams, made-up tokens).
+
 Kernel edits go through `patches/apply-kernel-patches.js` as **anchored** replacements. If an anchor is not unique, fail. Do not vendor a whole upstream file.
 
 Never run the patcher against `~/.local`, `~/dsh-node-rc8`, or another live prefix. Setup uses `~/.tdh-coding-prefix`.

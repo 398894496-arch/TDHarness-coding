@@ -43,7 +43,7 @@ Subscriptions and keys live only on this server. Desks reach models through the 
 | DeepSeek API key | `DEEPSEEK_API_KEY` | `deepseek-*` |
 | xAI API key | `XAI_API_KEY` | `grok-*` |
 | Kimi / Zhipu API key | `KIMI_API_KEY` / `GLM_API_KEY` | `kimi-*`, `moonshot-*` / `glm-*` |
-| Any OpenAI-compatible endpoint | Settings → 模型 → custom; stored as `KEY_<ID>` with its base URL and models in `channels.json` | the models you list |
+| Any OpenAI-compatible endpoint (also a model deployed on your own GPUs) | Settings → 模型 → custom; stored as `KEY_<ID>` with its base URL and models in `channels.json` | the models you list; to everyone, or only to the people on its list (below) |
 | Grok subscription (SuperGrok / X Premium) | OAuth file `D:\dsh\runtime\oauth\xai-account.json`; the gateway renews it, and it wins over `XAI_API_KEY` | `grok-*`, plus the weekly quota in Settings and the Grok image / video tools |
 
 The admin adds keys in Settings → 模型; that writes `gateway.env` on the server. [server/gateway.env.example](../server/gateway.env.example) lists every line.
@@ -52,7 +52,20 @@ The Grok OAuth file comes from signing in to xAI's Grok CLI login with a tool su
 
 ChatGPT Plus/Pro and Claude Pro/Max are personal plans and are not relayed to a team here. Use OpenAI and Anthropic API keys, which are meant for teams and programs.
 
-Every desk lists exactly the models this server can reach (fetched from `/v1/company-models` at login), so the picker never offers one the gateway would refuse. New sessions start on `DEFAULT_MODEL` / `DEFAULT_EFFORT` from `gateway.env`; without it, on the first available model (subscription first). People can still switch per session.
+Every desk lists exactly the models this server can reach for that person (fetched from `/v1/company-models` at login), so the picker never offers one the gateway would refuse. New sessions start on `DEFAULT_MODEL` / `DEFAULT_EFFORT` from `gateway.env`; without it, on the first available model (subscription first). People can still switch per session.
+
+### Who may use a custom channel
+
+A custom channel can be limited to named people, for example a model on the company's own GPUs that keeps its speed only for a handful of users while everyone else stays on vendor keys. The admin sets it in **Settings → 模型 → 模型可用名单**: open the channel, tick the colleagues, **保存名单**. No ticks (or **改成全员可用**) means everyone, which is also what every channel was before lists existed. The list is `allow` (login names) on the channel's row in `runtime\channels.json`; the gateway reads it on every request, so no restart.
+
+| Caller | Model of a limited channel |
+| --- | --- |
+| A person on the list | Listed in `/v1/company-models`, calls go through |
+| A person not on the list (admins included) | Not listed; a call gets `403` `gateway_model_restricted`, 「这个模型只开放给名单上的同事……」, and reaches no upstream: the model name never falls through to a vendor key it happens to match (`deepseek-*` on `DEEPSEEK_API_KEY`), even while the channel's own key is missing |
+| The service token (nightly brain job, deep search) | Always allowed |
+| No token (the `GW_ALLOW_TOKENLESS` bridge) | Treated as nobody: open channels only |
+
+Only an admin's live token may change a list (`POST /channels` `{"action":"set-allow","id":"<channel>","allow":["login",…]}`), only on a custom channel, and only with logins on the roster (someone already on the list who has since left the roster may stay until unticked). Replacing the channel's key keeps its list. `GET /channels` shows the names to admins only; everyone else sees `limited` and `mine`. A desk that synced its picker before the change keeps showing the model until its next login, but the call is refused at once. Each change prints `GW_ALLOW <channel> by <admin> -> <logins|everyone>`, each refusal `GW_DENY 403 restricted <model> (<channel>) for <login>`. Lists apply to custom channels only; the built-in vendor keys and the Grok subscription serve everyone. `node scripts/prove-model-allow.js` proves all of the above against stand-in upstreams (`MODEL_ALLOW_PROVE_OK=1`).
 
 ### Who the gateway answers
 
@@ -60,8 +73,8 @@ Desks reach the gateway over TLS: Caddy on the login port forwards `https://<thi
 
 | Request | Needs |
 | --- | --- |
-| Model calls, vendor files, `/search`, `/fetch`, `/images`, `/videos` | A live login token: in `runtime\gw-tokens.json`, not revoked, and its person active on the roster. Otherwise `401` |
-| `POST /channels` (add, replace or drop a key; channel settings) | The live token of an **admin**. Otherwise `401` / `403`, and `gateway.env` / `channels.json` are left alone |
+| Model calls, vendor files, `/search`, `/fetch`, `/images`, `/videos` | A live login token: in `runtime\gw-tokens.json`, not revoked, and its person active on the roster. Otherwise `401`. A model of a limited custom channel also needs the person on its list (or the service token), otherwise `403` |
+| `POST /channels` (add, replace or drop a key; channel settings, including who may use a custom channel) | The live token of an **admin**. Otherwise `401` / `403`, and `gateway.env` / `channels.json` are left alone |
 | `/health` | Nothing |
 | `GET /channels`, `/v1/company-models`, `/grok-quota`, `/grok-fast` | A live token too: they name custom upstreams and make the gateway probe vendors |
 | Jobs on this PC (nightly brain job, deep search calling the model door) | The service token in `runtime\gw-service.token`, made by the gateway at start, readable by administrators only. It spends keys like a person; it cannot change them |
