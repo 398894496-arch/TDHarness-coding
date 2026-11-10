@@ -4,11 +4,11 @@
 
 [English](README.en.md) · [项目讲解](docs/BRIEF.zh.md) · [更新说明](CHANGELOG.md) · [安全说明](SECURITY.md) · [架构](ARCHITECTURE.md)
 
-[![prove](https://github.com/398894496-arch/TDHarness-coding/actions/workflows/prove.yml/badge.svg?branch=main)](https://github.com/398894496-arch/TDHarness-coding/actions/workflows/prove.yml)
-[![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness-coding?label=release)](https://github.com/398894496-arch/TDHarness-coding/releases)
+[![prove](https://github.com/398894496-arch/TDHarness/actions/workflows/prove.yml/badge.svg?branch=main)](https://github.com/398894496-arch/TDHarness/actions/workflows/prove.yml)
+[![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness?label=release)](https://github.com/398894496-arch/TDHarness/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**当前版本 / Version: 2026.11.09**
+**当前版本 / Version: 2026.11.09.2**
 
 ![任务卡：点开一张卡，对话就带着这个任务开工](docs/screenshots/04-tasks.jpg)
 
@@ -46,8 +46,8 @@ TDHarness（简称 TDH）让一家公司在自己的局域网里用上 AI Agent�
 需要 Windows 10/11 或 Windows Server、管理员权限，事先装好 Git（含 Git LFS）、Node 22+、Python 3。系统自带的 Windows PowerShell 就够用。
 
 ```powershell
-git clone https://github.com/398894496-arch/TDHarness-coding.git
-cd TDHarness-coding
+git clone https://github.com/398894496-arch/TDHarness.git
+cd TDHarness
 git lfs pull
 powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1
 ```
@@ -144,7 +144,7 @@ flowchart LR
 
 ## 项目状态
 
-2026 年 9 月开始，迭代很快，已在生产环境使用：两家小公司每天在用（约 5 个和 22 个账号）。每次合进 `main` 自动发一个带说明的[日期版本](https://github.com/398894496-arch/TDHarness-coding/releases)。维护者之外，已有 2 位贡献者的代码合入。
+2026 年 9 月开始，迭代很快，已在生产环境使用：两家小公司每天在用（约 5 个和 22 个账号）。每次合进 `main` 自动发一个带说明的[日期版本](https://github.com/398894496-arch/TDHarness/releases)。维护者之外，已有 2 位贡献者的代码合入。
 
 每次合并在 Windows 和 Linux 上跑 22 项证明脚本：登录和网关鉴权、TLS 切换、知识库权限和排序、人员管理、公司盘权限、补丁、版本说明、密钥扫描等。内核是上游 `@deepseek-ai/dsh` **0.2.1-alpha.1**，和客户端包一起锁在 [kernel.yml](kernel.yml)；CI 把每个补丁打到这个版本上，打不上就失败（[docs/UPSTREAM.md](docs/UPSTREAM.md)）。至今做过五轮第三方审查，每条发现和修复都写在更新说明里。
 
@@ -158,8 +158,8 @@ flowchart LR
 需要 Node 22+、自己的 DeepSeek（或 OpenAI 兼容）API key，以及一个**本地**文件夹当工作区（不能是 UNC 路径或网络盘）。
 
 ```bash
-git clone https://github.com/398894496-arch/TDHarness-coding.git
-cd TDHarness-coding
+git clone https://github.com/398894496-arch/TDHarness.git
+cd TDHarness
 bash scripts/setup.sh
 export PATH="$HOME/.tdh-coding-prefix/bin:$PATH"
 export DEEPSEEK_API_KEY='your-key'
@@ -174,4 +174,6 @@ Windows：`powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`。它按 
 
 ## 参与
 
-Fork 后提 PR。先开一个 **Task** issue 说明要做什么和验收的那一行输出。细则见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [寻找共建者](docs/WANTED.zh.md)；已关闭的缺口清单在 [BUGS.md](BUGS.md)。上游不收外部 PR，见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
+使用问题、装机反馈和想法发在 [Discussions](https://github.com/398894496-arch/TDHarness/discussions)，Bug 开 Issue。
+
+改代码：Fork 后提 PR。先开一个 **Task** issue 说明要做什么和验收的那一行输出。细则见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [寻找共建者](docs/WANTED.zh.md)；已关闭的缺口清单在 [BUGS.md](BUGS.md)。上游不收外部 PR，见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。

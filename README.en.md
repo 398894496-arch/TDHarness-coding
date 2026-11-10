@@ -4,11 +4,11 @@
 
 [中文](README.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Architecture](ARCHITECTURE.md) · [Product write-up](docs/PRODUCT.md)
 
-[![prove](https://github.com/398894496-arch/TDHarness-coding/actions/workflows/prove.yml/badge.svg?branch=main)](https://github.com/398894496-arch/TDHarness-coding/actions/workflows/prove.yml)
-[![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness-coding?label=release)](https://github.com/398894496-arch/TDHarness-coding/releases)
+[![prove](https://github.com/398894496-arch/TDHarness/actions/workflows/prove.yml/badge.svg?branch=main)](https://github.com/398894496-arch/TDHarness/actions/workflows/prove.yml)
+[![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness?label=release)](https://github.com/398894496-arch/TDHarness/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Version: 2026.11.09**
+**Version: 2026.11.09.2**
 
 ![Task cards: opening one starts a conversation pinned to that card](docs/screenshots/04-tasks.jpg)
 
@@ -46,8 +46,8 @@ The screenshots use made-up people and tasks. Each screen is described in [docs/
 Needs Windows 10/11 or Windows Server, Administrator, and Git with Git LFS, Node 22+ and Python 3 already installed. The built-in Windows PowerShell is enough (PowerShell 7 `pwsh` also works).
 
 ```powershell
-git clone https://github.com/398894496-arch/TDHarness-coding.git
-cd TDHarness-coding
+git clone https://github.com/398894496-arch/TDHarness.git
+cd TDHarness
 git lfs pull
 powershell -ExecutionPolicy Bypass -File scripts\setup-all.ps1
 ```
@@ -146,7 +146,7 @@ They combine: a Dify or RAGFlow instance can sit next to TDH for large-scale doc
 
 ## Status
 
-Young and moving fast, run in production. Started September 2026; in daily use at two small companies (about 5 and 22 accounts). Every merge to `main` cuts [a dated release](https://github.com/398894496-arch/TDHarness-coding/releases) with notes, automatically. Two contributors besides the maintainer have code merged.
+Young and moving fast, run in production. Started September 2026; in daily use at two small companies (about 5 and 22 accounts). Every merge to `main` cuts [a dated release](https://github.com/398894496-arch/TDHarness/releases) with notes, automatically. Two contributors besides the maintainer have code merged.
 
 Every merge runs 22 proof scripts on Windows and Linux in CI: login and gateway authorisation, the TLS switch, knowledge-search permissions and ranking, people management, company-share rights, patches, release notes, secret scan and more. The agent kernel is upstream `@deepseek-ai/dsh` **0.2.1-alpha.1**, pinned in [kernel.yml](kernel.yml) together with the client packages; CI applies every patch to exactly that version and fails if one no longer applies ([docs/UPSTREAM.md](docs/UPSTREAM.md)). Five rounds of third-party review so far; each finding and its fix is in the changelog.
 
@@ -160,8 +160,8 @@ This path does **not** give you the team desk above: no login, no team, no compa
 Needs Node 22+, your own DeepSeek (or OpenAI-compatible) API key, and a **local** folder as the workspace (not UNC / a network drive).
 
 ```bash
-git clone https://github.com/398894496-arch/TDHarness-coding.git
-cd TDHarness-coding
+git clone https://github.com/398894496-arch/TDHarness.git
+cd TDHarness
 bash scripts/setup.sh
 export PATH="$HOME/.tdh-coding-prefix/bin:$PATH"
 export DEEPSEEK_API_KEY='your-key'
@@ -176,4 +176,6 @@ Green: `bash scripts/prove-scan.sh` → `SCAN_OK=1`. After setup: `node scripts/
 
 ## Contributing
 
-Fork + PR. Open a **Task** issue first with a proposal and its green line. [CONTRIBUTING.md](CONTRIBUTING.md); every listed item (C1–C9, C2b) is closed in [BUGS.md](BUGS.md). Upstream door (no PRs): [docs/UPSTREAM.md](docs/UPSTREAM.md).
+Questions, install feedback and ideas go in [Discussions](https://github.com/398894496-arch/TDHarness/discussions); bugs go in Issues.
+
+Code: fork + PR. Open a **Task** issue first with a proposal and its green line. [CONTRIBUTING.md](CONTRIBUTING.md); every listed item (C1–C9, C2b) is closed in [BUGS.md](BUGS.md). Upstream door (no PRs): [docs/UPSTREAM.md](docs/UPSTREAM.md).

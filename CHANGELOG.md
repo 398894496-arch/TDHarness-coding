@@ -4,6 +4,15 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md` and `README.en.md`; CI enforces it and publishes a tagged release.
 
+## 2026.11.09.2
+
+**仓库改名为 TDHarness，开了讨论区**
+- GitHub 仓库从 `TDHarness-coding` 改名为 `TDHarness`，新地址是 `https://github.com/398894496-arch/TDHarness`。旧地址由 GitHub 自动跳转：网页、`git clone`、已有克隆的拉取和推送都照常，已装的服务器不用做任何事。想把本地克隆改成新地址：`git remote set-url origin https://github.com/398894496-arch/TDHarness.git`。
+- 首页、英文页、任务模板和文档里的链接与克隆命令改成新地址。
+- 开了 [Discussions](https://github.com/398894496-arch/TDHarness/discussions)：使用问题、装机反馈和想法发在那里，Bug 仍然开 Issue。新建 Issue 的页面上也加了这个入口。
+- 客户端安装包里的 `NOTICE.txt` 和安装器的版权行仍写旧名（旧地址会跳转）。改它们会让所有站点多一次客户端更新，留到下次客户端发版一起改。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
+
 ## 2026.11.09
 
 **首页改版：打开仓库先看到产品，中文和英文各一页**

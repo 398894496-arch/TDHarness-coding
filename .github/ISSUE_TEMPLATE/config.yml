@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Questions and install help / 使用问题和装机反馈
+    url: https://github.com/398894496-arch/TDHarness/discussions
+    about: Ask here first if you are not sure it is a bug. 不确定是不是 Bug，先在这里问。
   - name: Stock dsh (no patches)
     url: https://github.com/deepseek-ai/deepseek-harness/discussions
     about: Upstream does not take PRs or Issues. Kernel bugs that reproduce on official dsh belong in Discussions, then link here.
