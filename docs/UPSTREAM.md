@@ -37,7 +37,7 @@ Open a **new** General thread only if stock dsh still reproduces **and** the exi
 **Repro:** (shortest steps, local paths only)
 **Expected:**
 **Actual:** (error code / stderr)
-**Workaround we use:** https://github.com/398894496-arch/TDHarness-coding  mark `company-…-vN`
+**Workaround we use:** https://github.com/398894496-arch/TDHarness  mark `company-…-vN`
 ```
 
 Posted 2026-09-03 as `398894496-arch` (do not duplicate):

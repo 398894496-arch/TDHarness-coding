@@ -1,8 +1,8 @@
-# TDHarness-coding
+# TDHarness
 
 **Delivery is a one-click install.** The server: clone, then one command (`scripts/setup-all.ps1`). Employees: open the server's download page and run `TDHarness-Setup.exe` on Windows, or unzip the app on a Mac. Employees never touch a patch, Node or a command line; the server needs Git (with LFS), Node 22+ and Python 3 installed, then that one command as Administrator. 中文：交付就是一键安装——服务器一条命令装完，员工在下载页点一下装客户端。
 
-The product is the Windows LAN server and its desks. The kernel-only CLI path is optional. Install steps live in [README](../README.md#delivery-is-a-one-click-install--交付就是一键安装). This page answers: **is this what you want?**
+The product is the Windows LAN server and its desks. The kernel-only CLI path is optional. Install steps live in [README](../README.en.md#install). This page answers: **is this what you want?**
 
 | Is | Is not |
 | --- | --- |
@@ -25,7 +25,7 @@ The Windows server sends model traffic through the gateway installed on that mac
 
 These screenshots are the desk `setup-all.ps1` installs. `setup.sh` is only the kernel path and does not start login or the gateway.
 
-中文同一套说明：[PRODUCT.zh.md](PRODUCT.zh.md).
+中文讲解：[BRIEF.zh.md](BRIEF.zh.md).
 
 ### Session
 
@@ -116,4 +116,4 @@ No generic Setup.exe / DMG on the Releases page: setup compiles each site's inst
 
 ---
 
-**Next:** run it → [README](../README.md). Claimable holes → [BUGS.md](../BUGS.md). How to patch → [HACKING.md](HACKING.md). Contribute → [CONTRIBUTING.md](../CONTRIBUTING.md). License and rename → [NOTICE.md](../NOTICE.md).
+**Next:** run it → [README](../README.en.md#install). Claimable holes → [BUGS.md](../BUGS.md). How to patch → [HACKING.md](HACKING.md). Contribute → [CONTRIBUTING.md](../CONTRIBUTING.md). License and rename → [NOTICE.md](../NOTICE.md).
