@@ -2,9 +2,9 @@
 
 版本号是发布日期（`年.月.日`，同一天再发加 `.2`、`.3`）。每次合进 main 都要：改 `VERSION`、在这里最上面加一节、首页 README 的版本行同步。CI 的 `release-notes` 检查会卡住漏改的合并请求；合进 main 后自动打 `v<版本>` 标签并发 Release。
 
-The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
+The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md` and `README.en.md`; CI enforces it and publishes a tagged release.
 
-## 2026.10.30
+## 2026.11.10
 
 **员工在家也能用 TDH：客户端更新后自动加入公司的加密网络；新员工有「远程版」安装包**
 - 每个站点有自己的 Tailscale 网络（tailnet），员工电脑在外面通过它连回服务器，用的还是公司里那个站点名（如 `tdh.local`）。对话、共享盘路径和证书都不用变。站点名靠 tailnet 的分域 DNS 解析到服务器：后台只为这一个名字设一条规则，指向服务器上的新服务 `server/tailnet-dns.js`。这个服务只回答站点名，其他名字一律返回「不存在」，不做转发。设置步骤见 docs/SERVER.md「Remote use」。
@@ -20,6 +20,25 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 - 实测：
   - 端到端：一台在美国的 GitHub Windows 机器，远程版安装器 38.8MB，安装 Tailscale、入网，再通过加密网络下载 405MB 程序包并装好，全程 264 秒。`tdh.local` 解析到服务器，访问服务器返回 200，开始走中转、几十秒后变成直连，约 3.9MB/s。第二次入网被保护拦下，地址不变。
   - 服务器上：客户端和安装器的 `--ts-join` 遇到本机时都识别为「已在公司网络」，什么都不做；换成别的地址时在入网前就停下。服务器的地址前后不变。
+
+## 2026.11.09.2
+
+**仓库改名为 TDHarness，开了讨论区**
+- GitHub 仓库从 `TDHarness-coding` 改名为 `TDHarness`，新地址是 `https://github.com/398894496-arch/TDHarness`。旧地址由 GitHub 自动跳转：网页、`git clone`、已有克隆的拉取和推送都照常，已装的服务器不用做任何事。想把本地克隆改成新地址：`git remote set-url origin https://github.com/398894496-arch/TDHarness.git`。
+- 首页、英文页、任务模板和文档里的链接与克隆命令改成新地址。
+- 开了 [Discussions](https://github.com/398894496-arch/TDHarness/discussions)：使用问题、装机反馈和想法发在那里，Bug 仍然开 Issue。新建 Issue 的页面上也加了这个入口。
+- 客户端安装包里的 `NOTICE.txt` 和安装器的版权行仍写旧名（旧地址会跳转）。改它们会让所有站点多一次客户端更新，留到下次客户端发版一起改。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
+
+## 2026.11.09
+
+**首页改版：打开仓库先看到产品，中文和英文各一页**
+- 首页 `README.md` 改成中文，英文搬到 `README.en.md`，两页顶部互相链接。之前同一段里中英混排，要往下翻一百多行才看到第一张截图。现在标题下面就是一句话说明和任务卡截图，接着是「长什么样」「适合谁」「安装」。
+- 安装写成三步：装服务器、员工装客户端、以后更新。新增「常见疑问」，第一条回答「装完没有登录和团队功能」：那是只装了单机命令行内核（`scripts/setup.sh`），团队版要在 Windows 服务器上运行 `scripts\setup-all.ps1`。单机内核一节折叠到页面最后。
+- 改正两处对不上的数字：证明脚本原来写 12 项，CI 实际每次跑 22 项；贡献者原来写四位，实际是维护者加 2 位外部贡献者。
+- 删掉 `server/legacy/`（15 个只为某一次现场迁移写的脚本，新装从不运行）和 `docs/PRODUCT.zh.md`（和 `docs/WANTED.zh.md` 重复的旧稿）。需要时可以从 `v2026.10.19` 标签取回。
+- 新增合并请求模板（`.github/pull_request_template.md`）。`release-notes` 检查现在同时核对 `README.en.md` 的版本行。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
 
 ## 2026.10.19
 
