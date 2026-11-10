@@ -105,4 +105,4 @@ The kernel itself is patched by `patches/apply-kernel-patches.js` (anchors that 
 | `scripts/prove-patches.js` | kernel patches apply to the pinned kernel | CI; nightly on the newest kernel |
 | `server/prove-secure-folders.ps1` | share rights on the real server, account by account | on the server |
 
-One-off scripts from past site migrations are in `server/legacy/`; a new install never runs them.
+One-off scripts from past site migrations were removed from the tree in 2026.11.09 (a new install never ran them); they are still in the history: `git show v2026.10.19:server/legacy/README.md`.

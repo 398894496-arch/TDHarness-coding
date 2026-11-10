@@ -6,7 +6,7 @@ You do not need a company network, a roster, or collaborator rights. Fork, pick 
 
 ## Lowest-cost ways to help (in order)
 
-1. Run the [README](README.md) install on a **local** folder. File a **Bug** if setup or first `dsh --patch` fails. That is already useful.
+1. Run the [README](README.en.md#install) install on a **local** folder. File a **Bug** if setup or first `dsh --patch` fails. That is already useful.
 2. Comment `taking C#` on an open Task (or open one) so two people do not duplicate it.
 3. Send a PR that prints a new `*_OK=1` line. Marks in the patcher grepped by `prove-patches.js` are not enough if BUGS.md asked for behavior.
 
@@ -58,6 +58,6 @@ Layout and planes: [docs/HACKING.md](docs/HACKING.md).
 
 ## Every merge to main
 
-Bump `VERSION` (the release date, `YYYY.MM.DD`), add a section for it at the top of `CHANGELOG.md`, and update the version line in `README.md`. The `release-notes` check refuses a pull request that misses any of these; after the merge CI tags `v<VERSION>` and publishes a release with those notes.
+Bump `VERSION` (the release date, `YYYY.MM.DD`), add a section for it at the top of `CHANGELOG.md`, and update the version line in `README.md`, `README.en.md` and `docs/BRIEF.zh.md`. The `release-notes` check refuses a pull request that misses any of these; after the merge CI tags `v<VERSION>` and publishes a release with those notes.
 
 每次合进 main：改 `VERSION`（发布日期）、在 `CHANGELOG.md` 最上面写这一版的更新说明、同步首页版本行。漏一样 CI 不过；合并后自动打标签发 Release。
