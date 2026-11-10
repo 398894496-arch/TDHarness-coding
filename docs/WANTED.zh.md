@@ -1,6 +1,6 @@
 # 寻找共建者
 
-这是英文仓的**中文增页**，不替代 [README](../README.md) / [BUGS.md](../BUGS.md) / [CONTRIBUTING.md](../CONTRIBUTING.md)。工单标题、补丁标记、CI 绿线仍以英文原文为准。
+本页是 [BUGS.md](../BUGS.md) 和 [CONTRIBUTING.md](../CONTRIBUTING.md) 的中文导读。工单标题、补丁标记、CI 绿线以这两份英文原文为准。
 
 产品讲解（给谁、打开之后能做什么）：[BRIEF.zh.md](BRIEF.zh.md)。
 

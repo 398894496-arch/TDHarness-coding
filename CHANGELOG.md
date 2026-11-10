@@ -2,9 +2,9 @@
 
 版本号是发布日期（`年.月.日`，同一天再发加 `.2`、`.3`）。每次合进 main 都要：改 `VERSION`、在这里最上面加一节、首页 README 的版本行同步。CI 的 `release-notes` 检查会卡住漏改的合并请求；合进 main 后自动打 `v<版本>` 标签并发 Release。
 
-The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
+The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md` and `README.en.md`; CI enforces it and publishes a tagged release.
 
-## 2026.11.06
+## 2026.11.10.3
 
 **知识库加「私密层」：管理员在后台维护可查看名单**
 - 场景：客户的知识库分两层，共享层全公司可见，私密层只给授权的管理层和个别人员。之前只能按角色和部门划分，非管理员要看私密资料只能临时设成管理员，权限给多了。
@@ -14,6 +14,25 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 - 共享盘权限（`server/secure-folders.ps1`）：`_handbook\_private` 只给名单上的人读（必须是自己的共享账号，`dshshare` 不代任何人进私密层）、管理员改，其他人靠 access-based enumeration 连文件夹都看不到。名单一改，people-api 照现有方式在后台跑一次 `-Apply`。
 - 新增 `scripts/prove-kb-private.js`（CI，Linux）：真实起 people-api 和知识库检索，空名单只有管理员、只有管理员能改名单、名单内多种问法和同义词都能搜到、名单外各种问法和点名路径都搜不到、frontmatter 只收窄、改名单立即生效、停用和删除的人出名单、清空后只剩管理员。另做了反向检查：把名单判断改成全员放行，这个证明会失败。
 - `scripts/prove-secure-folders-ci.ps1`（CI，Windows，临时账号）和 `server/prove-secure-folders.ps1` 加上私密层：名单上有自己账号的人能读、管理员能改、其他人和 `dshshare` 打不开；名单换人、清空后各 `-Apply` 一次，权限跟着变。这部分没在本机跑过（本机是 macOS），只靠 Windows CI。人员页的名单面板没在真实员工端上点过。
+
+## 2026.11.09.2
+
+**仓库改名为 TDHarness，开了讨论区**
+- GitHub 仓库从 `TDHarness-coding` 改名为 `TDHarness`，新地址是 `https://github.com/398894496-arch/TDHarness`。旧地址由 GitHub 自动跳转：网页、`git clone`、已有克隆的拉取和推送都照常，已装的服务器不用做任何事。想把本地克隆改成新地址：`git remote set-url origin https://github.com/398894496-arch/TDHarness.git`。
+- 首页、英文页、任务模板和文档里的链接与克隆命令改成新地址。
+- 开了 [Discussions](https://github.com/398894496-arch/TDHarness/discussions)：使用问题、装机反馈和想法发在那里，Bug 仍然开 Issue。新建 Issue 的页面上也加了这个入口。
+- 客户端安装包里的 `NOTICE.txt` 和安装器的版权行仍写旧名（旧地址会跳转）。改它们会让所有站点多一次客户端更新，留到下次客户端发版一起改。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
+
+## 2026.11.09
+
+**首页改版：打开仓库先看到产品，中文和英文各一页**
+- 首页 `README.md` 改成中文，英文搬到 `README.en.md`，两页顶部互相链接。之前同一段里中英混排，要往下翻一百多行才看到第一张截图。现在标题下面就是一句话说明和任务卡截图，接着是「长什么样」「适合谁」「安装」。
+- 安装写成三步：装服务器、员工装客户端、以后更新。新增「常见疑问」，第一条回答「装完没有登录和团队功能」：那是只装了单机命令行内核（`scripts/setup.sh`），团队版要在 Windows 服务器上运行 `scripts\setup-all.ps1`。单机内核一节折叠到页面最后。
+- 改正两处对不上的数字：证明脚本原来写 12 项，CI 实际每次跑 22 项；贡献者原来写四位，实际是维护者加 2 位外部贡献者。
+- 删掉 `server/legacy/`（15 个只为某一次现场迁移写的脚本，新装从不运行）和 `docs/PRODUCT.zh.md`（和 `docs/WANTED.zh.md` 重复的旧稿）。需要时可以从 `v2026.10.19` 标签取回。
+- 新增合并请求模板（`.github/pull_request_template.md`）。`release-notes` 检查现在同时核对 `README.en.md` 的版本行。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
 
 ## 2026.10.19
 

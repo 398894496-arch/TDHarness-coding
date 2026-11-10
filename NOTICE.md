@@ -8,7 +8,7 @@ Patches here are applied to a prefix you install yourself. They are not a replac
 
 Upstream does not accept external pull requests. Kernel-shaped bugs can be reported in [upstream Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions). Product work and PRs belong in this repository.
 
-The repository name `TDHarness-coding` is a working title. It can change later. Do not bake `coding` into npm package names or app bundle ids.
+The repository was named `TDHarness-coding` until 2026-11-09 and is now `TDHarness`; old links redirect. Do not bake a repository name into npm package names or app bundle ids.
 
 ## What ships as binaries, and where it comes from
 
