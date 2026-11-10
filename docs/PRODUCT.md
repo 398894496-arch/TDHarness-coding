@@ -1,4 +1,4 @@
-# TDHarness-coding
+# TDHarness
 
 **Delivery is a one-click install.** The server: clone, then one command (`scripts/setup-all.ps1`). Employees: open the server's download page and run `TDHarness-Setup.exe` on Windows, or unzip the app on a Mac. Employees never touch a patch, Node or a command line; the server needs Git (with LFS), Node 22+ and Python 3 installed, then that one command as Administrator. 中文：交付就是一键安装——服务器一条命令装完，员工在下载页点一下装客户端。
 
