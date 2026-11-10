@@ -2,7 +2,17 @@
 
 版本号是发布日期（`年.月.日`，同一天再发加 `.2`、`.3`）。每次合进 main 都要：改 `VERSION`、在这里最上面加一节、首页 README 的版本行同步。CI 的 `release-notes` 检查会卡住漏改的合并请求；合进 main 后自动打 `v<版本>` 标签并发 Release。
 
-The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md`; CI enforces it and publishes a tagged release.
+The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md` and `README.en.md`; CI enforces it and publishes a tagged release.
+
+## 2026.11.09
+
+**首页改版：打开仓库先看到产品，中文和英文各一页**
+- 首页 `README.md` 改成中文，英文搬到 `README.en.md`，两页顶部互相链接。之前同一段里中英混排，要往下翻一百多行才看到第一张截图。现在标题下面就是一句话说明和任务卡截图，接着是「长什么样」「适合谁」「安装」。
+- 安装写成三步：装服务器、员工装客户端、以后更新。新增「常见疑问」，第一条回答「装完没有登录和团队功能」：那是只装了单机命令行内核（`scripts/setup.sh`），团队版要在 Windows 服务器上运行 `scripts\setup-all.ps1`。单机内核一节折叠到页面最后。
+- 改正两处对不上的数字：证明脚本原来写 12 项，CI 实际每次跑 22 项；贡献者原来写四位，实际是维护者加 2 位外部贡献者。
+- 删掉 `server/legacy/`（15 个只为某一次现场迁移写的脚本，新装从不运行）和 `docs/PRODUCT.zh.md`（和 `docs/WANTED.zh.md` 重复的旧稿）。需要时可以从 `v2026.10.19` 标签取回。
+- 新增合并请求模板（`.github/pull_request_template.md`）。`release-notes` 检查现在同时核对 `README.en.md` 的版本行。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
 
 ## 2026.10.19
 
