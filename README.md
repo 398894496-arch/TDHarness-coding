@@ -8,9 +8,9 @@
 [![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness?label=release)](https://github.com/398894496-arch/TDHarness/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**当前版本 / Version: 2026.11.10.2**
+**当前版本 / Version: 2026.11.10.3**
 
-![任务卡：点开一张卡，对话就带着这个任务开工](docs/screenshots/04-tasks.jpg)
+![AI 读了工作区里的销售表，按地区汇总并写出复盘文件，用时 28 秒](docs/screenshots/00-agent-at-work.jpg)
 
 TDHarness（简称 TDH）让一家公司在自己的局域网里用上 AI Agent：
 
@@ -23,12 +23,12 @@ TDHarness（简称 TDH）让一家公司在自己的局域网里用上 AI Agent�
 
 ## 长什么样
 
-| 会话 | 同事 | 人员 |
+| 任务 | 同事 | 人员 |
 | --- | --- | --- |
-| ![会话](docs/screenshots/01-session.jpg) | ![同事](docs/screenshots/02-colleagues.jpg) | ![人员](docs/screenshots/03-personnel.jpg) |
-| 个人和团队工作区，选模型，选本机权限档 | 谁在线、角色、最后登录、近七日用量估算 | 按部门管花名册，停用、删除、强制重新登录 |
+| ![任务](docs/screenshots/04-tasks.jpg) | ![同事](docs/screenshots/02-colleagues.jpg) | ![人员](docs/screenshots/03-personnel.jpg) |
+| 任务卡有状态和负责人，点开就带着任务开工 | 谁在线、角色、最后登录、近七日用量 | 按部门管花名册，改角色、停用、吊销令牌 |
 
-截图里的人名和任务都是编的。每个界面的详细说明见 [项目讲解](docs/BRIEF.zh.md#打开之后是什么)。
+最上面那张是一段真实对话：销售表是编的，回答由模型生成。截图里的人名、任务和用量都是演示数据。每个界面的详细说明见 [项目讲解](docs/BRIEF.zh.md#打开之后是什么)。
 
 ## 适合谁
 

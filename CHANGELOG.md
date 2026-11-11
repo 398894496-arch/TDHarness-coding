@@ -4,7 +4,7 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md` and `README.en.md`; CI enforces it and publishes a tagged release.
 
-## 2026.11.10.2
+## 2026.11.10.3
 
 **模型通道可以设「可用名单」：只有名单上的人能用这个模型**
 - 场景：本地部署的模型（例如 8 张卡跑的 DeepSeek-V4.1-Flash，作为自定义 OpenAI 兼容通道接入）同时用的人一多就掉速，只想开放给 8–10 个人，其他人继续走外部 API。之前网关只按模型名转发，`/v1/company-models` 也把服务器能连的模型列给每个人，没法按人限制。
@@ -14,6 +14,15 @@ The version is the release date. Every merge to `main` bumps `VERSION`, adds a s
 - 只有管理员能改名单（`POST /channels` `set-allow`），只能设在自定义通道上，只收花名册里有的登录名（已在名单上、后来从花名册删掉的人可以留着，页面标「花名册里没有」）。换通道 key 不会清掉名单。名单里的名字只给管理员看。每次修改和每次拒绝都记网关日志（`GW_ALLOW`、`GW_DENY 403 restricted`）。
 - 已经登录的员工电脑在下次登录同步前菜单里可能还显示这个模型，但调用会立刻被拒。
 - 新增 `scripts/prove-model-allow.js`（进 CI，两个平台）：空名单全员可用；员工、没令牌、服务令牌都改不了名单，未知登录名、非自定义通道、不存在的通道被拒；名单内的人能看到能调用（chat 和 responses 两个门）；名单外 403、列表里看不到、请求不到任何上游、通道 key 缺失也不回落；服务令牌放行；换 key 保留名单；清空名单立刻恢复。管理员页面在浏览器里用假接口实测过勾选、保存、非管理员不显示；没在真实员工端上测。
+
+## 2026.11.10
+
+**首页第一张图换成 AI 干活中的真实对话，另外四张截图重拍**
+- 首页第一张图现在是一段真实对话：让 AI 读工作区里的销售表，按地区汇总，找出增长最快和下滑的地区，写成复盘文件，28 秒完成。销售表是编的，回答由模型生成（deepseek-flash，经演示用的网关）。
+- 会话、同事、人员、任务四张截图按当前界面重拍。旧图左上角是某一家公司的标志，新图显示产品名 TDHarness。人名、任务和用量都是演示数据。
+- 首页「长什么样」一栏的第一格从空的会话页换成任务页。
+- 截图用的演示环境只监听本机：人员服务、知识库检索、模型网关用的是本仓库 `server/` 里的原文件，客户端是 `client/CompanyDesk-mac.zip` 加 `desk/` 源码。这只是拍图用的搭法，不是受支持的安装方式。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
 
 ## 2026.11.09.2
 
