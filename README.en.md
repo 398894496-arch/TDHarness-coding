@@ -8,9 +8,9 @@
 [![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness?label=release)](https://github.com/398894496-arch/TDHarness/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Version: 2026.11.10.3**
+**Version: 2026.11.10.4**
 
-![Task cards: opening one starts a conversation pinned to that card](docs/screenshots/04-tasks.jpg)
+![The agent read a sales sheet in the workspace, summed it by region and wrote the review file in 28 seconds](docs/screenshots/00-agent-at-work.jpg)
 
 TDHarness (TDH) lets a company run AI agents inside its own office network:
 
@@ -23,12 +23,12 @@ Built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`d
 
 ## What it looks like
 
-| Session | Colleagues | Personnel |
+| Tasks | Colleagues | Personnel |
 | --- | --- | --- |
-| ![Session](docs/screenshots/01-session.jpg) | ![Colleagues](docs/screenshots/02-colleagues.jpg) | ![Personnel](docs/screenshots/03-personnel.jpg) |
-| Personal and team workspaces, model picker, access level | Who is online, role, last login, 7-day local cost estimate | Roster by department; deactivate, remove, force a fresh sign-in |
+| ![Tasks](docs/screenshots/04-tasks.jpg) | ![Colleagues](docs/screenshots/02-colleagues.jpg) | ![Personnel](docs/screenshots/03-personnel.jpg) |
+| Cards with a state and an owner; opening one starts work on it | Who is online, role, last login, 7-day usage | Roster by department; change roles, deactivate, revoke tokens |
 
-The screenshots use made-up people and tasks. Each screen is described in [docs/PRODUCT.md](docs/PRODUCT.md#what-the-running-desk-does).
+The top screenshot is a real conversation: the sales sheet is made up, the answer is the model's. People, tasks and usage in the screenshots are demo data. Each screen is described in [docs/PRODUCT.md](docs/PRODUCT.md#what-the-running-desk-does).
 
 ## Is it for you?
 

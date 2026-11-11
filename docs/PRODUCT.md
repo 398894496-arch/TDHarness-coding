@@ -35,7 +35,7 @@ Two tabs: **会话** (chat) and **任务** (tickets). Sidebar splits **个人** 
 
 ### Colleagues
 
-![Colleagues: weekly Grok quota, 7-day ledger, online, role, spend](screenshots/02-colleagues.jpg)
+![Colleagues: subscription quota, 7-day ledger, online, role, spend](screenshots/02-colleagues.jpg)
 
 Settings → **同事**. Weekly model quota, a **7-day company ledger** using a **local price list** (explicitly not the vendor invoice), per-account role (admin / director / employee), online, last login, 7-day spend.
 
