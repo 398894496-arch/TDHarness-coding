@@ -4,6 +4,15 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md` and `README.en.md`; CI enforces it and publishes a tagged release.
 
+## 2026.11.10
+
+**首页第一张图换成 AI 干活中的真实对话，另外四张截图重拍**
+- 首页第一张图现在是一段真实对话：让 AI 读工作区里的销售表，按地区汇总，找出增长最快和下滑的地区，写成复盘文件，28 秒完成。销售表是编的，回答由模型生成（deepseek-flash，经演示用的网关）。
+- 会话、同事、人员、任务四张截图按当前界面重拍。旧图左上角是某一家公司的标志，新图显示产品名 TDHarness。人名、任务和用量都是演示数据。
+- 首页「长什么样」一栏的第一格从空的会话页换成任务页。
+- 截图用的演示环境只监听本机：人员服务、知识库检索、模型网关用的是本仓库 `server/` 里的原文件，客户端是 `client/CompanyDesk-mac.zip` 加 `desk/` 源码。这只是拍图用的搭法，不是受支持的安装方式。
+- 这一版没有改服务器和客户端的任何代码，已装的站点不需要更新。
+
 ## 2026.11.09.2
 
 **仓库改名为 TDHarness，开了讨论区**
