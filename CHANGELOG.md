@@ -4,6 +4,17 @@
 
 The version is the release date. Every merge to `main` bumps `VERSION`, adds a section at the top of this file and updates the version line in `README.md` and `README.en.md`; CI enforces it and publishes a tagged release.
 
+## 2026.11.10.3
+
+**模型通道可以设「可用名单」：只有名单上的人能用这个模型**
+- 场景：本地部署的模型（例如 8 张卡跑的 DeepSeek-V4.1-Flash，作为自定义 OpenAI 兼容通道接入）同时用的人一多就掉速，只想开放给 8–10 个人，其他人继续走外部 API。之前网关只按模型名转发，`/v1/company-models` 也把服务器能连的模型列给每个人，没法按人限制。
+- 管理员在 设置 → 模型 →「模型可用名单」里打开一个自定义通道，勾上能用的同事，点「保存名单」。一个都不勾（或点「改成全员可用」）就是全员可用，和以前一样。名单存在 `runtime\channels.json` 那条通道的 `allow` 里（登录名），网关每次请求都读，不用重启。
+- 不在名单的人（管理员也一样）：模型菜单里不列这个模型；直接调用得 `403`（`gateway_model_restricted`），提示「这个模型只开放给名单上的同事……」，请求不会发到本地部署，也不会因为模型名像 `deepseek-*` 就掉到官方 DeepSeek key 上（通道 key 缺失时也一样）。其他模型照常能用，默认模型会换成他能用的。
+- 服务令牌（夜间整理、深度搜索）不受名单限制；没带令牌的过渡请求（`GW_ALLOW_TOKENLESS`）只能用不限人的通道。
+- 只有管理员能改名单（`POST /channels` `set-allow`），只能设在自定义通道上，只收花名册里有的登录名（已在名单上、后来从花名册删掉的人可以留着，页面标「花名册里没有」）。换通道 key 不会清掉名单。名单里的名字只给管理员看。每次修改和每次拒绝都记网关日志（`GW_ALLOW`、`GW_DENY 403 restricted`）。
+- 已经登录的员工电脑在下次登录同步前菜单里可能还显示这个模型，但调用会立刻被拒。
+- 新增 `scripts/prove-model-allow.js`（进 CI，两个平台）：空名单全员可用；员工、没令牌、服务令牌都改不了名单，未知登录名、非自定义通道、不存在的通道被拒；名单内的人能看到能调用（chat 和 responses 两个门）；名单外 403、列表里看不到、请求不到任何上游、通道 key 缺失也不回落；服务令牌放行；换 key 保留名单；清空名单立刻恢复。管理员页面在浏览器里用假接口实测过勾选、保存、非管理员不显示；没在真实员工端上测。
+
 ## 2026.11.10
 
 **首页第一张图换成 AI 干活中的真实对话，另外四张截图重拍**

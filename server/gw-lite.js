@@ -42,17 +42,49 @@ const VENDORS = [
 
 function keyOk(v) { return typeof v === 'string' && v.trim().length >= 8; }
 
-/** Route for one request: { vendor, label, base (OpenAI-style, ends at the version), key, grok } or { missing }. */
-async function routeFor(model, url, env) {
+// Who may use a custom channel: channels.json rows carry `allow`, a list of login names.
+// Empty or missing means everyone (the behaviour before lists existed). The service token
+// (nightly brain job, deep search) is never held back. Logins are compared lower-case.
+function allowOf(row) {
+  return Array.isArray(row && row.allow) ? row.allow.map((s) => String(s || '').trim().toLowerCase()).filter(Boolean) : [];
+}
+function mayUse(row, caller) {
+  const allow = allowOf(row);
+  if (!allow.length) return true;
+  if (!caller) return false;
+  if (caller.service) return true;
+  return !!caller.login && allow.indexOf(String(caller.login).toLowerCase()) >= 0;
+}
+// What the custom channels say about this model for this caller: a route, { restricted }
+// when channels list it but every one this caller may use is missing or keyless and at
+// least one leaves them out, or null when no custom channel lists it. The list counts even
+// while a channel's key is missing, so a limited model never falls through to a vendor
+// key whose name pattern it happens to match (deepseek-* on the official DeepSeek key).
+function customVerdict(model, env, caller) {
+  let restricted = null;
+  for (const row of loadChannels()) {
+    if (!row || !row.custom || !Array.isArray(row.models) || row.models.indexOf(model) < 0) continue;
+    if (!mayUse(row, caller)) { restricted = restricted || row; continue; }
+    if (row.env && row.up && keyOk(env[row.env])) {
+      return { vendor: row.id, label: String(row.label || row.id), base: String(row.up).replace(/\/$/, ''), key: env[row.env].trim(), grok: false };
+    }
+  }
+  return restricted ? { restricted: String(restricted.label || restricted.id), model: model } : null;
+}
+
+/**
+ * Route for one request: { vendor, label, base (OpenAI-style, ends at the version), key, grok },
+ * { missing }, or { restricted } when only custom channels whose list leaves the caller out serve
+ * the model. A restricted model never falls through to a vendor key of the same name.
+ */
+async function routeFor(model, url, env, caller) {
   const xaiFiles = /^\/v1\/(files|language-models)(\/|$)/.test(url);
   if (model.indexOf('grok') === 0 || xaiFiles) {
     const x = await loadXai();
     if (x) return { vendor: 'xai', label: 'Grok', base: XAI_BASE + '/v1', key: x.access_token, grok: true };
   }
-  for (const row of loadChannels()) {
-    if (!row || !row.custom || !row.env || !Array.isArray(row.models) || row.models.indexOf(model) < 0) continue;
-    if (keyOk(env[row.env]) && row.up) return { vendor: row.id, label: String(row.label || row.id), base: String(row.up).replace(/\/$/, ''), key: env[row.env].trim(), grok: false };
-  }
+  const custom = customVerdict(model, env, caller);
+  if (custom) return custom;
   for (const v of VENDORS) {
     if (!v.match.test(model)) continue;
     if (keyOk(env[v.env])) return { vendor: v.id, label: v.label, base: String(env[v.baseEnv] || v.base).replace(/\/$/, ''), key: env[v.env].trim(), grok: v.id === 'grok' };
@@ -512,6 +544,15 @@ function callerOf(req) {
   if (who) return who.login;
   return isService(req) ? 'server' : '';
 }
+// For the per-channel lists: a person, the server's own jobs, or nobody (a tokenless
+// request let through by GW_ALLOW_TOKENLESS is nobody: it reaches open channels only).
+// TDH_GW_TRUST_LOOPBACK=1 (tests only) keeps trusting a token-less local caller as the server.
+function whoCalls(req) {
+  const who = personOf(req);
+  if (who) return { login: who.login, role: who.role, service: false };
+  if (isService(req) || (TRUST_LOOPBACK && fromThisMachine(req) && !tokenOf(req))) return { login: 'server', role: '', service: true };
+  return null;
+}
 
 // The gateway checks every request:
 //   - POST /channels (keys and channel settings): a live token of an admin;
@@ -577,7 +618,8 @@ function clientOf(req) {
 const DENY = {
   login: '没有有效的登录令牌。请退出客户端重新登录；客户端提示有更新时先更新。',
   plain: '这台服务器的网关已改走加密通道。请退出客户端再打开，接受更新。',
-  admin: '只有管理员能改模型和钥匙设置。'
+  admin: '只有管理员能改模型和钥匙设置。',
+  restricted: '这个模型只开放给名单上的同事。要用请找管理员在 设置 → 模型 →「模型可用名单」里把你加上；其他模型照常能用。'
 };
 // What the two bridges (GW_PLAIN_LAN, GW_ALLOW_TOKENLESS) still let through, by desk
 // address: runtime/gw-legacy.json. server/gw-transition.ps1 reads it to tell when every
@@ -685,7 +727,37 @@ let companyModelsCache = { at: 0, val: null };
 const NOT_CHAT = /(embed|tts|whisper|dall-e|davinci|babbage|audio|realtime|moderation|transcribe|search|computer-use|instruct|image|imagine|video)/i;
 const VISION = /^(grok-|claude-|gpt-4o|gpt-4\.1|gpt-5|o3|o4|glm-4v|kimi-.*vision)/i;
 
-async function companyModels(env) {
+// What this caller may pick. The catalog is cached for everyone; the channel lists are
+// read on every request, so a change in the admin page shows at the desk's next sync.
+// A model is hidden exactly when routeFor would answer { restricted } for this caller.
+function hiddenFor(m, env, caller) {
+  if (m.vendor === 'grok' && String(m.id).indexOf('grok') === 0) return false;
+  const v = customVerdict(m.id, env, caller);
+  return !!(v && v.restricted !== undefined);
+}
+
+async function companyModels(env, caller) {
+  const all = await companyCatalog(env);
+  const out = all.models.filter((m) => !hiddenFor(m, env, caller));
+  // Site default: DEFAULT_MODEL / DEFAULT_EFFORT in gateway.env when set and reachable; else the
+  // first model of the first vendor that has one (subscription first, then keys in table order).
+  let pick = out.find((m) => m.id === String(env.DEFAULT_MODEL || '').trim()) || null;
+  if (!pick) {
+    for (const vid of ['grok', 'gpt', 'claude', 'deepseek', 'kimi', 'glm']) {
+      pick = out.find((m) => m.vendor === vid);
+      if (pick) break;
+    }
+  }
+  if (!pick) pick = out[0] || null;
+  const want = String(env.DEFAULT_EFFORT || 'high').trim();
+  return {
+    ok: true,
+    models: out,
+    default: pick ? { model: pick.id, effort: pick.efforts.indexOf(want) >= 0 ? want : (pick.efforts.indexOf('high') >= 0 ? 'high' : '') } : null
+  };
+}
+
+async function companyCatalog(env) {
   if (companyModelsCache.val && Date.now() - companyModelsCache.at < 10 * 60 * 1000) return companyModelsCache.val;
   const out = [];
   const seen = new Set();
@@ -714,22 +786,7 @@ async function companyModels(env) {
   for (const row of loadChannels()) {
     if (row && row.custom && row.env && keyOk(env[row.env]) && Array.isArray(row.models)) add(row.models.map((id) => ({ id: id })), row.id);
   }
-  // Site default: DEFAULT_MODEL / DEFAULT_EFFORT in gateway.env when set and reachable; else the
-  // first model of the first vendor that has one (subscription first, then keys in table order).
-  let pick = out.find((m) => m.id === String(env.DEFAULT_MODEL || '').trim()) || null;
-  if (!pick) {
-    for (const vid of ['grok', 'gpt', 'claude', 'deepseek', 'kimi', 'glm']) {
-      pick = out.find((m) => m.vendor === vid);
-      if (pick) break;
-    }
-  }
-  if (!pick) pick = out[0] || null;
-  const want = String(env.DEFAULT_EFFORT || 'high').trim();
-  const val = {
-    ok: true,
-    models: out,
-    default: pick ? { model: pick.id, effort: pick.efforts.indexOf(want) >= 0 ? want : (pick.efforts.indexOf('high') >= 0 ? 'high' : '') } : null
-  };
+  const val = { models: out };
   companyModelsCache = { at: Date.now(), val: val };
   return val;
 }
@@ -826,7 +883,10 @@ function subOf(id, label, extras, hint) {
   };
 }
 
-function channelSnapshot(env) {
+// The lists name colleagues, so only an admin reads them; everyone else sees whether a
+// channel is limited and whether they are on it.
+function channelSnapshot(env, caller) {
+  const admin = !!(caller && caller.role === 'admin');
   const models = [
     { id: 'deepseek', kind: 'key', label: 'DeepSeek', bound: boundEnv(env, 'DEEPSEEK_API_KEY'), up: 'https://api.deepseek.com' },
     { id: 'gpt', kind: 'key', label: 'OpenAI', bound: boundEnv(env, 'OPENAI_API_KEY'), up: 'https://api.openai.com' },
@@ -838,18 +898,25 @@ function channelSnapshot(env) {
     if (!row || !row.id || seen.has(row.id)) continue;
     if (row.kind === 'subscription' || row.id === 'grok' || row.id === 'gpt' || row.id === 'chatgpt' || row.id === 'claude') continue;
     seen.add(row.id);
-    models.push({
+    const allow = allowOf(row);
+    const shown = {
       id: row.id,
       kind: row.kind || 'key',
       label: String(row.label || row.id),
       bound: !!row.bound,
       up: String(row.up || ''),
-      models: Array.isArray(row.models) ? row.models : []
-    });
+      models: Array.isArray(row.models) ? row.models : [],
+      custom: row.custom === true,
+      limited: allow.length > 0,
+      mine: mayUse(row, caller)
+    };
+    if (admin) shown.allow = allow;
+    models.push(shown);
   }
   return {
     ok: true,
     mark: 'company-channels-v1',
+    allowMark: 'company-channel-allow-v1',
     subscriptions: [
       subOf('grok', 'Grok', extras, ''),
       subOf('gpt', 'GPT', extras, 'sub-use-key'),
@@ -861,7 +928,8 @@ function channelSnapshot(env) {
 
 async function handleChannels(req, body, env) {
   const method = String(req.method || 'GET').toUpperCase();
-  if (method === 'GET') return { status: 200, obj: channelSnapshot(env) };
+  const caller = whoCalls(req);
+  if (method === 'GET') return { status: 200, obj: channelSnapshot(env, caller) };
   if (method !== 'POST') return { status: 405, obj: { ok: false, error: 'method' } };
   let payload = {};
   try { payload = JSON.parse(body.toString('utf8') || '{}'); } catch (e) { payload = {}; }
@@ -892,7 +960,7 @@ async function handleChannels(req, body, env) {
       vendor: vendor
     });
     saveChannels(rows);
-    return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH)) };
+    return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH), caller) };
   }
   if (action === 'add-key') {
     const presetName = String(payload.preset || '').toLowerCase();
@@ -904,6 +972,7 @@ async function handleChannels(req, body, env) {
     const custom = !preset && id !== 'deepseek';
     const envName = preset && preset.env ? preset.env : (custom ? 'KEY_' + id.toUpperCase().replace(/[^A-Z0-9]+/g, '_') : 'DEEPSEEK_API_KEY');
     writeEnvLine(envName, key);
+    const prevRow = loadChannels().find((r) => r && r.id === id) || {};
     const rows = loadChannels().filter((r) => r && r.id !== id);
     rows.push({
       id,
@@ -913,11 +982,13 @@ async function handleChannels(req, body, env) {
       up: String((preset && preset.up) || payload.up || ''),
       models: String(payload.models || '').split(/[,\s]+/).filter(Boolean),
       env: envName,
-      custom: custom
+      custom: custom,
+      // Replacing a key (a rotated key, a new model list) keeps who may use the channel.
+      allow: custom ? allowOf(prevRow) : []
     });
     companyModelsCache = { at: 0, val: null };
     saveChannels(rows);
-    return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH)) };
+    return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH), caller) };
   }
   if (action === 'drop-key') {
     const id = String(payload.id || '').toLowerCase();
@@ -925,7 +996,34 @@ async function handleChannels(req, body, env) {
       return { status: 400, obj: { ok: false, error: 'builtin' } };
     }
     saveChannels(loadChannels().filter((r) => r && r.id !== id));
-    return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH)) };
+    return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH), caller) };
+  }
+  if (action === 'set-allow') {
+    // Who may use one custom channel: login names from the roster; [] opens it to everyone.
+    const id = String(payload.id || '').toLowerCase();
+    const rows = loadChannels();
+    const row = rows.find((r) => r && r.id === id);
+    if (!row) return { status: 404, obj: { ok: false, error: 'channel', hint: '没有这个模型通道：' + id } };
+    if (row.custom !== true) return { status: 400, obj: { ok: false, error: 'allow-custom-only', hint: '可用名单只能设在自定义通道上（本地部署、OpenAI 兼容地址）。' } };
+    if (!Array.isArray(payload.allow)) return { status: 400, obj: { ok: false, error: 'allow', hint: '名单要是登录名的列表。' } };
+    const known = {};
+    for (const p of (readJsonFile(ROSTER_PATH) || {}).people || []) if (p && p.login) known[String(p.login).toLowerCase()] = true;
+    // Someone already on the list who has since left the roster may stay (the page shows them
+    // as 花名册里没有 and the admin unticks them); only a newly added name must be on the roster.
+    for (const login of allowOf(row)) known[login] = true;
+    const allow = [];
+    const unknown = [];
+    for (const raw of payload.allow) {
+      const login = String(raw || '').trim().toLowerCase();
+      if (!login || allow.indexOf(login) >= 0) continue;
+      if (!known[login]) unknown.push(login);
+      else allow.push(login);
+    }
+    if (unknown.length) return { status: 400, obj: { ok: false, error: 'allow-unknown', unknown: unknown, hint: '花名册里没有这些登录名：' + unknown.join('、') } };
+    row.allow = allow;
+    saveChannels(rows);
+    console.log('GW_ALLOW ' + id + ' by ' + caller.login + ' -> ' + (allow.length ? allow.join(',') : 'everyone'));
+    return { status: 200, obj: channelSnapshot(loadEnv(ENV_PATH), caller) };
   }
   if (action === 'list-models') {
     const vendor = String(payload.vendor || '').toLowerCase();
@@ -989,7 +1087,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.method === 'GET' && (url === '/v1/company-models' || url === '/company-models')) {
-    try { send(res, 200, await companyModels(env)); } catch (e) { send(res, 502, { ok: false, error: String((e && e.message) || e) }); }
+    try { send(res, 200, await companyModels(env, whoCalls(req))); } catch (e) { send(res, 502, { ok: false, error: String((e && e.message) || e) }); }
     return;
   }
   if (url === '/grok-quota' && xaiBound()) {
@@ -1042,7 +1140,13 @@ const server = http.createServer(async (req, res) => {
   // The vendor's file store has no model in the request (an upload is
   // multipart, a lookup has no body), so it is recognised by its path. A video
   // too large to send inline is uploaded there and then named in the question.
-  const route = await routeFor(model, url, env);
+  const caller = whoCalls(req);
+  const route = await routeFor(model, url, env, caller);
+  if (route && route.restricted !== undefined) {
+    try { console.log('GW_DENY 403 restricted ' + model + ' (' + route.restricted + ') for ' + ((caller && caller.login) || 'no-token') + ' from ' + clientOf(req)); } catch (e) { /* log only */ }
+    send(res, 403, { error: { message: DENY.restricted, type: 'gateway_model_restricted', model: model } });
+    return;
+  }
   if (!route || route.missing !== undefined) {
     const down = model.indexOf('grok') === 0 ? xaiDownMessage() : '';
     if (down) {

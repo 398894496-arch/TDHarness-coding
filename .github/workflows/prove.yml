@@ -62,6 +62,8 @@ jobs:
           PROVE_PY: python
       - name: Prove the model gateway answers only a live login token
         run: node scripts/prove-gw-auth.js
+      - name: Prove per-channel lists (on the list calls it, off it 403 and hidden, service token passes)
+        run: node scripts/prove-model-allow.js
       - name: Prove the TLS gateway switch and the /fetch guard
         run: node scripts/prove-gw-tls.js
       - name: Prove the company-share rights (throwaway accounts; fails if the share opens again)

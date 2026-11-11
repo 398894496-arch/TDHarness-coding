@@ -238,6 +238,7 @@ window.__ModuleLoader__.load({
 			".cs-vendor-logo-grok, .cs-vendor-logo-openai { background: #0d0d0d; color: #fff; }",
 			".cs-vendor-logo-claude { background: #f5f0e8; color: #d97757; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, .08); }",
 			".cs-vendor-logo svg { display: block; }",
+			".cs-vendor-logo-local { background: " + tint(T.label2, 10) + "; color: " + T.label + "; font-size: 13px; font-weight: 600; }",
 			".cs-avatar { overflow: hidden; }",
 			".cs-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }",
 			".cs-avatar-edit { position: relative; flex: none; padding: 0; border: none; background: transparent; border-radius: 50%; cursor: pointer; }",
@@ -5366,6 +5367,146 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		// company-channel-allow-v1：管理员给自定义模型通道（本地部署、OpenAI 兼容地址）设可用名单。
+		// 名单存在服务器 channels.json 的 allow 里，网关每次请求都读：不在名单的人调这个模型得 403，
+		// /v1/company-models 也不列给他。一个都不勾 = 全员可用。服务器自己的任务（夜间整理、深度搜索）不受限。
+		function ChannelAllowFold() {
+			useShellPulse();
+			const chHook = React.useState({ loaded: false, rows: [], err: "" });
+			const openHook = React.useState("");
+			const pickHook = React.useState({});
+			const peopleHook = React.useState(PEOPLE.filter(function (p) { return p && p.login; }));
+			const noteHook = React.useState({});
+			const busyHook = React.useState("");
+			const admin = shellRole === "admin";
+			function takeRows(j) {
+				const rows = (Array.isArray(j.models) ? j.models : []).filter(function (m) { return m && m.custom === true; });
+				const picks = {};
+				rows.forEach(function (m) {
+					const bag = {};
+					(Array.isArray(m.allow) ? m.allow : []).forEach(function (login) { bag[login] = true; });
+					picks[m.id] = bag;
+				});
+				chHook[1]({ loaded: true, rows: rows, err: "" });
+				pickHook[1](picks);
+			}
+			React.useEffect(function () {
+				if (!admin) return;
+				fetchChannels().then(function (out) {
+					if (!out.ok) { chHook[1]({ loaded: true, rows: [], err: channelsErr(out) }); return; }
+					takeRows(out.j || {});
+				});
+				peopleApi(null).then(function () {
+					peopleHook[1](PEOPLE.filter(function (p) { return p && p.login; }));
+				}, function () {});
+			}, [admin]);
+			if (!admin) return null;
+			function setNoteFor(id, text) {
+				noteHook[1](function (prev) { const next = Object.assign({}, prev); next[id] = text; return next; });
+			}
+			function picked(id) {
+				const bag = pickHook[0][id] || {};
+				return Object.keys(bag).filter(function (k) { return bag[k]; }).sort();
+			}
+			function toggle(id, login, on) {
+				pickHook[1](function (prev) {
+					const next = Object.assign({}, prev);
+					const bag = Object.assign({}, prev[id] || {});
+					bag[login] = on;
+					next[id] = bag;
+					return next;
+				});
+				setNoteFor(id, "");
+			}
+			function save(id, allow) {
+				if (busyHook[0]) return;
+				busyHook[1](id);
+				setNoteFor(id, "正在保存…");
+				postChannels({ action: "set-allow", id: id, allow: allow }).then(function (out) {
+					busyHook[1]("");
+					if (!out.ok) { setNoteFor(id, channelsErr(out)); return; }
+					takeRows(out.j || {});
+					setNoteFor(id, allow.length
+						? "已保存：只有这 " + allow.length + " 人能用。其他人的模型菜单下次同步时不再列出它，现在调用就会被拒。"
+						: "已保存：全员可用。");
+				});
+			}
+			const ch = chHook[0];
+			const people = peopleHook[0];
+			const cards = ch.rows.map(function (m) {
+				const open = openHook[0] === m.id;
+				const saved = Array.isArray(m.allow) ? m.allow : [];
+				const now = picked(m.id);
+				const dirty = now.join(",") !== saved.slice().sort().join(",");
+				// 花名册里的在职同事，加上名单里已经停用或改名的登录名（照样显示，免得保存时悄悄丢掉）。
+				const rows = people.filter(function (p) { return p.status === "active" || saved.indexOf(p.login) >= 0; });
+				saved.forEach(function (login) {
+					if (!rows.some(function (p) { return p.login === login; })) rows.push({ login: login, status: "missing" });
+				});
+				const body = !open ? null : el("div", { className: "cs-vendor-body" },
+					el("div", { className: "cs-vendor-bar" },
+						el("span", { className: "cs-set-rd" }, "勾上的同事才能在模型菜单里看到并调用这个通道的模型。一个都不勾 = 全员可用。夜间整理等服务器任务不受名单限制。"),
+						el("span", { className: "cs-set-gx", style: { whiteSpace: "nowrap" } }, now.length ? "已选 " + now.length + " 人" : "全员可用")
+					),
+					rows.length ? el("div", { className: "cs-mlist" }, rows.map(function (p) {
+						const on = !!(pickHook[0][m.id] || {})[p.login];
+						return el("div", { className: "cs-mrow" + (on ? "" : " cs-mrow-off"), key: p.login },
+							el("button", {
+								type: "button",
+								role: "checkbox",
+								"aria-checked": on,
+								"aria-label": p.login,
+								className: "cs-tick" + (on ? " is-on" : ""),
+								disabled: busyHook[0] === m.id,
+								onClick: function () { toggle(m.id, p.login, !on); }
+							}, TICK_SVG),
+							el("div", { className: "cs-mrow-name" },
+								el("span", null, displayName(p) || p.login),
+								p.name && p.name !== p.login ? badge(p.login) : null,
+								p.role ? badge(roleLabel(p.role)) : null,
+								p.dept ? badge(deptName(p.dept)) : null,
+								p.status === "missing" ? badge("花名册里没有", "warn") : (p.status !== "active" ? badge("已停用", "warn") : null)
+							)
+						);
+					})) : el("div", { className: "cs-vendor-msg" }, "正在读花名册…"),
+					el("div", { className: "cs-set-foot" },
+						el("p", { className: "cs-set-note" }, noteHook[0][m.id] || (dirty ? "还没保存。" : "")),
+						now.length ? btn("改成全员可用", { small: true, tone: "ghost", disabled: !!busyHook[0], onClick: function () { save(m.id, []); } }) : null,
+						btn("保存名单", { tone: "primary", disabled: !!busyHook[0] || !dirty, onClick: function () { save(m.id, now); } })
+					)
+				);
+				return el("div", { className: "cs-vendor" + (open ? " is-open" : ""), key: m.id },
+					el("button", {
+						type: "button",
+						className: "cs-vendor-head",
+						"aria-expanded": open,
+						onClick: function () { openHook[1](open ? "" : m.id); }
+					},
+						el("span", { className: "cs-vendor-logo cs-vendor-logo-local", "aria-hidden": "true" }, String(m.label || m.id).charAt(0).toUpperCase()),
+						el("span", { className: "cs-set-main" },
+							el("span", { className: "cs-set-rt" }, el("span", null, m.label || m.id)),
+							el("span", { className: "cs-set-rd", style: { display: "block" } }, (m.models && m.models.length ? m.models.join(", ") : "没有列模型") + (m.up ? " · " + m.up : ""))
+						),
+						saved.length ? badge(saved.length + " 人可用", "warn", true) : badge("全员可用", "ok", true),
+						el("span", { className: "cs-vendor-chev", "aria-hidden": "true" })
+					),
+					body
+				);
+			});
+			return el("div", { className: "cs-set", "data-mark": "company-channel-allow-v1" },
+				el("section", { className: "cs-set-group" },
+					el("div", { className: "cs-set-gh" },
+						el("span", { className: "cs-set-gl" }, "模型可用名单"),
+						el("span", { className: "cs-set-gx" }, "只有管理员能改")
+					),
+					ch.err ? setNote("通道口未接通：" + ch.err, "warn") : null,
+					!ch.loaded ? setNote("正在读模型通道…") : null,
+					ch.loaded && !ch.err && !cards.length ? setNote("还没有自定义模型通道。本地部署的模型以 OpenAI 兼容地址接入后会出现在这里。") : null,
+					cards
+				)
+			);
+		}
+
 		function ModelsLook() {
 			const qHook = React.useState({ loaded: false, usedPercent: null, remainingPercent: null, plan: "", kind: "", resetsAt: "", err: "" });
 			const chHook = React.useState({ loaded: false, rows: [] });
@@ -6658,6 +6799,13 @@ window.__ModuleLoader__.load({
 					id: "company-proxy-fold",
 					order: 0
 				}, ProxyFold);
+			});
+			ctx.slots.inject("settings.models.header", function () {
+				return ctx.slots.register({
+					name: "settings.models.header",
+					id: "company-channel-allow",
+					order: 1
+				}, ChannelAllowFold);
 			});
 			ctx.slots.inject("settings.section", function () {
 				return ctx.slots.register({
