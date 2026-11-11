@@ -132,6 +132,23 @@ Both client packages (Windows, and Mac for Apple silicon and Intel) carry OpenCL
 
 Needs: Windows, Administrator, Python 3, Node 22+, Git LFS (`git lfs pull`).
 
+## Remote use (desks away from the office)
+
+Desks away from the office reach the server over a Tailscale tailnet that belongs to the site, by the same site name they use in the office, so their conversations, share paths and certificate do not change. Set it up once:
+
+1. **A tailnet for this site** (not anyone's personal one: every desk joins it). Put the server on it with `tailscale up` (in the tailnet's admin console, turn off key expiry for the server so it never drops off).
+2. **The site name over the tailnet.** The admin console's DNS settings get a split-DNS entry *for exactly the site name* (for example `tdh.local`, not the whole `local` domain) pointing at the server's tailnet address, and the server answers it: run `node server/tailnet-dns.js <site name>` as a SYSTEM task at boot that restarts it when it exits (it answers only that one name with the server's tailnet address, binds only to the tailnet address, and exits to be restarted if that address changes). Open UDP and TCP 53 from `100.64.0.0/10` in Windows Firewall. The split-DNS entry applies to the server too: if this task is down, the server itself cannot resolve the site name.
+3. **The employee join key**: a reusable, pre-approved auth key of that tailnet (at most 90 days), saved as `D:\dsh\runtime\tailscale\desk.key`. Replace it before it expires and publish again.
+
+Then `publish-site-update.ps1` (step 2b, `server\tailnet-site.ps1`) puts three files into the Windows pack's `vendor\` (the key, the server's tailnet address read from its own `tailscale status`, and Tailscale's official MSI, kept only when Windows says it is signed by Tailscale Inc.) and builds `TDHarness-Setup-remote.exe` next to the normal Setup.
+
+- **Desks already installed** take the update as usual. On the next start `TDHarness.exe` sees it is not on the company tailnet, says why in one sentence and asks Windows for administrator rights once; then it installs Tailscale and joins (`--ts-join`). In the office a "no" is not asked again for 7 days; away from the office it is asked on every start, since nothing works without it. A machine already on the company tailnet is never joined again (that would change its address; the server itself runs the same check).
+- **New desks away from the office** get `TDHarness-Setup-remote.exe` (about 40 MB, send it any way you like). It joins first, then downloads the pack over the tailnet and resumes when the line drops (up to 30 times). `--quiet` runs it unattended (no dialogs, no app start, the exit code tells the result).
+- **Without administrator rights** Tailscale cannot be installed; the desk says so. Someone with the rights runs the remote Setup once.
+- Speed depends on whether the desk gets a direct path to the server; over a relay, chat and images are fine but large files on the share are slow. `tailscale status` on the desk shows `direct` or `relay`.
+
+Proofs: `scripts\prove-tailnet-join.ps1` (CI) checks the join logic offline; workflow `tailnet-e2e` runs `scripts\e2e-remote-setup.ps1` on a fresh Windows runner against a live site with an ephemeral key: join, resolve the site name over the tailnet, install the desk over it, refuse a second join.
+
 ## Upgrade, back up, uninstall
 
 **Upgrade.** On the server, in the clone, as Administrator:

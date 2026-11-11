@@ -1,0 +1,30 @@
+name: tailnet-e2e
+# A fresh Windows runner away from the site joins the site's tailnet through the remote Setup, installs the
+# desk over it and checks the site name resolves to the server (scripts/e2e-remote-setup.ps1).
+# Runs only by hand or from an e2e/tailnet* branch: it needs a live site.
+#   secrets.TDH_TS_E2E_KEY      an ephemeral, pre-approved join key of the site's tailnet (node removed when offline)
+#   secrets.TDH_E2E_SERVER_IP   the site server's tailnet address
+on:
+  workflow_dispatch:
+    inputs:
+      site_host:
+        description: site name the desks use
+        default: tdh.local
+  push:
+    branches: ['e2e/tailnet*']
+jobs:
+  remote-setup:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Remote Setup end to end (join, install over the tailnet, guard)
+        shell: powershell
+        env:
+          TS_KEY: ${{ secrets.TDH_TS_E2E_KEY }}
+          SERVER_IP: ${{ secrets.TDH_E2E_SERVER_IP }}
+          SITE_HOST: ${{ inputs.site_host || 'tdh.local' }}
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\e2e-remote-setup.ps1

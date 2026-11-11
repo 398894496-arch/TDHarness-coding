@@ -28,10 +28,21 @@ internal static class Setup
     private static int Unpacked;
     private static string InstallRoot;
     private static Exception Fail;
+    // --quiet：无人值守（IT 批量部署、测试机）：不弹提示框，装完不打开程序，结果看退出码和日志。
+    private static bool Quiet;
 
     [STAThread]
     private static int Main()
     {
+        var argv = Environment.GetCommandLineArgs();
+        if (argv.Length > 2 && argv[1] == "--ts-join")
+        {
+            // 远程版：EnsureRemoteNet 以管理员身份启动自己，只做入网
+            LogPath = Path.Combine(Path.GetTempPath(), "companydesk-setup-ts.log");
+            var dir = argv[2];
+            return TailnetJoin.Join(Path.Combine(dir, "tailscale-setup.msi"), Path.Combine(dir, "employee.auth"), TailnetJoin.ReadFacts(Path.Combine(dir, "company-tailnet.txt")), Log);
+        }
+        foreach (var a in argv) if (a == "--quiet") Quiet = true;
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         LogPath = Path.Combine(Path.GetTempPath(), "companydesk-setup.log");
@@ -78,11 +89,12 @@ internal static class Setup
         tick.Stop();
         if (Fail != null)
         {
-            MessageBox.Show("安装失败：" + Fail.Message + "\n" + LogPath, "TDHarness");
+            if (!Quiet) MessageBox.Show("安装失败：" + Fail.Message + "\n" + LogPath, "TDHarness");
             return 1;
         }
         if (string.IsNullOrEmpty(InstallRoot)) return 1;
         WriteShortcuts(InstallRoot);
+        if (Quiet) return 0;
         var app = Path.Combine(InstallRoot, "TDHarness.exe");
         if (File.Exists(app))
         {
@@ -117,6 +129,7 @@ internal static class Setup
             StopOldApp(dest);
             RetireOldCd();
             ClearDest(dest);
+            EnsureRemoteNet();
             var tmpZip = Path.Combine(Path.GetTempPath(), "dsh-p.zip");
             try { if (File.Exists(tmpZip)) File.Delete(tmpZip); } catch { }
             DownloadZip(tmpZip);
@@ -237,46 +250,117 @@ internal static class Setup
         }
     }
 
+    // 远程版安装包带着 Tailscale、员工入网密钥和服务器的 tailnet 地址（内嵌资源，见 pack-setup.ps1）。
+    // 连不上服务器时先入网：说一句、弹一次管理员确认、以 --ts-join 提权运行自己，再等服务器能连上。
+    private static readonly string[] TsResources = { "tailscale-setup.msi", "employee.auth", "company-tailnet.txt" };
+
+    private static bool HasTsResources()
+    {
+        var asm = Assembly.GetExecutingAssembly();
+        foreach (var n in TsResources) if (asm.GetManifestResourceInfo("tdh-ts/" + n) == null) return false;
+        return true;
+    }
+
+    private static void EnsureRemoteNet()
+    {
+        if (TailnetJoin.SiteReachable(Site.Host, 8443, 2500)) return;
+        if (!HasTsResources())
+            throw new Exception("连不上公司服务器 " + Site.Host + "：请在公司局域网里安装，或向管理员要「远程版」安装包");
+        var dir = Path.Combine(Path.GetTempPath(), "tdh-ts-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var asm = Assembly.GetExecutingAssembly();
+            foreach (var n in TsResources)
+            {
+                using (var src = asm.GetManifestResourceStream("tdh-ts/" + n))
+                using (var dst = File.Create(Path.Combine(dir, n)))
+                    src.CopyTo(dst);
+            }
+            SetStatus("正在加入公司加密网络…");
+            if (!Quiet) MessageBox.Show("这台电脑要先加入公司的加密网络（Tailscale），才能在这里安装和使用 TDH，只需要一次。\n\n接下来 Windows 会问「是否允许此应用对你的设备进行更改」，请点「是」。", "TDHarness", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var rc = TailnetJoin.RunElevated(Application.ExecutablePath, "--ts-join \"" + dir + "\"", 360000, Log);
+            Log("ts-join-result " + rc);
+            if (rc == -1223) throw new Exception("没有加入公司网络（选了「否」），装不了。请重新运行安装包，在 Windows 询问时点「是」");
+            if (rc != 0) throw new Exception("没能加入公司网络（" + rc + "）。这台电脑可能没有管理员权限，请联系管理员；日志：" + Path.Combine(Path.GetTempPath(), "companydesk-setup-ts.log"));
+            SetStatus("正在连接公司服务器…");
+            for (var i = 0; i < 60; i++)
+            {
+                if (TailnetJoin.SiteReachable(Site.Host, 8443, 2500)) return;
+                Thread.Sleep(1000);
+            }
+            throw new Exception("已加入公司网络，但还连不上服务器 " + Site.Host + "。请过一分钟重新运行安装包");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    // 断点续传：远程经中转时 400MB 常常中途断，断了从断点接着下，最多 30 次。
     private static void DownloadZip(string zipPath)
     {
         var zipUrl = Site.ZipUrl;
         if (zipUrl.IndexOf('?') < 0) zipUrl = zipUrl + "?v=unwrap1";
-        var req = (HttpWebRequest)WebRequest.Create(zipUrl);
-        req.Method = "GET";
-        req.Timeout = 600000;
-        req.ReadWriteTimeout = 600000;
-        req.CachePolicy = new RequestCachePolicy(RequestCacheLevel.BypassCache);
-        using (var resp = (HttpWebResponse)req.GetResponse())
-        using (var src = resp.GetResponseStream())
-        using (var dst = File.Create(zipPath))
+        long total = -1;
+        Exception last = null;
+        for (var attempt = 1; attempt <= 30; attempt++)
         {
-            var code = (int)resp.StatusCode;
-            if (code < 200 || code >= 300) throw new Exception("download-http-" + code);
-            var expect = resp.ContentLength;
-            Log("download-len " + expect);
-            var buf = new byte[256 * 1024];
-            long got = 0;
-            int n;
-            var lastMb = -1;
-            while ((n = src.Read(buf, 0, buf.Length)) > 0)
+            long got = File.Exists(zipPath) ? new FileInfo(zipPath).Length : 0;
+            if (total > 0 && got >= total) break;
+            try
             {
-                dst.Write(buf, 0, n);
-                got += n;
-                var mb = (int)(got / (1024 * 1024));
-                if (mb != lastMb)
+                var req = (HttpWebRequest)WebRequest.Create(zipUrl);
+                req.Method = "GET";
+                req.Timeout = 60000;
+                req.ReadWriteTimeout = 120000;
+                req.CachePolicy = new RequestCachePolicy(RequestCacheLevel.BypassCache);
+                if (got > 0) req.AddRange(got);
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                using (var src = resp.GetResponseStream())
                 {
-                    lastMb = mb;
-                    if (expect > 0)
-                        SetStatus("正在下载程序包… " + mb + " / " + (expect / (1024 * 1024)) + " MB");
-                    else
-                        SetStatus("正在下载程序包… " + mb + " MB");
+                    var code = (int)resp.StatusCode;
+                    if (code < 200 || code >= 300) throw new Exception("download-http-" + code);
+                    var partial = code == 206;
+                    if (!partial) got = 0; // 服务器不支持续传，从头下
+                    if (total < 0) total = partial ? got + resp.ContentLength : resp.ContentLength;
+                    Log("download-try " + attempt + " from " + got + " total " + total);
+                    using (var dst = new FileStream(zipPath, partial ? FileMode.Append : FileMode.Create, FileAccess.Write))
+                    {
+                        var buf = new byte[256 * 1024];
+                        int n;
+                        var lastMb = -1;
+                        while ((n = src.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            dst.Write(buf, 0, n);
+                            got += n;
+                            var mb = (int)(got / (1024 * 1024));
+                            if (mb != lastMb)
+                            {
+                                lastMb = mb;
+                                if (total > 0)
+                                    SetStatus("正在下载程序包… " + mb + " / " + (total / (1024 * 1024)) + " MB");
+                                else
+                                    SetStatus("正在下载程序包… " + mb + " MB");
+                            }
+                        }
+                    }
                 }
+                if (total <= 0 || got >= total) break;
+                last = new Exception("download-short " + got + "/" + total);
             }
-            if (expect > 20L * 1024 * 1024 && got != expect)
-                throw new Exception("下载不完整，请再试一次");
+            catch (Exception ex)
+            {
+                last = ex;
+                Log("download-retry " + attempt + " " + ex.Message);
+                SetStatus("网络断了，正在接着下载…（第 " + attempt + " 次）");
+                Thread.Sleep(Math.Min(30, attempt * 3) * 1000);
+            }
         }
-        var zipLen = new FileInfo(zipPath).Length;
+        var zipLen = File.Exists(zipPath) ? new FileInfo(zipPath).Length : 0;
         Log("zip-got " + zipLen);
+        if (total > 20L * 1024 * 1024 && zipLen != total)
+            throw new Exception("下载不完整，请再试一次" + (last != null ? "（" + last.Message + "）" : ""));
         if (zipLen < 162900000)
             throw new Exception("程序包太旧，请删掉安装包，从下载页重新下载");
     }

@@ -8,7 +8,7 @@
 [![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness?label=release)](https://github.com/398894496-arch/TDHarness/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**当前版本 / Version: 2026.11.10**
+**当前版本 / Version: 2026.11.10.2**
 
 ![AI 读了工作区里的销售表，按地区汇总并写出复盘文件，用时 28 秒](docs/screenshots/00-agent-at-work.jpg)
 
@@ -146,7 +146,7 @@ flowchart LR
 
 2026 年 9 月开始，迭代很快，已在生产环境使用：两家小公司每天在用（约 5 个和 22 个账号）。每次合进 `main` 自动发一个带说明的[日期版本](https://github.com/398894496-arch/TDHarness/releases)。维护者之外，已有 2 位贡献者的代码合入。
 
-每次合并在 Windows 和 Linux 上跑 22 项证明脚本：登录和网关鉴权、TLS 切换、知识库权限和排序、人员管理、公司盘权限、补丁、版本说明、密钥扫描等。内核是上游 `@deepseek-ai/dsh` **0.2.1-alpha.1**，和客户端包一起锁在 [kernel.yml](kernel.yml)；CI 把每个补丁打到这个版本上，打不上就失败（[docs/UPSTREAM.md](docs/UPSTREAM.md)）。至今做过五轮第三方审查，每条发现和修复都写在更新说明里。
+每次合并在 Windows 和 Linux 上跑 24 项证明脚本：登录和网关鉴权、TLS 切换、知识库权限和排序、人员管理、公司盘权限、补丁、版本说明、密钥扫描等。内核是上游 `@deepseek-ai/dsh` **0.2.1-alpha.1**，和客户端包一起锁在 [kernel.yml](kernel.yml)；CI 把每个补丁打到这个版本上，打不上就失败（[docs/UPSTREAM.md](docs/UPSTREAM.md)）。至今做过五轮第三方审查，每条发现和修复都写在更新说明里。
 
 ## 只要命令行内核（可选）
 

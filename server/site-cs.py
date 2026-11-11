@@ -252,6 +252,28 @@ def replace_zip_member(src: Path, dst: Path, name: str, data: bytes, extra=None)
     return n
 
 
+def put_zip_dir(src: Path, folder: Path, prefix: str) -> int:
+    """Add or replace every file of `folder` under `prefix` (e.g. CompanyDesk/vendor/); the rest is copied as is."""
+    import zipfile
+
+    prefix = prefix.replace("\\", "/")
+    if prefix and not prefix.endswith("/"):
+        prefix += "/"
+    files = {prefix + f.name: f.read_bytes() for f in sorted(folder.iterdir()) if f.is_file()}
+    if not files:
+        raise SystemExit("put-zip-empty")
+    tmp = src.with_suffix(src.suffix + ".tmp")
+    with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            if item.filename.replace("\\", "/") in files:
+                continue
+            zout.writestr(item, zin.read(item.filename))
+        for name, data in files.items():
+            zout.writestr(name, data)
+    tmp.replace(src)
+    return len(files)
+
+
 MAC_TREE_RUN = (
     b"# Tree check is log-only. Do not pop on a dirty local tree (hot plant).\n"
     b"# Update already ran before the desk started.\n"
@@ -576,7 +598,7 @@ def main() -> None:
     ap.add_argument("--site", required=True)
     ap.add_argument(
         "cmd",
-        choices=("emit-cs", "emit-caddy", "emit-stamp", "print", "print-mark", "rewrite-zip", "overlay-zip", "retarget-zip", "reseal-zip", "extract-zip", "replace-zip"),
+        choices=("emit-cs", "emit-caddy", "emit-stamp", "print", "print-mark", "rewrite-zip", "overlay-zip", "retarget-zip", "reseal-zip", "extract-zip", "replace-zip", "put-zip"),
     )
     ap.add_argument("--out")
     ap.add_argument("--src")
@@ -627,6 +649,12 @@ def main() -> None:
         names = [x.strip() for x in args.names.split(",") if x.strip()]
         n = extract_zip(Path(args.src), Path(args.out), names)
         sys.stdout.write("EXTRACT=%s\n" % n)
+        return
+    if args.cmd == "put-zip":
+        if not args.src or not args.file or not args.name:
+            raise SystemExit("put-zip needs --src --file <folder> --name <prefix in the zip>")
+        n = put_zip_dir(Path(args.src), Path(args.file), args.name)
+        sys.stdout.write("PUT=%s\n" % n)
         return
     if args.cmd == "replace-zip":
         if not args.src or not args.out or not args.name or not args.file:

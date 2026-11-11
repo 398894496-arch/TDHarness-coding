@@ -66,6 +66,18 @@ foreach ($name in 'CompanyDesk-win.zip', 'CompanyDesk-mac.zip') {
   if ($LASTEXITCODE -ne 0) { throw ('patch-failed-' + $name) }
 }
 
+# 2b. Remote desks over the site's tailnet: the join key, the server's tailnet address and Tailscale's MSI
+#     go into the Windows pack (vendor\); pack-setup.ps1 also builds the remote Setup from them.
+#     Without runtime\tailscale\desk.key nothing changes (TAILNET_SKIP=no-desk-key).
+$tn = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'tailnet-site.ps1') 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) { Write-Output $tn; throw 'tailnet-site-failed' }
+Write-Output $tn.Trim()
+if ($tn -match 'TAILNET_SITE_OK=1') {
+  & $py $SitePy --site $SiteYml put-zip --src (Join-Path $Dist 'CompanyDesk-win.zip') --file 'D:\dsh\runtime\tailscale\vendor' --name 'CompanyDesk/vendor/'
+  if ($LASTEXITCODE -ne 0) { throw 'tailnet-vendor-put-failed' }
+  Copy-Item -Force 'D:\dsh\runtime\tailscale\vendor\tailscale-setup.msi' (Join-Path $Dist 'tailscale-setup.msi')
+}
+
 # 3. TDHarness.exe carries the build mark and the site address; Setup.exe carries the site address
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Server 'compile-apphost.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'compile-apphost-failed' }
