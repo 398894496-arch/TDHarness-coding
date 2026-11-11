@@ -6,6 +6,9 @@
 #      -Apply must change nothing
 #   3. someone grants Everyone again (the line an old setup had): the proof must FAIL again
 #   4. people move from dshshare to their own account: their folders close to dshshare
+#   5. the private layer follows the roster's kb_private list: listed people read, admins
+#      change, the rest (a director, the same department) cannot; changing the list and
+#      emptying it (admins only) take effect on the next -Apply
 # Removes its accounts and folders at the end. Prints SECURE_FOLDERS_CI_OK=1.
 # Keep this file ASCII: Windows PowerShell 5.1 reads BOM-less UTF-8 as the ANSI code page.
 $ErrorActionPreference = 'Stop'
@@ -52,7 +55,8 @@ try {
   Set-Content -LiteralPath (Join-Path $Root 'runtime\gateway.env') -Value 'XAI_API_KEY=not-a-key'
   Set-Content -LiteralPath (Join-Path $Root 'brain\10-l0\day.md') -Value 'raw'
   Set-Content -LiteralPath (Join-Path $Company '_handbook\_company\rules.md') -Value 'rules'
-  $roster = @{ people = @() ; depts = @(@{ id = 'ops' }, @{ id = 'sales' }) }
+  # amy is on the private list; bob too, but he is still on dshshare, which never stands in for it.
+  $roster = @{ people = @() ; depts = @(@{ id = 'ops' }, @{ id = 'sales' }); kb_private = @('amy', 'bob') }
   foreach ($p in $people) {
     $personal = Join-Path $Company ('emp-' + $p.login)
     New-Item -ItemType Directory -Force -Path (Join-Path $personal '.dsh-desk\sessions') | Out-Null
@@ -84,7 +88,26 @@ try {
   Apply 'bob moved' | Out-Null
   Prove $true 'everyone on an own account'
 
-  # 5. As SYSTEM, the way people-api and the nightly task run it: same answer, nothing to change.
+  # 5. The private layer's list changes (people-api writes the roster, then runs -Apply).
+  if (-not (Test-Path -LiteralPath (Join-Path $Company '_handbook\_private'))) { throw 'the private layer was not created' }
+  Set-Content -LiteralPath (Join-Path $Company '_handbook\_private\pay.md') -Value 'salary bands'
+  $amy = (Get-LocalUser -Name 'smb-amy').SID.Value
+  $priv = Join-Path $Company '_handbook\_private'
+  foreach ($list in @(@('eve'), @())) {
+    $roster.kb_private = $list
+    [IO.File]::WriteAllText((Join-Path $Root 'runtime\roster.json'), ($roster | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    $n = Apply ('private list ' + ($list -join ','))
+    if ($n -lt 1) { throw ('changing the private list changed nothing: ' + ($list -join ',')) }
+    Prove $true ('private list now ' + $(if ($list.Count) { $list -join ',' } else { 'admins only' }))
+    $acl = (Get-Acl -LiteralPath $priv).Access | ForEach-Object { try { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } catch { '' } }
+    if ($acl -contains $amy) { throw 'amy is still named on the private layer after leaving the list' }
+  }
+  Write-Output 'PRIVATE_LAYER_LIST_OK=1'
+  $roster.kb_private = @('amy')
+  [IO.File]::WriteAllText((Join-Path $Root 'runtime\roster.json'), ($roster | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+  Apply 'private list amy' | Out-Null
+
+  # 6. As SYSTEM, the way people-api and the nightly task run it: same answer, nothing to change.
   # (Run as SYSTEM, an older version saw no local administrators and took them off runtime.)
   $task = 'tdh-ci-secure-folders'
   $log = Join-Path $Root 'system-run.log'

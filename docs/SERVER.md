@@ -103,6 +103,7 @@ The login API heals the two things a remote desk needs before it can open: the p
 |---|---|---|
 | share root, `_skills`, `_control`, `content`, `_handbook`, `_handbook\_company` | everyone | admins |
 | `_handbook\<dept>` | that department | its director, admins |
+| `_handbook\_private` (knowledge base private layer) | the people on its list (设置 → 人员 → 知识库私密层), admins; hidden from everyone else | admins |
 | `_shared` (company memory) | everyone | admins, directors |
 | `_office` | admins | admins |
 | each person's folder (raw conversations `.dsh-desk`, task deliverables `tasks\`) and `content\emp-<login>` (personal memory) | the person, their department's director, admins | the person, admins |

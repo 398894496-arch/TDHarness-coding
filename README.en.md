@@ -8,7 +8,7 @@
 [![release](https://img.shields.io/github/v/release/398894496-arch/TDHarness?label=release)](https://github.com/398894496-arch/TDHarness/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Version: 2026.11.10**
+**Version: 2026.11.10.4**
 
 ![The agent read a sales sheet in the workspace, summed it by region and wrote the review file in 28 seconds](docs/screenshots/00-agent-at-work.jpg)
 
@@ -148,7 +148,7 @@ They combine: a Dify or RAGFlow instance can sit next to TDH for large-scale doc
 
 Young and moving fast, run in production. Started September 2026; in daily use at two small companies (about 5 and 22 accounts). Every merge to `main` cuts [a dated release](https://github.com/398894496-arch/TDHarness/releases) with notes, automatically. Two contributors besides the maintainer have code merged.
 
-Every merge runs 22 proof scripts on Windows and Linux in CI: login and gateway authorisation, the TLS switch, knowledge-search permissions and ranking, people management, company-share rights, patches, release notes, secret scan and more. The agent kernel is upstream `@deepseek-ai/dsh` **0.2.1-alpha.1**, pinned in [kernel.yml](kernel.yml) together with the client packages; CI applies every patch to exactly that version and fails if one no longer applies ([docs/UPSTREAM.md](docs/UPSTREAM.md)). Five rounds of third-party review so far; each finding and its fix is in the changelog.
+Every merge runs 23 proof scripts on Windows and Linux in CI: login and gateway authorisation, the TLS switch, knowledge-search permissions and ranking, people management, company-share rights, patches, release notes, secret scan and more. The agent kernel is upstream `@deepseek-ai/dsh` **0.2.1-alpha.1**, pinned in [kernel.yml](kernel.yml) together with the client packages; CI applies every patch to exactly that version and fails if one no longer applies ([docs/UPSTREAM.md](docs/UPSTREAM.md)). Five rounds of third-party review so far; each finding and its fix is in the changelog.
 
 ## Kernel-only (optional)
 

@@ -252,6 +252,7 @@ window.__ModuleLoader__.load({
 			"  -webkit-mask: " + CHEVRON + " center / 16px 16px no-repeat; mask: " + CHEVRON + " center / 16px 16px no-repeat; transform: rotate(-90deg); }",
 			".cs-vendor.is-open .cs-vendor-chev { transform: none; }",
 			".cs-vendor-body { border-top: 0.5px solid " + T.border1 + "; }",
+			".cs-vendor-logo-kb { background: " + tint(T.label2, 10) + "; color: " + T.label + "; font-size: 13px; font-weight: 600; }",
 			".cs-vendor-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; }",
 			".cs-vendor-msg { padding: 0 16px 16px; font-size: 12.5px; line-height: 20px; color: " + T.label2 + "; }",
 
@@ -5779,6 +5780,115 @@ window.__ModuleLoader__.load({
 		}
 
 
+		// company-kb-private-v1：知识库私密层（company/_handbook/_private）的可查看名单。管理员维护，
+		// 存在服务器 runtime/roster.json 的 kb_private 里。名单上的人和管理员能检索、能打开这个文件夹；
+		// 其他人搜不到，共享盘里也看不到这个文件夹。一个都不勾 = 只有管理员能看。
+		function KbPrivateFold() {
+			useShellPulse();
+			const admin = shellRole === "admin";
+			const listHook = React.useState({ loaded: false, saved: [], err: "" });
+			const pickHook = React.useState({});
+			const openHook = React.useState(false);
+			const noteHook = React.useState("");
+			const busyHook = React.useState(false);
+			function take(j) {
+				const saved = Array.isArray(j && j.kb_private) ? j.kb_private.slice() : [];
+				const bag = {};
+				saved.forEach(function (login) { bag[login] = true; });
+				listHook[1]({ loaded: true, saved: saved, err: "" });
+				pickHook[1](bag);
+			}
+			React.useEffect(function () {
+				if (!admin) return;
+				peopleApi({ action: "kb-private" }).then(take, function (err) {
+					listHook[1]({ loaded: true, saved: [], err: String((err && err.message) || err) });
+				});
+			}, [admin]);
+			if (!admin) return null;
+			const st = listHook[0];
+			const now = Object.keys(pickHook[0]).filter(function (k) { return pickHook[0][k]; }).sort();
+			const dirty = now.join(",") !== st.saved.slice().sort().join(",");
+			// 管理员本来就能看，不用勾；停用的人留在名单里照样显示，免得保存时悄悄丢掉。
+			const rows = PEOPLE.filter(function (p) {
+				return p && p.login && p.role !== "admin" && (p.status === "active" || st.saved.indexOf(p.login) >= 0);
+			});
+			function save(allow) {
+				if (busyHook[0]) return;
+				busyHook[1](true);
+				noteHook[1]("正在保存…");
+				peopleApi({ action: "kb-private-set", allow: allow }).then(function (j) {
+					busyHook[1](false);
+					take(j);
+					noteHook[1](allow.length
+						? "已保存：除管理员外只有这 " + allow.length + " 人能检索和打开私密层。共享盘的文件夹权限随后自动刷新。"
+						: "已保存：私密层只有管理员能看。");
+				}, function (err) {
+					busyHook[1](false);
+					const msg = String((err && err.message) || err);
+					noteHook[1](msg.indexOf("kb-private-unknown") >= 0 ? "名单里有花名册上没有的登录名，刷新页面再试。" : peopleErr(msg));
+				});
+			}
+			const body = !openHook[0] ? null : el("div", { className: "cs-vendor-body" },
+				el("div", { className: "cs-vendor-bar" },
+					el("span", { className: "cs-set-rd" }, "放进公司盘 _handbook\\_private 的资料只给勾上的同事和管理员检索、打开；其他人搜不到，共享盘里也看不到这个文件夹。一个都不勾 = 只有管理员能看。"),
+					el("span", { className: "cs-set-gx", style: { whiteSpace: "nowrap" } }, now.length ? "已选 " + now.length + " 人" : "仅管理员")
+				),
+				rows.length ? el("div", { className: "cs-mlist" }, rows.map(function (p) {
+					const on = !!pickHook[0][p.login];
+					return el("div", { className: "cs-mrow" + (on ? "" : " cs-mrow-off"), key: p.login },
+						el("button", {
+							type: "button",
+							role: "checkbox",
+							"aria-checked": on,
+							"aria-label": p.login,
+							className: "cs-tick" + (on ? " is-on" : ""),
+							disabled: busyHook[0],
+							onClick: function () {
+								pickHook[1](function (prev) { const next = Object.assign({}, prev); next[p.login] = !on; return next; });
+								noteHook[1]("");
+							}
+						}, TICK_SVG),
+						el("div", { className: "cs-mrow-name" },
+							el("span", null, displayName(p) || p.login),
+							p.name && p.name !== p.login ? badge(p.login) : null,
+							badge(roleLabel(p.role)),
+							p.dept ? badge(deptName(p.dept)) : null,
+							p.status !== "active" ? badge("已停用", "warn") : null
+						)
+					);
+				})) : el("div", { className: "cs-vendor-msg" }, "除管理员外还没有别的同事。"),
+				el("div", { className: "cs-set-foot" },
+					el("p", { className: "cs-set-note" }, noteHook[0] || (dirty ? "还没保存。" : "")),
+					now.length ? btn("改成只有管理员", { small: true, tone: "ghost", disabled: busyHook[0], onClick: function () { save([]); } }) : null,
+					btn("保存名单", { tone: "primary", disabled: busyHook[0] || !dirty, onClick: function () { save(now); } })
+				)
+			);
+			return el("section", { className: "cs-set-group", "data-mark": "company-kb-private-v1" },
+				el("div", { className: "cs-set-gh" },
+					el("span", { className: "cs-set-gl" }, "知识库私密层"),
+					el("span", { className: "cs-set-gx" }, "只有管理员能改")
+				),
+				st.err ? setNote("名单没读到：" + peopleErr(st.err), "warn") : null,
+				el("div", { className: "cs-vendor" + (openHook[0] ? " is-open" : "") },
+					el("button", {
+						type: "button",
+						className: "cs-vendor-head",
+						"aria-expanded": openHook[0],
+						onClick: function () { openHook[1](!openHook[0]); }
+					},
+						el("span", { className: "cs-vendor-logo cs-vendor-logo-kb", "aria-hidden": "true" }, "密"),
+						el("span", { className: "cs-set-main" },
+							el("span", { className: "cs-set-rt" }, el("span", null, "可查看名单")),
+							el("span", { className: "cs-set-rd", style: { display: "block" } }, "公司盘 _handbook\\_private · 管理员始终能看")
+						),
+						!st.loaded ? badge("正在读…") : (st.saved.length ? badge("管理员 + " + st.saved.length + " 人", "warn", true) : badge("仅管理员", "ok", true)),
+						el("span", { className: "cs-vendor-chev", "aria-hidden": "true" })
+					),
+					body
+				)
+			);
+		}
+
 		function PeopleSection() {
 			useShellPulse();
 			const loginHook = React.useState("");
@@ -6048,6 +6158,7 @@ window.__ModuleLoader__.load({
 						)
 					)
 				),
+				el(KbPrivateFold),
 				setNote(noteHook[0]),
 				setNote("种子管理员不能停用或降权，但可以吊销令牌。总监不能设管理员。登录名发放后不能改，显示名可以随时改。")
 			);
